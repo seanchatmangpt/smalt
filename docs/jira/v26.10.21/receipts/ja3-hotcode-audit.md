@@ -1,4 +1,5 @@
 # JA-3: Hot-Code Upgrade Readiness Audit (Joe Armstrong definition of done)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — live hot-reload witnessed (PASS) on a real
 running process; fleet-wide hot-UPGRADE readiness **not met** (0/33 modules

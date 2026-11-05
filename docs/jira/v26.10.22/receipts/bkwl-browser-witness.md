@@ -1,4 +1,5 @@
 # BK-WLB — useWebLocks browser-context witness (real navigator.locks)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22
 

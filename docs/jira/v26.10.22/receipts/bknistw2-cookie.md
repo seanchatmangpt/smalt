@@ -1,4 +1,5 @@
 # Receipt: bknistw2-cookie — NIST W2 (IA-5(1)): cookie is a Secret with a real value, gate-enforced
+Standing: ALIVE
 
 **Standing: ALIVE** — the backend Erlang release cookie renders as a Secret
 referencing fact + a derived (non-placeholder) value in

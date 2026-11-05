@@ -1,4 +1,5 @@
 # Receipt — R120 (w3 session-ops pytest substrate wiring)
+Standing: SKIP-LOUD
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** SKIP-LOUD (harness-skip; substrate provisioning contended)

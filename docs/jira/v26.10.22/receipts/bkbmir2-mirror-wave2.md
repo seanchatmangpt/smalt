@@ -1,4 +1,5 @@
 # BK-BMIR2 — tmp/bench mirror wave 2: live-claim census + tracked snapshots
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (20 live-claim anchors mirrored and committed; 25 historical-citation jsonls remain gitignored, typed pending-with-owner)
 - **Context**: solo

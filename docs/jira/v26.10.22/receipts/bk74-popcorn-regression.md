@@ -1,4 +1,5 @@
 # BK-74: Popcorn demo regression sweep (post BK-46/BK-15b/BK-56)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — full suite green after solo re-run; BK-56 CORS flips hold in browser smoke.
 Context: solo

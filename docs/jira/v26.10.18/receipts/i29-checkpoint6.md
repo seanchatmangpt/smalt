@@ -1,4 +1,5 @@
 # i29 Checkpoint 6 — in-flight lane census at HEAD d577677
+Standing: UNVERIFIED
 
 - Subject: /Users/sac/smalt @ `d577677b64cff26b71a76d01f95985ac8579e6e5` (parent `148e440`, the checkpoint5 subject — one coordinator commit landed mid-census)
 Context: solo(census; read-only git; no git mutations)

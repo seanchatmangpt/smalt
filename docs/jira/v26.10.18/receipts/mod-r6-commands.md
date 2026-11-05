@@ -1,4 +1,5 @@
 # Receipt: mod-r6-commands — ratchet mod /ratchet* commands (R6)
+Standing: ALIVE
 
 **Standing: ALIVE**
 Context: solo — one module (`mods/ratchet/lib/commands.js`), single `node --check` + live harness invocation; output below produced under exactly this context.

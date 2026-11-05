@@ -1,4 +1,5 @@
 # KD-62 — user-delegation-key admission seam witness (W13-F)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-20
 - **Lane**: W13-F (continuation; prior run died on API 429 before landing)

@@ -1,4 +1,5 @@
 # Receipt — R27 (session-ledger attempt entry, airgap seam)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

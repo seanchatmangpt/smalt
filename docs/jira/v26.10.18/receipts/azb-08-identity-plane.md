@@ -1,4 +1,5 @@
 # AZB-08 — Identity plane profile (KeyVault + Entra STS) — RECEIPT
+Standing: PASS
 
 Context: solo (identity_plane_test.exs 12/0) + slice(bearer 128/0, kd79 107/0); full-context run exit 2 with all failures foreign (disclosed below)
 

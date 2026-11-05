@@ -1,4 +1,5 @@
 # kd107-blob-snapshots-tbd.md — evidence receipt (witness lane, 2026-10-20)
+Standing: ALIVE
 
 - **KD row**: KD-107 (blob snapshots partial)
 - **Standing**: ALIVE — evidence-executed. Full create → read-at-snapshot →

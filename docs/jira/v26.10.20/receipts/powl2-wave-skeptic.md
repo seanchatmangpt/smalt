@@ -1,4 +1,5 @@
 # POWL-12 — POWL wave skeptic receipt (adversarial audit as it lands)
+Standing: UNVERIFIED
 
 Date: 2026-10-21. Auditor: POWL-12 skeptic lane. Read-only audit; the only file
 written is this receipt. The wave was landing LIVE during the audit (compiler.ex

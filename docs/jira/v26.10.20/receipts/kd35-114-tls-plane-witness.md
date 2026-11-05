@@ -1,4 +1,5 @@
 # W13-D — KD-35/KD-114: blob face on the TLS twin (dispatch flip) — witness receipt
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 

@@ -1,4 +1,5 @@
 # KD-88 cold-boot attach race — witness receipt (lane W13-H)
+Standing: PARTIAL_ALIVE
 
 - **Standing: PARTIAL_ALIVE — KD-88 stays OPEN; row's suspected root REFUTED; end-to-end flake reproduced and root-caused to the client-pump cold-start path, with one new typed lead (`{:bad_frame_body, :truncated}`) and one robustness wart (Connection init `not_owner`). No register edit (no flip mandate).**
 - Lane: W13-H (substrate-op), repo /Users/sac/smalt, 2026-10-20. No shared-substrate restart; all beams lane-private on 39590-39595, MIX_BUILD_ROOT=_build-w13h.

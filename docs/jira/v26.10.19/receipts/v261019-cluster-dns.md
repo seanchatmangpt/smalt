@@ -1,4 +1,5 @@
 # Receipt: v261019-cluster-dns — Smalt.Cluster native DNS interconnect
+Standing: ALIVE
 
 - **Date**: 2026-10-19
 - **Lane**: lane-clu (cluster interconnect, phase 4)

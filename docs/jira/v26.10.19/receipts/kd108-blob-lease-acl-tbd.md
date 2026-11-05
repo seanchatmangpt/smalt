@@ -1,4 +1,5 @@
 # kd108-blob-lease-acl-tbd.md — KD-108 witness (witness lane, 2026-10-19)
+Standing: UNVERIFIED
 
 - **KD row**: KD-108 (blob container lease/ACL absent)
 - **Standing**: PASS-EVIDENCED (wire-tier witness executed 2026-10-19, transcript below; register row flip is registrar's call via kd_flip.py)

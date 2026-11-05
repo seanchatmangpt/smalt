@@ -1,4 +1,5 @@
 # AZB-05 — Control plane profile (ARM) — RECEIPT
+Standing: PASS
 
 Context: solo (control_plane_test.exs 12/0) + slice(7-file batch 327/0) + full (mix test exit 0; count-bearing rerun SIGKILLed — see Disclosure)
 

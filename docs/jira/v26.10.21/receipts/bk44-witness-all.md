@@ -1,4 +1,5 @@
 # BK-44 — `just witness-all` fail-closed receipt re-witness gate (closes BK-8)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (gate authored + exercised for real: full-corpus dry-run, bounded 10-receipt mix-test subset 8 green / 2 typed environmental reds; the full gated run is owed by the wrap lane)
 Context: solo

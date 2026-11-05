@@ -1,4 +1,5 @@
 # r9 — T-15: IaC state export — bicep + terraform from ONE projection pass
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T15-iac-state-export.md` · date: 2026-10-29
 - tier: beam (`test/integration/iac_export_test.exs`) · status: **CODE-COMPLETE (r9), awaiting integration run**

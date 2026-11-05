@@ -1,4 +1,5 @@
 # Receipt: BK-47 — apim.ex duplicate-init/1 + HealthPlug missing halt()
+Standing: ALIVE
 
 Date: 2026-10-21 · Lane: BK-47 · Build root: `_build-bk47` · Context: solo
 

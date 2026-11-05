@@ -1,4 +1,5 @@
 # i29 e2e recheck — s9 spot check (lane: e2e-fix recheck)
+Standing: UNVERIFIED
 
 Date: 2026-10-18 · Repo: /Users/sac/smalt
 

@@ -1,4 +1,5 @@
 # EXPL1R W1 — repair: law-reticle SHACL admission gate fails closed on response-shape drift
+Standing: ALIVE
 
 **Standing:** **ALIVE (repair lane)** — fail-closed gate landed and courted at the working tree
 (HEAD `4cf4df2` + dirty tree; not committed, per dispatch). Context: solo

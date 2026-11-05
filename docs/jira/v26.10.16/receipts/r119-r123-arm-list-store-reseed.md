@@ -1,4 +1,5 @@
 # Receipt — R119 + R123 (ARM subscription-wide list; store reseed + TLS call-site reduction)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

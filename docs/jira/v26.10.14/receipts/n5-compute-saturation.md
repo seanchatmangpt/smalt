@@ -1,4 +1,5 @@
 # Receipt — N-5 Compute Saturation (workspace Next.js lifecycle bench)
+Standing: UNVERIFIED
 
 - Lane: N-5, v26.10.14, canonical checkout `/Users/sac/smalt`
 - Date: 2026-10-15

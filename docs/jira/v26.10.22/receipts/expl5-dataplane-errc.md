@@ -1,4 +1,5 @@
 # EXPL-5 — data_plane ERRC read-only sweep (kql/skr/mhsm/dtdl/eventgrid/receipt)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE
 - **Context**: solo

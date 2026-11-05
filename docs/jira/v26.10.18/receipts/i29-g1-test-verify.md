@@ -1,4 +1,5 @@
 # G1 Verify: queue_storage test exists + green x2
+Standing: UNVERIFIED
 
 - Date: 2026-10-19 00:30 PDT
 - Actor: G1 verify lane (independent re-run)

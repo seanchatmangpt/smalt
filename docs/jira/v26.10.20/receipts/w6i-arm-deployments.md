@@ -1,4 +1,5 @@
 # w6i — ARM deployments faces (re-dispatch w6i-2)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 

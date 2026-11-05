@@ -1,4 +1,5 @@
 # i22 — fuzz_test.exs:561 atom-flood measurement fence (attempt 4, leg 1)
+Standing: NOT-REPRODUCIBLE
 
 - **Date**: 2026-10-18
 - **Lane**: fix lane, `MIX_BUILD_ROOT=_build-ft-r10`, repo `/Users/sac/smalt`

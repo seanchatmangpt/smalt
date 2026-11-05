@@ -1,4 +1,5 @@
 # Receipt: cap-appconfig-kv — App Config `/kv` surface capability census (DoD lane, 2026-10-16)
+Standing: PARTIAL_ALIVE
 
 - **Standing: PARTIAL_ALIVE** — surface ALIVE (full CRUD family, etag CAS, label
   isolation, 304, tokenless 401 challenge all witnessed by the offline suite);

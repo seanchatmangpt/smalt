@@ -1,4 +1,5 @@
 # Receipt: ERRC Raise Lane 6 — Property-Based Testing with Shrinking
+Standing: UNVERIFIED
 
 Date: 2026-10-15
 Lane: errc-6 (Raise)

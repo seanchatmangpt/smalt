@@ -1,4 +1,5 @@
 # AMQP10 court completion + skeptic re-audit (BK1 closure)
+Standing: ALIVE
 
 Date: 2026-10-21 · Lane: BK1 · Repo: /Users/sac/smalt
 **Standing:** **ALIVE** (baseline court 6/6, skeptic court 7/7, adversarial pass 5/5 on stability reruns — one typed load-flake disclosed below)

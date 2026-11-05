@@ -1,4 +1,5 @@
 # TTV-7b: Quiesced Re-Run Gate (Warmed P99 Tail)
+Standing: UNVERIFIED
 
 **Standing:** **BLOCKED-ON-QUIESCENCE**
 Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt

@@ -1,4 +1,5 @@
 # Receipt — B-9: Event Hubs BEAM-level pipeline benchmark (v26.10.14)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Repo**: /Users/sac/smalt @ main (518b31a, working tree)

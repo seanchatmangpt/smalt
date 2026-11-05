@@ -1,4 +1,5 @@
 # Receipt — R20 (naming-sweep zero violations)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

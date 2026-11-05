@@ -1,4 +1,5 @@
 # Phase-1 Capability Probes — T37P1 (ARD-PRD v26.10.21)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 **Standing:** PARTIAL_ALIVE

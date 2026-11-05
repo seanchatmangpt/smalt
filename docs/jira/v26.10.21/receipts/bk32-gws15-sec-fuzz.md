@@ -1,4 +1,5 @@
 # BK-32 — GWS-SEC-FUZZ: security fuzz of the graphlaw wasm boundary (GWS-15, security half)
+Standing: PASS
 
 **Standing**: PASS
 **Context**: solo

@@ -1,4 +1,5 @@
 # w6bh — ARM quota/usage faces (v26.10.20)
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier). No mocks, no Process.sleep.
 Wire mount is a ~3-line staged router patch (ROUTER HOLD respected; noted in the moduledoc).

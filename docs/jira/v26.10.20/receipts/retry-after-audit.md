@@ -1,4 +1,5 @@
 # T30RA — Retry-After / SDK auto-retry parity audit (census only)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE**
 Date: 2026-10-21

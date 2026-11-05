@@ -1,4 +1,5 @@
 # BK-96: substrate-up runbook addendum (SMALT_UP_TIMEOUT + toolchain pin)
+Standing: ALIVE
 
 **Standing**: ALIVE
 **Context**: solo

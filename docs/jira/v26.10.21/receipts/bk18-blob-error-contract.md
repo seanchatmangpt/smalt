@@ -1,4 +1,5 @@
 # BK-18: KD-142 blob error envelope — live wire witness + flip
+Standing: ALIVE
 
 **Standing:** ALIVE — KD-142 close condition satisfied on live substrate HEAD (pid 53160, shared lane boot); flip applied receipt-gated.
 **Context**: solo

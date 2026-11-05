@@ -1,4 +1,5 @@
 # BK-58 — AMQP-over-WebSocket relay (BK-40 lane 3)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — host-side relay ALIVE (witnessed end-to-end); browser eg/topic/eh leg TYPED-PERMANENT under the workspace transport law (mechanism corrected: transport law, not "needs AMQP sockets").
 

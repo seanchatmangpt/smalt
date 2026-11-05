@@ -1,4 +1,5 @@
 # IMPL-23 — EEP-78 Comprehensions Probe (multi-element templates, single-pass 1-to-many)
+Standing: UNVERIFIED
 
 Context: solo
 

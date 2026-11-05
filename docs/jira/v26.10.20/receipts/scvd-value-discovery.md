@@ -1,4 +1,5 @@
 # SCVD value discovery — Fortune-5 80/20 displacement claims
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (per-claim caveats below)
 Notes: standing was COMPUTED-FROM-PUBLISHED-RATES — a provenance note, not a standing. Rates come from fetched rate cards and measured displacement workloads; assumption legs (fleet size, volumes) are labeled as such.

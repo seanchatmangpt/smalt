@@ -1,4 +1,5 @@
 # Final fin sweep — 4-generator + idempotence (terminal)
+Standing: ALIVE
 
 **Standing**: ALIVE
 **Date**: 2026-10-17

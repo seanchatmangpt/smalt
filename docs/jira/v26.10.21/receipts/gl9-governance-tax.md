@@ -1,4 +1,5 @@
 # GL-9: GraphLaw Governance-Tax Differential
+Standing: ALIVE
 
 **Standing:** **ALIVE** (differential measured, receipt-identity proven, refusal witness live)
 Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt

@@ -1,4 +1,5 @@
 # kd105-ps256-external-verify-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+Standing: OPEN
 
 - **KD row**: KD-105 (PS256 not externally verifiable)
 - **Standing**: OPEN — divergence RE-WITNESSED this window on two external-SDK legs; no closing receipt exists

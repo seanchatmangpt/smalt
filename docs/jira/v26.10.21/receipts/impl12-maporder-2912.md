@@ -1,4 +1,5 @@
 # IMPL-12 — Deterministic map-order adjudication on pinned OTP 29.1.2
+Standing: UNVERIFIED
 
 Context: solo
 

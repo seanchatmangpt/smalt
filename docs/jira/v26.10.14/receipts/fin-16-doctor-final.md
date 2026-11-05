@@ -1,4 +1,5 @@
 # FIN-16 — Final Doctor Receipt (supplemental + pinned)
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Lane: DoD-only finish (no commits). Ran last, after F-2
 placeholder fix and F-4 `.gitignore` line landed (`.gitignore` mtime ~2 min

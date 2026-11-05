@@ -1,4 +1,5 @@
 # fin27: eh-run `batch-send` probe drift fix — receipt
+Standing: UNVERIFIED
 
 Lane: fin27 (v26.10.14). Scope: `test/sdk-smoke/eventhubs.test.cjs` only
 (probe/test code). No commits, no lib edits.

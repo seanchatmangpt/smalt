@@ -1,4 +1,5 @@
 # Receipt — 08-servicebus-census (lane b11, Service Bus SDK census)
+Standing: UNVERIFIED
 
 - **Subject**: /Users/sac/smalt working tree @ b847c02 (uncommitted lane files:
   verification/ts/census.test.cjs, verification/ts/sb-extra.probe.cjs,

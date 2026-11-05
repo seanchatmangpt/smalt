@@ -1,4 +1,5 @@
 # S-4 Wire Normalization Receipt (KD-01 / KD-03 / KD-07)
+Standing: UNVERIFIED
 
 - **Lane**: S-4, v26.10.14, 2026-10-15
 - **Subject**: /Users/sac/smalt @ main (uncommitted working tree; HEAD 518b31a)

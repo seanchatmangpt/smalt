@@ -1,4 +1,5 @@
 # BK-GOSEQ — BK-DRAIN3 path-to-GO sequence run (typed verdict: **NO-GO**, single failing stage)
+Standing: UNVERIFIED
 
 - **Lane**: BK-GOSEQ (`/Users/sac/smalt`, canonical checkout, `MIX_BUILD_ROOT=_build-bkgoseq`)
 - **Date**: 2026-10-22, 08:02–09:47 PDT

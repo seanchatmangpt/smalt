@@ -1,4 +1,5 @@
 # KD-85 witness: real @azure/service-bus reads a valid `enqueuedTimeUtc` end-to-end
+Standing: UNVERIFIED
 
 - **KD**: KD-85 (Service Bus enqueued-time materialization)
 - **Covers shim**: `lib/smalt/messaging/amqp/delivery_encoder.ex` (line 97 `# KD-COVERS: KD-85`), shim mtime 2026-10-20 18:57:28 PDT

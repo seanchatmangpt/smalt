@@ -1,4 +1,5 @@
 # BK-CLIV: final consolidated smalt-cli verify (post 5-wave repair surface)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22 · Lane BK-CLIV (read-only verify; only this receipt written)
 

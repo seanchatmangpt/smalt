@@ -1,4 +1,5 @@
 # Receipt — R10 (cosmos PATCH runs PUT admission gates)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PARTIAL_ALIVE (unit-level PASS; wire-level FAIL WITNESS)

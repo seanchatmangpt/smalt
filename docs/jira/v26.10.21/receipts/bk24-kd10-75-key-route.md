@@ -1,4 +1,5 @@
 # BK-24 — KD-10/KD-75 fix lane: real `PUT /keys/:name` route
+Standing: ALIVE
 
 **Standing:** ALIVE (both falsifiers met on the wire; typed negative legs; tests green)
 Context: solo

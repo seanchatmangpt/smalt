@@ -1,4 +1,5 @@
 # JA-12: Hot-Code-Reload Court (Joe Armstrong doctrine)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (court PASS, exit 0, reproduced twice consecutively)
 

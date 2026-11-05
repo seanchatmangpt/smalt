@@ -1,4 +1,5 @@
 # BK-LANES2 — final lane accounting for the seal
+Standing: ALIVE
 
 **Standing:** ALIVE · **Context:** solo · 2026-10-22 · Lane BK-LANES2
 

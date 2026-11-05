@@ -1,4 +1,5 @@
 # i29 — ws-lint / ws-build / ws-court / cli-test fresh verification legs
+Standing: UNVERIFIED
 
 Context: solo (lane i29, exclusive use of workspace gates and cli-test venvs during run)
 

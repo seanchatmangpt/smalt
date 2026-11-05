@@ -1,4 +1,5 @@
 # BK-85 — Seal invariant gate root cause + successful-seal court (lane bk85)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — root cause fixed in the caller; successful seal witnessed
 on the real artifact; gate proven non-vacuous; KD-164 minted.

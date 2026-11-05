@@ -1,4 +1,5 @@
 # KD-09 witness — built-in role GUID resolution on the Policy face
+Standing: ALIVE
 
 window: v26.10.31 · status: ALIVE · Context: solo
 

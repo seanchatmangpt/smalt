@@ -1,4 +1,5 @@
 # STORE-4 — 16-partition Erlang store: operator-mandated decomposition + crash court
+Standing: ALIVE
 
 **Standing:** **ALIVE** (court 4/4 PASS, exit 0, reproduced 3×)
 Context: solo

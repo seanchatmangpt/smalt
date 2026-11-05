@@ -1,4 +1,5 @@
 # VAL Receipt — AR-DATA-01..04 Probe Validation (Phase-2 ETS claims)
+Standing: PARTIAL
 
 **Standing: PARTIAL** — every API named in the ARD Phase-2 data-plane pillar exists on the
 pinned toolchains (nothing to type UNSUPPORTED at the availability layer), but two

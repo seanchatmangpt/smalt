@@ -1,4 +1,5 @@
 # BK-PINIT — powl2 init stale-delete (F8 shared-ETS wound, powl2 hop)
+Standing: ALIVE
 
 **Standing:** ALIVE — the BK-CENS3-typed powl2 `:already_exists` init crash (×6 under batch
 load) is CLOSED: the init path now stale-deletes the heir-held table before `:ets.new`.

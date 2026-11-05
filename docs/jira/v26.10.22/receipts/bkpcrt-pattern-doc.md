@@ -1,4 +1,5 @@
 # BK-PCRT — BROWSER-COURT-PATTERNS doc: three courts consolidated into one pattern record
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (doc landed; each cited instance keeps its own
 receipt standing — ALIVE/ALIVE/PARTIAL_ALIVE as of their receipts)

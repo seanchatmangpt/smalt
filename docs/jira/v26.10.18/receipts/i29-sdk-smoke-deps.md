@@ -1,4 +1,5 @@
 # Receipt: i29-sdk-smoke-deps — sdk-smoke dependency manifest
+Standing: PARTIAL_ALIVE
 
 Context: solo(checkpoint2 census follow-up)
 

@@ -1,4 +1,5 @@
 # BK-150 — finisher sweep: landed-but-uncommitted receipts + fleet audit (v26.10.22)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: full

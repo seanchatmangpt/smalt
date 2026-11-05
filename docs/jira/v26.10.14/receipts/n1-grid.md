@@ -1,4 +1,5 @@
 # N-1 Grid Lifecycle Stress Receipt
+Standing: UNVERIFIED
 
 - Lane: N-1 (workspace grid bench), v26.10.14
 - Date: 2026-10-15

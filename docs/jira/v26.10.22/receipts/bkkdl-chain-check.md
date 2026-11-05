@@ -1,4 +1,5 @@
 # BK-KDL — KD-180 evidence-chain cross-check
+Standing: ALIVE
 
 - **Lane**: BK-KDL (read-only cross-check; this receipt is the only write)
 - **Date**: 2026-10-22

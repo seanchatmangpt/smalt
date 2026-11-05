@@ -1,4 +1,5 @@
 # r7 — T-04: App Configuration keyvaultref contract + kv Event Grid events
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T04-appconfig-kvrefs-and-change-events.md` · date: 2026-10-29
 - tier: beam (`test/integration/appconfig_events_test.exs`) · status: **CODE-COMPLETE (r7), awaiting integration run**

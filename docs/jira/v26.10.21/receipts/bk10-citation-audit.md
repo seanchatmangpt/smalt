@@ -1,4 +1,5 @@
 # BK-10 — FINAL-RELEASE §4/§-level citation audit + VALIDATION coherence audit
+Standing: PASS
 
 **Standing**: PASS — every cited receipt path exists; every number traced
   to a receipt or on-disk artifact; 3 doc-drift fixes landed; 2 flags.

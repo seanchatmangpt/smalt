@@ -1,4 +1,5 @@
 # N-7 SSE Reconnection-Herd Receipt
+Standing: UNVERIFIED
 
 Lane: N-7 (lifecycle stress) · Date: 2026-10-16 · Host: one macOS machine (darwin 25.2.0)
 Subjects:

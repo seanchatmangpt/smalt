@@ -1,4 +1,5 @@
 # A-3 Receipt: Cross-Partition Multi-Entity Atomic Fan-Out — Transaction Semantics
+Standing: UNVERIFIED
 
 - **Lane**: A-3 (adversarial cross-product bench)
 - **Subject**: /Users/sac/smalt @ `518b31a54ccc0829cafb9e04538714e58c287a30`

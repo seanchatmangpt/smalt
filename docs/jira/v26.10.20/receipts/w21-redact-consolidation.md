@@ -1,4 +1,5 @@
 # W2-1: PopcornDemo.Redact — shared receipt redaction
+Standing: ALIVE
 
 **Standing:** ALIVE (all suites green, host walk live=OK)
 

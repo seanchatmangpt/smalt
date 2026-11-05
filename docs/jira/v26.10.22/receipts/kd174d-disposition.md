@@ -1,4 +1,5 @@
 # KD-174D2 — KD-174 falsifier probe + typed OPEN disposition
+Standing: OPEN
 
 - **Lane**: KD-174D2 (registrar; prior KD-174D lane died pre-landing on a 429 — its
   /tmp/kd174d probe artifacts were reused, not re-authored)

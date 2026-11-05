@@ -1,4 +1,5 @@
 # t45 BOOTPROF — NFR-FOOTPRINT boot-phase profile
+Standing: UNVERIFIED
 
 Context: solo
 

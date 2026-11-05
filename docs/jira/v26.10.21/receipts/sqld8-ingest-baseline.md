@@ -1,4 +1,5 @@
 # SQLD-8 — Bulk-Ingest Perf Baseline (100k-row dump → OCEL projection)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo · Date: 2026-10-21 · Lane: SQLD-8 · Milestone: v26.10.21

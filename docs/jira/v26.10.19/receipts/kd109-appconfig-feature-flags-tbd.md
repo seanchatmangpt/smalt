@@ -1,4 +1,5 @@
 # kd109-appconfig-feature-flags-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+Standing: UNVERIFIED
 
 - **KD row**: KD-109 (appconfig feature-flag passthrough)
 - **Standing**: PASS-EVIDENCED (opaque passthrough confirmed; no typed flag-record endpoint)

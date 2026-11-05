@@ -1,4 +1,5 @@
 # fin-06 — justfile parse sweep (DoD-only finish lane)
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Repo: /Users/sac/smalt · Subject: Justfile + justfile.d/*.just (14 modules)
 

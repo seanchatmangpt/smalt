@@ -1,4 +1,5 @@
 # w6ad — Azure Activity Log face (module level)
+Standing: ALIVE
 
 **Standing:** ALIVE (flipped 2026-10-20 — falsifier green on the post-w6R split tree)
 Subject: /Users/sac/smalt @ uncommitted wave-6 tree

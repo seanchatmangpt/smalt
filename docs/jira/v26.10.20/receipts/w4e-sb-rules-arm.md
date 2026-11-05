@@ -1,4 +1,5 @@
 # w4e — SB rules ARM family witness (PUT/GET/DELETE/LIST)
+Standing: PASS
 
 - **Lane**: w4e (ERRC wave-4)
 - **Standing**: PASS

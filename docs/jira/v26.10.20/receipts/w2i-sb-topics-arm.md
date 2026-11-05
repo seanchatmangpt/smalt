@@ -1,4 +1,5 @@
 # Receipt — w2i lane: ARM Service Bus topic/subscription face (b6 enforce witness)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-20
 - **Lane**: w2i (ERRC CREATE — Azure capability)

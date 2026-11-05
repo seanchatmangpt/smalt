@@ -1,4 +1,5 @@
 # Receipt — i20e (mechanical test-isolation leak court)
+Standing: ALIVE
 
 - **Subject**: `/Users/sac/smalt` working tree @ `main` `650a8ff`; new file
   `gates/test_isolation_leak_gate.py` (this lane's only edit; no lib/ changes)

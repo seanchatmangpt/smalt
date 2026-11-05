@@ -1,4 +1,5 @@
 # BK-43 — KD-93 registrar close-typing (cosmos query feed read-your-write)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

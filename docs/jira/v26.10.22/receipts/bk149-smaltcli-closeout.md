@@ -1,4 +1,5 @@
 # BK-149 — smalt-cli inventory-and-close receipt
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — all 5 Typer command groups (storage / cosmosdb /
 servicebus / keyvault / deployment) pass on real wire against a live substrate

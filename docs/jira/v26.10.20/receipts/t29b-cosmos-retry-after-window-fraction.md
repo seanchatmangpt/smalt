@@ -1,4 +1,5 @@
 # T29b — Cosmos RU throttle retry-after: remaining-window fraction
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (fix landed + tested; wire-level @azure/cosmos re-witness pending, was T29's scope)
 

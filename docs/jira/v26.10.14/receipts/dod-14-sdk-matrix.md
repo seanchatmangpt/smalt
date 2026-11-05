@@ -1,4 +1,5 @@
 # DoD-14 — SDK Coverage Matrix (receipt)
+Standing: UNVERIFIED
 
 Lane DoD-14, v26.10.14, 2026-10-15. Subject: /Users/sac/smalt (working tree, no commits made).
 

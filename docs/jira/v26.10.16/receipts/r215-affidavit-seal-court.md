@@ -1,4 +1,5 @@
 # r215 — affidavit seal-court witness receipt (lane 5 VERIFY; refreshed by lane 4 WITNESS)
+Standing: PASS
 
 - **Date**: 2026-10-16
 - **Lane**: lane 5 (VERIFY), affidavit-closure wave, repo `/Users/sac/smalt`, `MIX_BUILD_ROOT=_build-lane623`; **refreshed by lane 4 (WITNESS) of the v26.10.16 finish wave**, `MIX_BUILD_ROOT=_build-lane632`

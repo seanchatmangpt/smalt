@@ -1,4 +1,5 @@
 # Receipt: N-6 ISR Stampede (lifecycle stress lane)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-16
 - **Lane**: N-6

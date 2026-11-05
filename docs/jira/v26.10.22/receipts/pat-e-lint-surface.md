@@ -1,4 +1,5 @@
 # PAT-E — pattern-court dom-lint emission surface
+Standing: ALIVE
 
 **Standing:** **ALIVE** — the dom-lint tier now scans the full import-closure emission surface of page.tsx (14 files) instead of the page file alone; all 6 previously-FAILing dom-lint rows (P1/P2/P6/P8/P10/P12) flipped PASS on the same tree, court exit 1 → 0. Browser rows are typed SKIP this run (pre-existing `next build` failure in `lib/process/ocel.ts` turbopack dynamic-path — other lanes' in-flight edits, not session-introduced; PAT-D witnessed the same build PASS with 4/4 browser PASS).
 Context: solo

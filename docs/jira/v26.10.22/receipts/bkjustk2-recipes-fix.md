@@ -1,4 +1,5 @@
 # Receipt: bkjustk2-recipes-fix — 52-kind.just garbled-recipe repair + manifest reconciliation
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — parse/syntax/prereq-error legs are ALIVE with embedded real
 output; the in-cluster ready-wait leg is BLOCKED by an external, session-introduced kubeconfig

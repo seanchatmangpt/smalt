@@ -1,4 +1,5 @@
 # KD-08 witness — cosmos query feed max-item-count (K2 lane, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE — fixed this lane; `KD-COVERS: KD-08` at
 `lib/smalt/data_plane/cosmos.ex` feed_limit/1 (wired at both feed take sites:

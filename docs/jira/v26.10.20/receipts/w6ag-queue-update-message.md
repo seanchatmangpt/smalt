@@ -1,4 +1,5 @@
 # Receipt — w6ag: Azure Queue Storage Update Message (popreceipt parity)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Date: 2026-10-20

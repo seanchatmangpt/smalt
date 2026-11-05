@@ -1,4 +1,5 @@
 # ATH-3 — law files + GLD-7-class law court
+Standing: ALIVE
 
 **Standing**: ALIVE
 - Context: solo

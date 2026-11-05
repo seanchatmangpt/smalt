@@ -1,4 +1,5 @@
 # fin-01 — Register MISSING SDK_MATRIX cells in KNOWN_DIVERGENCES
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Repo: /Users/sac/smalt @ main (3fc2543), v26.10.14

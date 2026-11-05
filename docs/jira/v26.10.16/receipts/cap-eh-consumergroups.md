@@ -1,4 +1,5 @@
 # Receipt — EventHubs hub-scoped consumer-group LIST (GAP retirement)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 DoD lane, 2026-10-16)
 - **Standing:** PASS (citation-assembled; DoD lane ran edits + grep only, no build/test executions — all counts are on-disk citations, not fresh runs)

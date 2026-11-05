@@ -1,4 +1,5 @@
 # STORE-3 — Store partitioning wire regression court
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

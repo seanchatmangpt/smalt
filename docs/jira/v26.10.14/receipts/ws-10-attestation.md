@@ -1,4 +1,5 @@
 # WS-10 — Attestation Receipt Validator
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: WS-10 (workspace, /Users/sac/smalt/workspace)

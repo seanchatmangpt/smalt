@@ -1,4 +1,5 @@
 # Lane 10 — explanation rewrite (why-docs, receipt-anchored)
+Standing: ALIVE
 
 - Standing: **ALIVE** (gate exit 0 witnessed below)
 - Window: v26.10.16, 2026-10-16

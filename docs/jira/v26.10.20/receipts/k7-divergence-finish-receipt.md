@@ -1,4 +1,5 @@
 # Lane K7 receipt — divergence-finish: infra/egress/misc (2026-10-21)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (4 FLIP-ELIGIBLE closes + 1 narrow fix, 5 documented dispositions)
 Context: solo

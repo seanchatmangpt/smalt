@@ -1,4 +1,5 @@
 # r-p08-kind-gate — one-command milestone gate run
+Standing: PARTIAL_ALIVE
 
 - date: 2026-10-30T15:33:28Z · wall: 842s · verdict: **PARTIAL_ALIVE (2/9 legs rc=0)**
 

@@ -1,4 +1,5 @@
 # GLD-5FIX — F2/F3 close + F1 pin + value-exact round-trip court (v26.10.21)
+Standing: ALIVE
 
 - **Date**: 2026-10-21
 - **Lane**: GLD-5FIX (writer, OTP-29 toolchain: Elixir 1.20.4-otp-29, Erlang/OTP 29.1.2)

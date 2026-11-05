@@ -1,4 +1,5 @@
 # BK-57: heir-guard mechanical gate
+Standing: ALIVE
 
 **Standing:** **ALIVE** (gate run for real on tree: 37/37 guarded, exit 0; self-test + real-tree mutation probe both witnessed)
 

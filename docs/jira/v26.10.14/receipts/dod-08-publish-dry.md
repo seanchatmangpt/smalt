@@ -1,4 +1,5 @@
 # Receipt — DoD-08 publish dry-run gate
+Standing: UNVERIFIED
 
 - Date: 2026-10-15 · Subject: /Users/sac/smalt @ main 3fc2543 (uncommitted lane edits)
 - Owns: `scripts/publish_dry.sh`, `justfile.d/08-publish-dry.just` (recipe `publish-dry`)

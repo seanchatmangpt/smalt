@@ -1,4 +1,5 @@
 # Receipt: fin-12 workspace court + build refresh
+Standing: UNVERIFIED
 
 Date: 2026-10-15
 Subject: /Users/sac/smalt @ main (working tree, uncommitted finish-lane edits)

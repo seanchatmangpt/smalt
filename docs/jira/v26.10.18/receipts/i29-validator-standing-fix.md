@@ -1,4 +1,5 @@
 # i29 — validate_burn.py standing derivation fix (fail-closed)
+Standing: ALIVE
 
 **Standing: ALIVE** — fix landed, non-vacuity fixture passes, real-data proof on
 both sides (dirty cgroup file now refuses; clean 8x4 gate files stay ALIVE).

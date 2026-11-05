@@ -1,4 +1,5 @@
 # BENCH-9 receipt — benchee deletion audit (PRD-DEL-01)
+Standing: PASS
 Context: pair (read-only deletion audit over shared mix/lib/test/scripts surface)
 **Standing:** PASS
 

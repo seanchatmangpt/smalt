@@ -1,4 +1,5 @@
 # Receipt: AZB-09 Plane-Scoped Supervision Subtrees
+Standing: UNVERIFIED
 
 Context: solo (plane_supervision_test.exs 2/0)
 

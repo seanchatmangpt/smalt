@@ -1,4 +1,5 @@
 # KD-29 ARM virtualNetworkLinks — witness receipt (K5, v26.10.20)
+Standing: ALIVE
 
 **Standing:** ALIVE (face live; row OBSOLETE)
 Context: solo

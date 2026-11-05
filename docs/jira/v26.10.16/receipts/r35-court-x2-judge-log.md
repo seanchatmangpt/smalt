@@ -1,4 +1,5 @@
 # Receipt — R35 (court_x2 green predicate A/B: compile-abort must judge NOT-GREEN)
+Standing: FAIL
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** FAIL WITNESS — predicate defect found by this receipt's own court

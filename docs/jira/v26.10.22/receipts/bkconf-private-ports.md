@@ -1,4 +1,5 @@
 # BK-CONF — cli conftest lane-private port blocks
+Standing: ALIVE
 
 **Standing: ALIVE** — two cli test groups ran CONCURRENTLY, each against its
 own real substrate boot on a distinct derived private block: anonymous

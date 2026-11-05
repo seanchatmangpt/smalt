@@ -1,4 +1,5 @@
 # w6ah — CheckNameAvailability Faces (close-out w6ah2)
+Standing: ALIVE
 
 - **Subject**: `lib/smalt/arm/name_availability.ex` (wave-6 lane w6ah, landed but unwitnessed at the disk wall)
 - **Standing**: ALIVE (module tier; wire mount is `check_wire/1`, staged for the post-split router patch)

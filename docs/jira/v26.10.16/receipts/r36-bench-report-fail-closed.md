@@ -1,4 +1,5 @@
 # Receipt — R36 (bench report.py fail-closed on malformed rows + wave-telemetry split)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

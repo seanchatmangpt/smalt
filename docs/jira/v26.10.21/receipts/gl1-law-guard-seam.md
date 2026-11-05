@@ -1,4 +1,5 @@
 # GL-1 — graphlaw→POWL2 law-guard seam
+Standing: ALIVE
 
 **Standing: ALIVE** (11 new court tests green; existing executor suite green; run output below)
 Context: solo

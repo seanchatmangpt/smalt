@@ -1,4 +1,5 @@
 # Receipt: w6ak — Blob Lease Family Audit (v26.10.20)
+Standing: ALIVE
 
 - **Lane**: w6ak (close-out w6ak2)
 - **Date**: 2026-10-20

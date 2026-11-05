@@ -1,4 +1,5 @@
 # S14-A — SCVD ramp in-browser witness (t256 + c128 legs in LiveScvd.run/0)
+Standing: PASS
 
 **Standing:** **PASS** (Tier-2/3 latency in-browser: PASS with ~18x margin; memory: PASS, quantized-class, same exposed-surface caveat as S9). Three witnessed runs on the cooked bundle, all exit 0.
 

@@ -1,4 +1,5 @@
 # Receipt — R17 (w3 session-state API fix)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PARTIAL_ALIVE — the session-state management-op round trip

@@ -1,4 +1,5 @@
 # Receipt: b-await-migration — PARTIAL_ALIVE
+Standing: PARTIAL_ALIVE
 
 **Window**: v26.10.18 LIB simplification batch · Context: solo
 **Date**: 2026-10-18 · **Lane file ownership**: router.ex (finops site), pplan/task.ex

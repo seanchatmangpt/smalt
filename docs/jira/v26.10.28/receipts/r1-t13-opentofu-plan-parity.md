@@ -1,4 +1,5 @@
 # r1 — T-13: OpenTofu plan parity vs terraform against the live substrate
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T13-opentofu-compatibility.md` · date: 2026-10-28
 - binaries: `tofu` 1.13.2 (scoop), `terraform` 1.17.0 (scoop)

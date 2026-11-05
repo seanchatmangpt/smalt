@@ -1,4 +1,5 @@
 # BK-POPCORN — popcorn live loopback leg: verified + gate-exit contract fixed
+Standing: ALIVE
 
 **Standing:** **ALIVE** (all three gate scenarios witnessed on the recooked wasm bundle)
 

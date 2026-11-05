@@ -1,4 +1,5 @@
 # SCVD-T9 — `just scvd-ramp` one-command tier runner
+Standing: ALIVE
 
 **Standing:** **ALIVE** (live-substrate full ramp PASS exit 0; down/skip/fail paths exercised with typed exits)
 

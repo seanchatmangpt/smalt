@@ -1,4 +1,5 @@
 # BK-REWIT3 — coordinator re-witness wave 3: the residual 16 SUSPECT rows
+Standing: SUSPECT
 
 - **Standing**: ALIVE — 16/16 rows dispositioned with real, embedded,
   re-run evidence; 23 → 10 suspects. Every row either replayed cheaply

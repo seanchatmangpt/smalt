@@ -1,4 +1,5 @@
 # Receipt: i29-doctor-dod-gapcensus — doctor_dod.py GAP-census retirement
+Standing: ALIVE
 
 Context: solo(checkpoint2 census follow-up)
 

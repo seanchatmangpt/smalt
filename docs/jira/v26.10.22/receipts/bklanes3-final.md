@@ -1,4 +1,5 @@
 # BK-LANES3 — final lane accounting (seal census)
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE — Context: solo · Date: 2026-10-22 · Subject: `/Users/sac/smalt` (canonical checkout)
 MIX_BUILD_ROOT: none (census lane, read-only + `_LANES.md`/this receipt only; never ran git state-mutating commands).

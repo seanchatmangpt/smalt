@@ -1,4 +1,5 @@
 # DoD-4 — SDK validation recipes: runnable, executed, witnessed
+Standing: UNVERIFIED
 
 Lane: DoD-4 · date: 2026-10-15 · owner file: `justfile.d/04-sdk-recipes.just`
 (also touched, env-only: `test/sdk-full/package.json` + `npm install` to add

@@ -1,4 +1,5 @@
 # CLI-8 — Verification Gates Runner Receipt
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: CLI-8 (smalt-cli, /Users/sac/smalt/smalt-cli)

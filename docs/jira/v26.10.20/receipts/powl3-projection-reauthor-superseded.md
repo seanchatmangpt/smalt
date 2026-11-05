@@ -1,4 +1,5 @@
 # PROJAUTH (lane re-author) — SUPERSEDED by original-lane re-landing
+Standing: SKIP-LOUD
 
 Date: 2026-10-21
 Lane: PROJAUTH (writer), repo /Users/sac/smalt

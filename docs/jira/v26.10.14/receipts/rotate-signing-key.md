@@ -1,4 +1,5 @@
 # Receipt — signing.key rotation (execution lane ROTATE)
+Standing: UNVERIFIED
 
 - Date: 2026-10-15 · Subject: /Users/sac/smalt @ main 518b31a (uncommitted lane edits)
 - Authority: coordinator rotation decision; per

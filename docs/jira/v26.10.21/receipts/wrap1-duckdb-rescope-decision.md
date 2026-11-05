@@ -1,4 +1,5 @@
 # WRAP-1: duckdb-in-wasm re-scope decision (recorded per SPEC-SCOPE §6 item 4)
+Standing: PASS
 
 **Standing:** **PASS** (spec amended on disk; evidence receipts read, not assumed; docs-dod-check green)
 

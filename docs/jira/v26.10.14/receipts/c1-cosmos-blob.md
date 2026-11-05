@@ -1,4 +1,5 @@
 # Receipt: bench lane C-1 — Cosmos<->Blob ETL pipeline (ingest/transform/archive)
+Standing: UNVERIFIED
 
 - Subject: `/Users/sac/smalt` @ main, working tree (no commits made)
 - Lane: C-1 (cross-product bench), owner files:

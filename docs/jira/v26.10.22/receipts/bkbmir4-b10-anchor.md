@@ -1,4 +1,5 @@
 # BK-BMIR4 — b10-system-topics anchor typed: original in-place artifact, not a lost tmp mirror
+Standing: ALIVE
 
 - **Standing**: ALIVE (classification is grep-witnessed and harness-source-witnessed; original artifact byte-verified unchanged)
 - **Context**: solo

@@ -1,4 +1,5 @@
 # IMPL-14F — TLS 1.3 default flip landed (`config :smalt, :tls_versions`)
+Standing: ALIVE
 
 Context: solo
 

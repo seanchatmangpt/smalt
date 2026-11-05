@@ -1,4 +1,5 @@
 # KD-44 / KD-08 / KD-09 — live-wire re-probe witness (W12-A)
+Standing: PASS
 
 **Date**: 2026-10-20
 **Standing**: PASS (all three hold on the live substrate)

@@ -1,4 +1,5 @@
 # r-p02 — SAML Single Logout round trip (P02, CLM-02)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE**

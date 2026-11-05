@@ -1,4 +1,5 @@
 # COSMOS404 — missing-database GET answers typed 404, never 500
+Standing: ALIVE
 
 **Standing:** **ALIVE** (defect class closed at HEAD; regression fenced by test)
 

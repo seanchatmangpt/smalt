@@ -1,4 +1,5 @@
 # smalt-migrate wave 1 — audit receipt (M6)
+Standing: UNVERIFIED
 
 Date: 2026-10-21. Auditor: M6 docs/audit lane.
 Scope: `smalt-cli/smalt_cli/migrate/` (M1 scan, M2 manifest, M3 inject, M4 verify, M5 pipeline) + `smalt-cli/tests/test_migrate_*.py`.

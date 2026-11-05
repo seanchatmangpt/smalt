@@ -1,4 +1,5 @@
 # EXP1-A — law-reticle worker / guard / bridge repairs (W1, W6)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all repairs landed, court PASS 17/17 legs, `just ws-lint` 0 errors.
 Context: solo

@@ -1,4 +1,5 @@
 # KD-128 partition readout key-mismatch — fix + real-wire witness
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-20
 - **Lane**: S13-F (writer)

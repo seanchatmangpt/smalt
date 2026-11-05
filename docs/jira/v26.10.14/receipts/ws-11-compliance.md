@@ -1,4 +1,5 @@
 # WS-11 Receipt — NIST AU-10 Compliance Surface
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: WS-11 (workspace), disjoint paths per `_LANES.md`

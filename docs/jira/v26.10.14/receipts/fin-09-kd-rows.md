@@ -1,4 +1,5 @@
 # fin-09 — KD register sync for TS-3 / TS-4 / PY-4 lanes
+Standing: UNVERIFIED
 
 - Date: 2026-10-15. Repo: /Users/sac/smalt (main, no commits made).
 - Task: DoD-10's KD register predated the TS-3 cosmos, TS-4 servicebus-census,

@@ -1,4 +1,5 @@
 # TTV-8: Specification bounds cleanup (release charter + WASM §1 note)
+Standing: ALIVE
 
 **Standing:** **ALIVE** · Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt
 

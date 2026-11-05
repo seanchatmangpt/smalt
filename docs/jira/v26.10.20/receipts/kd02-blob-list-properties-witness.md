@@ -1,4 +1,5 @@
 # KD-02 witness — blob comp=list BlobProperties + Prefix echo
+Standing: PASS
 
 - **Standing:** PASS
 - **Context:** solo

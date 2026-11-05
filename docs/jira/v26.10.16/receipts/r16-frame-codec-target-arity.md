@@ -1,4 +1,5 @@
 # Receipt — R16 (AMQP target composite: 7-field arity for azure _pyamqp)
+Standing: PASS
 
 - **Subject:** `lib/smalt/messaging/amqp/frame_codec.ex` @ working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS at the frame_codec tier; cross-tier conflict with the 14-field attach pin recorded under R43

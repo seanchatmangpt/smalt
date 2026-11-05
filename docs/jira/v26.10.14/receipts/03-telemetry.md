@@ -1,4 +1,5 @@
 # Receipt — V261014-03 (telemetry)
+Standing: UNVERIFIED
 
 Lane: 03-telemetry · Checkout: /Users/sac/smalt (canonical, main) · Date: 2026-10-15
 

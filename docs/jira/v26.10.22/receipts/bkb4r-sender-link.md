@@ -1,4 +1,5 @@
 # BK-B4R — b4 messaging sender-link root cause + fix
+Standing: ALIVE
 
 - **Standing**: ALIVE — b4 delivers end to end; SUSPECT-PERMANENT row flipped to ALIVE
 - **Context**: solo

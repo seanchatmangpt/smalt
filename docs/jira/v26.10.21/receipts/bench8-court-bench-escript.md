@@ -1,4 +1,5 @@
 # BENCH-8 — bin/court-bench escript runner + `just court-bench` recipe (v26.10.21)
+Standing: PASS
 
 **Standing: PASS** (runner wiring ALIVE on the documented-interface fallback;
 Context: solo

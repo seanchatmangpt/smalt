@@ -1,4 +1,5 @@
 # JA-16: Joe-Armstrong Robustness Census over `lib/smalt`
+Standing: PARTIAL
 
 **Standing: PARTIAL** — principles 1/2/3 PASS; principle 4 (observability of every failure) PARTIAL with 2 new defects and 3 minors. Context: solo.
 

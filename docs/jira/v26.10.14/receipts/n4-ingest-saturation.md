@@ -1,4 +1,5 @@
 # N-4 Ingest Saturation — Receipt
+Standing: UNVERIFIED
 
 Lane: N-4 lifecycle stress, /Users/sac/smalt, v26.10.14. Date: 2026-10-15.
 Subject: streaming HMAC ingest route under a 3×60 s, 5,000 RPS gzip storm.

@@ -1,4 +1,5 @@
 # BENCH-3 — court_bench_cosmos (pure Erlang bulk CAS point ops, raw TLS :9444)
+Standing: PASS
 
 **Standing: PASS (two consecutive green runs, 0 errors, fence met with headroom — measured p99 0.543/0.672 ms vs the 2.08 ms parity fence, i.e. under the T43 wire p99 itself)**
 

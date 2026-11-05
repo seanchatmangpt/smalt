@@ -1,4 +1,5 @@
 # r-undock-restore
+Standing: ALIVE
 
 **Lane**: L02 — T-R1 undock restore (egress_router.ex)
 **Standing**: ALIVE for the six gate families + expl9r1 + both KV falsifier

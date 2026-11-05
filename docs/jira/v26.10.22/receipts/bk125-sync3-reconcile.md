@@ -1,4 +1,5 @@
 # BK-125 — SYNC-3 reconciliation (ghost-lane reap)
+Standing: ALIVE
 
 **Standing**: ALIVE
 - Context: solo

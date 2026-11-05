@@ -1,4 +1,5 @@
 # Receipt: BK-CLEAN3 — post-BK-DRAIN lane build-root reclaim
+Standing: ALIVE
 
 - **Lane**: BK-CLEAN3 (`/Users/sac/smalt`, canonical checkout, no git state commands)
 - **Standing**: ALIVE (disk reclaim executed; all sizes are real `du -sm` reads)

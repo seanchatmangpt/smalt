@@ -1,4 +1,5 @@
 # BK-143rr — aero-defense P3 proposer-judge (v26.10.22)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

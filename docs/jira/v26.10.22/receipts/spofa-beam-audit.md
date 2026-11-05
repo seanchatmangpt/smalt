@@ -1,4 +1,5 @@
 # SPOF-A: BEAM Adversarial Zero-Mercy Audit — v26.10.22
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (audit receipt; every finding carries a falsification court, none executed — read-only audit)
 Repo: `/Users/sac/smalt` · branch `main` · Context: solo · Vectors 1, 2, 5 of the operator falsification audit

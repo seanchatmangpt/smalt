@@ -1,4 +1,5 @@
 # BK-51: `mix smalt.gen` replay gate repair
+Standing: ALIVE
 
 **Standing: ALIVE** — `mix smalt.gen` runs to completion (exit 0, all 6 stanzas),
 `mix smalt.gen --check` exits 0 with NO DRIFT, and replay is byte-identical

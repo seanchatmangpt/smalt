@@ -1,4 +1,5 @@
 # w6be — Event Grid retryPolicy honored by the delivery engine
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier)
 Context: solo

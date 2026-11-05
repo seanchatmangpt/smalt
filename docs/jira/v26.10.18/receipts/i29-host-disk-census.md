@@ -1,4 +1,5 @@
 # I29 Host Disk Census
+Standing: PASS
 
 - Date: 2026-10-18
 Context: solo(read-only census + snapshot check; no deletions required)

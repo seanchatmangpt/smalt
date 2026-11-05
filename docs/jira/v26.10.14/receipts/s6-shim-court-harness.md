@@ -1,4 +1,5 @@
 # S-6 Receipt: shim-court harness (generalization of mutation_court.py)
+Standing: UNVERIFIED
 
 - Subject: `/Users/sac/smalt` @ main (518b31a working tree)
 - Lane: S-6, generalization lane. No commits (per dispatch).

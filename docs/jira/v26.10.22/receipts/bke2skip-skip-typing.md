@@ -1,4 +1,5 @@
 # BK-E2SKIP — e2e-court SKIP typing audit
+Standing: ALIVE
 
 **Standing:** **ALIVE** (both skips honestly typed by this lane's disposition; neither was typed anywhere before this receipt — finding, KD row flagged not minted)
 Context: solo

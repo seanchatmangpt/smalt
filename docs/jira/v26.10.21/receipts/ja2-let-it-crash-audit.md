@@ -1,4 +1,5 @@
 # JA-2: Let-It-Crash Audit — silent-violation sweep
+Standing: UNVERIFIED
 
 Repo: `/Users/sac/smalt` · Branch: `main` · Date: 2026-10-21 · Context: solo · READ-ONLY agent; parent persisted.
 

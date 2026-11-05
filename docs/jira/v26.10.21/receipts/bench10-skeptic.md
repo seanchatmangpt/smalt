@@ -1,4 +1,5 @@
 # BENCH-10 — pure-Erlang bench architecture skeptic audit
+Standing: ALIVE
 
 - **Lane**: BENCH-10 (skeptic, pure Erlang), 2026-10-21
 - **Subject**: `docs/jira/v26.10.21/BENCH-ERLANG.md` (AR-BENCH-01/02) + `bench/smalt_bench_court.erl`

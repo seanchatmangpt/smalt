@@ -1,4 +1,5 @@
 # KD-103 close witness — KV secrets backup/restore wire arm (lane K7, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

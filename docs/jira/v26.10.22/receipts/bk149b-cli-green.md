@@ -1,4 +1,5 @@
 # BK-149b — smalt-cli green (pyright loose ends + premise-rot test repairs)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all BK-149-flagged pyright defects repaired; touched files
 pyright-clean (0 errors); full smalt-cli suite runs with 0 failures attributable

@@ -1,4 +1,5 @@
 # BK-MON — monitor-face honesty verification (EXPL12-B follow-up)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — zero fabricated values witnessed anywhere on the monitor face; profile round-trip ALIVE; but `monitor metrics` is dead-on-arrival against the live substrate (BK-MON-1 CLI defect + BK-MON-2 pre-existing substrate 500) and the ocel-tail table face is lossy (BK-MON-3).
 

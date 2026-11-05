@@ -1,4 +1,5 @@
 # BK-SUPW — cosmetic closures (W32-10 supersede + KD skip-banner retype)
+Standing: ALIVE
 
 **Standing:** **ALIVE** · **Context:** solo · Date: 2026-10-22 · Lane: BK-SUPW
 

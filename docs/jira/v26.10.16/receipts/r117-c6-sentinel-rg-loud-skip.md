@@ -1,4 +1,5 @@
 # Receipt — R117 (c6_sentinel_rg loud skip)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # BK-SUSP — receipt-index SUSPECT triage (53 → 43)
+Standing: SUSPECT
 
 - **Standing**: PARTIAL_ALIVE — 10 of 53 SUSPECT flags cleared by content-preserving
   format normalization; remaining 43 triaged and typed below, clearable only by

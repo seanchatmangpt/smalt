@@ -1,4 +1,5 @@
 # FONDRUNNER court receipt
+Standing: PASS
 
 **Standing:** **PASS** — court `test/pipeline/fond_powl_runner_court_test.exs` green 7/7 on the
 pinned OTP 29 / Elixir 1.20.4-otp-29 toolchain, `MIX_BUILD_ROOT=_build-bk4`.

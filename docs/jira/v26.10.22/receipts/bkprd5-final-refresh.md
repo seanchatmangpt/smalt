@@ -1,4 +1,5 @@
 # BK-PRD5 — PRD §5 tightening + FINAL-RELEASE freshness refresh
+Standing: ALIVE
 
 **Standing: ALIVE** — every tightened row cites a receipt whose standing line was
 re-read from disk this session (not recalled); census re-run mechanically.

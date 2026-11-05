@@ -1,4 +1,5 @@
 # Receipt: SBKEY boot-config fix (M4 — 12-byte :sb_shared_key defect)
+Standing: PARTIAL_ALIVE
 
 - **Lane**: SBKEY (writer), repo /Users/sac/smalt, build root `_build-sbkey`
 - **Standing**: PARTIAL_ALIVE — fix landed and verified; kd134 flake (pre-existing,

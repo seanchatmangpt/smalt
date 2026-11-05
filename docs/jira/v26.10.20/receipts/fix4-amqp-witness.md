@@ -1,4 +1,5 @@
 # FIX-4 — AMQP substrate closes: KD-131 / KD-132 / KD-133
+Standing: ALIVE
 
 **Standing:** **ALIVE** (all three closes witnessed on live wire, post-shim).
 

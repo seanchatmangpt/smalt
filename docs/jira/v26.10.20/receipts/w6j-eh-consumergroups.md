@@ -1,4 +1,5 @@
 # W6J — Event Hubs consumer groups: ARM face raise (wave-6 lane w6j)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (witness EXIT=0, all 22 checks true; 9/0 tests)
 

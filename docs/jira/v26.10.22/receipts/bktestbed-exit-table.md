@@ -1,4 +1,5 @@
 # BK-TESTBED — TESTBED.md canonical exit table refresh (BK-POPCORN flag)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (OK path executed on the live substrate; SKIP path source-verified
 in the gate + witnessed in `bk-popcorn-live.md`; all other documented exit rows

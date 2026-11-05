@@ -1,4 +1,5 @@
 # BK-AMQPC — drift census: connection.ex / sb_rules.ex / powl2 files
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (verdicts per file below)
 - **Context**: solo

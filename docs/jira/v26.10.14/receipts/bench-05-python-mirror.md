@@ -1,4 +1,5 @@
 # Bench B-5 — Python SDK parity numbers (blob + cosmos)
+Standing: UNVERIFIED
 
 - lane: b5
 - date: 2026-10-15

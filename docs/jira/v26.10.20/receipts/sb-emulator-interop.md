@@ -1,4 +1,5 @@
 # W30-B — Microsoft SB Emulator Interop Probe (differential vs smalt AMQP face)
+Standing: PARTIAL_ALIVE
 
 - **Standing: PARTIAL_ALIVE** — leg A (official emulator) 6/6 observed PASS;
   leg B (private smalt block b30) 3/4 with one **reproducible smalt defect**

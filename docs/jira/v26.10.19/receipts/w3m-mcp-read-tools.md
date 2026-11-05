@@ -1,4 +1,5 @@
 # Receipt — wave-3 MCP read-tools lane (ERRC RAISE, mcp-tools)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (wire-witnessed end to end: tools/list = 26, all 6 new tools answer with seeded data over the real Plug wire path, actuation refused; internal tier has 5 failures, all attributable to other lanes' in-flight files — see Internal tier below)
 - **Date**: 2026-10-20

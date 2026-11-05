@@ -1,4 +1,5 @@
 # i29 Checkpoint 5 — in-flight lane census at HEAD 0351252
+Standing: UNVERIFIED
 
 - Subject: /Users/sac/smalt @ `0351252cfa0cbd71481d994c248cf61d83341630` (HEAD advanced past checkpoint4's 086c6aa — coordinator committed 3 receipts 23:5x)
 Context: solo(census; read-only git; no git mutations)

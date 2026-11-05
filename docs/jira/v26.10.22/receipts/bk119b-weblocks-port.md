@@ -1,4 +1,5 @@
 # BK-119B — W3C-E row 8 Web Locks master lease: reactive face + court
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** · Context: solo · 2026-10-22
 

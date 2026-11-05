@@ -1,4 +1,5 @@
 # BK-ENG0 — Engineer zero-to-green: bootstrap → up → real-SDK → sdk-all → doctor → down/up
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE**
 Context: full

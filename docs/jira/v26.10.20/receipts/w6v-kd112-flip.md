@@ -1,4 +1,5 @@
 # w6v — KD-112 KD-COVERS token + flip attempt
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (token landed; flip typed-REFUSED, pending post-token re-witness)
 

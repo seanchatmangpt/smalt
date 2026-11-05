@@ -1,4 +1,5 @@
 # w6ap — Azure Monitor metric alert rules
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (module tier ALIVE; wire tier deferred behind the w6R router-split freeze)
 

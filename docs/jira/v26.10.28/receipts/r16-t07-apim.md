@@ -1,4 +1,5 @@
 # r16 — T-07: API Management resource model + policy execution
+Standing: PARTIAL
 
 - window: v26.10.28 · ticket: `tickets/T07-apim-policy-execution.md` · date: 2026-10-29
 - verdict-at-open: **PARTIAL** (adjacent primitives shipped) · verdict-at-close: **CODE-COMPLETE — awaiting integration run** (court written, NOT yet executed; compile-freeze SLA)

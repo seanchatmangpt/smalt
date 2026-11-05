@@ -1,4 +1,5 @@
 # BK-77 — FINAL-RELEASE distribution-line refresh (BK-75 close-out)
+Standing: PASS
 
 **Standing:** **PASS**
 

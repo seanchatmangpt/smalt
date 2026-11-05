@@ -1,4 +1,5 @@
 # POWL-9 — POWL2 execution kernel (`Smalt.POWL2.Executor`)
+Standing: PARTIAL_ALIVE
 
 Date: 2026-10-21. Lane: powl9 (writer). Repo: /Users/sac/smalt.
 **Standing:** **PARTIAL_ALIVE** — kernel witnessed by 7/7 Chicago tests on the

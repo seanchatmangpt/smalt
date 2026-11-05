@@ -1,4 +1,5 @@
 # W7-A — staged_roundtrip put-block-list 400 fix (live wire)
+Standing: ALIVE
 
 **Standing: ALIVE** — 2 consecutive green suite runs against the live
 substrate (shared 8443/9443, enforce mode), wire-proven before and after.

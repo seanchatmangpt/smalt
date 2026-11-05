@@ -1,4 +1,5 @@
 # BK-29 — KD-79 closure: loopback vaultUri constant re-witnessed on wire
+Standing: PASS
 
 **Standing:** PASS (CLOSED-WITH-EVIDENCE; constant holds, adversarial leg refuses the wrong shape)
 Context: solo

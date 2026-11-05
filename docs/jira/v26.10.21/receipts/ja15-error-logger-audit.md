@@ -1,4 +1,5 @@
 # Receipt: JA-15 — error/Logger doctrine audit + court (Joe Armstrong: log where it happens, debuggable remotely)
+Standing: PASS
 
 Context: solo
 

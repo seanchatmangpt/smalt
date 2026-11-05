@@ -1,4 +1,5 @@
 # BK-SUB3 — shared substrate recycle (stale-beam remediation)
+Standing: ALIVE
 
 **Standing**: ALIVE · **Context**: solo · **Date**: 2026-10-22 · **Subject**: `/Users/sac/smalt` shared substrate recycled onto the current tree (post-`daea2d87` fixes incl. BK-MON-2 `368c32d5`)
 

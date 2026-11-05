@@ -1,4 +1,5 @@
 # BK-60 — Receipt-index gate for the active windows (v26.10.21 + v26.10.22)
+Standing: ALIVE
 
 **Standing**: ALIVE
 - **Context**: solo

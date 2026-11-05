@@ -1,4 +1,5 @@
 # Court-x2 DRY-RUN leg 3 — full `mix test` at HEAD 1eb89df
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `1eb89df2d61461784bfc4cb448e80978dd6daf0b` (≥ 1eb89df, canonical face closed, drift fence 20/0)

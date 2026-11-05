@@ -1,4 +1,5 @@
 # BK-113 — RDF-star GAP-1a probe: purrdf lowering self-stability + RDF.ex interop
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (measured; probe-only, no fixes implemented, no lib/ changes)
 Context: solo

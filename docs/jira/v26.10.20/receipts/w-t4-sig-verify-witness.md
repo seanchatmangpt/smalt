@@ -1,4 +1,5 @@
 # W14-T4 — /api/sync/state sig structure verification (integrity binding)
+Standing: ALIVE
 
 **Standing: ALIVE** — sig-structure validation landed in
 `workspace/app/api/sync/state/route.ts`, 10/10 tests pass including both

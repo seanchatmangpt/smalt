@@ -1,4 +1,5 @@
 # BK-WRAP — wrap-prep regen receipt (lane BK-WRAP)
+Standing: ALIVE
 
 - **Standing**: ALIVE — all four wrap-prep steps executed with embedded output; regen diff committed.
 - **Context**: solo

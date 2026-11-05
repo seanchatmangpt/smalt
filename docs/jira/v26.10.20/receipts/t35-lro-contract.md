@@ -1,4 +1,5 @@
 # T35LRO — ARM control-plane LRO contract (empirical leg)
+Standing: PASS
 
 **Standing:** **PASS** (0 errors), well inside the 15 s typed-FAIL envelope and the T21 p99 3.6 s cycle envelope.
 

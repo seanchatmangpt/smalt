@@ -1,4 +1,5 @@
 # GWS-2 Receipt — crux wasm build trial (graphlaw @ 0af58bf)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — crux typed to exactly one cause; DOCS_RS escape path proven ABI-identical
 Context: solo · Date: 2026-10-21 · Toolchain: rustc/cargo 1.97.0, wasm32-wasip1 installed

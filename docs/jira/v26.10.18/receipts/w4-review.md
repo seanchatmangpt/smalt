@@ -1,4 +1,5 @@
 # W4 residual review receipt — group 3 (solo lane)
+Standing: PASS
 
 - **Date**: 2026-10-18
 - **Lane**: W4 residual review, group 3 of `/tmp/rewrite-workqueue.json`

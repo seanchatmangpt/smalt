@@ -1,4 +1,5 @@
 # i29 scratch sweep — edit_atom_bridge.py / edit_test.py
+Standing: PASS
 
 Context: solo
 

@@ -1,4 +1,5 @@
 # BK-SKIPPORT — in-browser smoke SKIP-leg Fetch ports + typed-permanent residue
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (all mechanical legs green; 6 typed-permanent SKIPs remain, each with a named reason — zero silent skips)
 Context: solo

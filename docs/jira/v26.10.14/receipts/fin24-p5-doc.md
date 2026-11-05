@@ -1,4 +1,5 @@
 # fin24-p5 — superfans WO doc recovery
+Standing: ALIVE
 
 - **Date:** 2026-10-15
 - **Lane:** P-5 doc recovery (fin24)

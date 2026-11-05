@@ -1,4 +1,5 @@
 # r14-consumer-azure-census
+Standing: ALIVE
 
 **Lane**: S1 — consumer Azure-surface census (scan-first, read-only)
 **Standing**: ALIVE

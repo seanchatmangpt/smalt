@@ -1,4 +1,5 @@
 # BK-RETOK — arm_gateway KD-174 mis-mint re-token to KD-175
+Standing: ALIVE
 
 - **Lane**: BK-RETOK (`/Users/sac/smalt`, canonical checkout)
 - **Date**: 2026-10-22

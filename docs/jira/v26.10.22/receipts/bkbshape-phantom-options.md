@@ -1,4 +1,5 @@
 # BK-BSHAPE — phantom SDK-option census across bench/probe harnesses
+Standing: ALIVE
 
 **Standing:** **ALIVE** (fix verified on the wire at step level; one rerun
 BLOCKED-with-owner). Context: solo

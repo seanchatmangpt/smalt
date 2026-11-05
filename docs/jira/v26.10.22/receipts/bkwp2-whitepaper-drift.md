@@ -1,4 +1,5 @@
 # BK-WP2 — lithography whitepaper citation/figure drift audit — PARTIAL_ALIVE
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE — all 23 cited artifacts exist at their cited names (no
 renames/moves); 18 of 23 anchor cleanly with matching figures and unchanged standings;

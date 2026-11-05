@@ -1,4 +1,5 @@
 # Receipt — R185 / R185d / R185h (wire fences + TLS + policy-row wire tier)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 late docs sweep, lane 267)
 - **Standing:** PASS (R185, R185h); PASS (R185d) — all re-run on `_build-lane267`

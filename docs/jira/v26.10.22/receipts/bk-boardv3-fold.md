@@ -1,4 +1,5 @@
 # BK-BOARDV3 — BOARDV3 fold: v26.10.22 validation board v1 seeded from the v26.10.21 board v8 lineage
+Standing: ALIVE
 
 **Standing:** **ALIVE as artifact** (board `../VALIDATION.md` landed; census
 recounted mechanically from `RECEIPTS.md` at fold time; every cited receipt

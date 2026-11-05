@@ -22,6 +22,8 @@ defmodule Smalt.Aoq.Transport do
   @default_timeout 2_000
   @poll_interval 20
 
+  alias Smalt.Aoq.Frame
+
   @typedoc "Connected :socket handle."
   @type socket :: :socket.socket()
 
@@ -43,7 +45,7 @@ defmodule Smalt.Aoq.Transport do
 
     with {:ok, addr} <- resolve(host),
          {:ok, sock} <- :socket.open(:inet, :dgram, :udp) do
-      sockaddr = {:socket.sockaddr_in, addr, port}
+      sockaddr = %{family: :inet, addr: addr, port: port}
       connect_bounded(sock, sockaddr, deadline(timeout))
     else
       {:error, reason} -> refuse(reason)
@@ -107,7 +109,9 @@ defmodule Smalt.Aoq.Transport do
   ##
 
   defp connect_bounded(sock, sockaddr, deadline) do
-    case :socket.connect(sock, sockaddr, %{timeout: @poll_interval}) do
+    case :socket.connect(sock, sockaddr, @poll_interval) do
+      :ok ->
+        :ok
       {:ok, _} = ok ->
         ok
 

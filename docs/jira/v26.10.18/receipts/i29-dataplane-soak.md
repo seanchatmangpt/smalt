@@ -1,4 +1,5 @@
 # i29 Data-Plane Soak (fresh ×2)
+Standing: UNVERIFIED
 
 Date: 2026-10-18
 Tree: post-0009df3

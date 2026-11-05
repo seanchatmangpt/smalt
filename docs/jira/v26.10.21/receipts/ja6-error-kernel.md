@@ -1,4 +1,5 @@
 # JA-6: Smalt Error Kernel — Classification & Blast Radius
+Standing: PARTIAL
 
 **Standing:** **PARTIAL PASS — kernel is real, held, and tested, but not minimal.**
 Repo: `/Users/sac/smalt`, branch `main` · Context: solo

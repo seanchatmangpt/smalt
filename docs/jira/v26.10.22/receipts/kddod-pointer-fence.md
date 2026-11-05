@@ -1,4 +1,5 @@
 # KD-DOD — KD-169 evidence pointer repair + KD register receipt-cite fence
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

@@ -1,4 +1,5 @@
 # Receipt — AUD-5 wire-parity consolidation
+Standing: UNVERIFIED
 
 Lane AUD-5, 2026-10-15, /Users/sac/smalt @ main (HEAD fd9cfea, dirty tree).
 No lib/ edits, no commits, no KD filings by this lane.

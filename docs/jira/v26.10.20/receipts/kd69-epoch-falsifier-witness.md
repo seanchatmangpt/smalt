@@ -1,4 +1,5 @@
 # KD-69 Falsifier Witness — EH exclusive-receiver epoch enforcement (W13-A)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-20
 - **Lane**: W13-A (continuation; prior run died on API 429 after substrate-up + code read)

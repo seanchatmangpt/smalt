@@ -1,4 +1,5 @@
 # Receipt — R6 (QueueStore do_deadletter self-call fix)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

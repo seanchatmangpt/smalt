@@ -1,4 +1,5 @@
 # i21b — enclave testbed leak-court residual: non-literal put_env shape fix
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-17
 - **Lane**: i21b (lease: `test/enclave-testbed/enclave_testbed.exs`)

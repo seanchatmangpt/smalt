@@ -1,4 +1,5 @@
 # Receipt: bkmkt1-pack-facts — the deployable k8s manifests become pack facts
+Standing: ALIVE
 
 **Standing: ALIVE** — the full deployable set (Secret, ConfigMap, headless/ClusterIP/NodePort Services, StatefulSet) renders from admitted facts through real refusal gates, set-equal (modulo typed ordering) to BK-K8SM's hand-written deployable manifests, `kubectl apply --dry-run=client` AND `--dry-run=server` green on the live kind-smalt cluster (2 nodes, v1.34.0).
 

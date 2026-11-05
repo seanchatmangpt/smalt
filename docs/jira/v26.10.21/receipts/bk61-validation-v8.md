@@ -1,4 +1,5 @@
 # BK-61 — VALIDATION.md v7 → v8 fold (post-v7 receipt wave)
+Standing: ALIVE
 
 **Standing:** ALIVE
 - Context: solo

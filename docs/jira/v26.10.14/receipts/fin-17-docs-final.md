@@ -1,4 +1,5 @@
 # fin-17 — final docs truth-sync (DoD-only finish lane)
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Subject: /Users/sac/smalt (uncommitted; no commits per lane contract).
 Scope: CHANGELOG.md `[Unreleased]`, README "Workspaces & Tooling", DoD-12 docs gate.

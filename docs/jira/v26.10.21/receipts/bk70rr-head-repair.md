@@ -1,4 +1,5 @@
 # BK-70rr Head Repair (relaunch of BK-70r relaunch)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — all four dispatch items executed; three deterministic
 defects root-caused and fixed; census reconciled 6/6; every side gate green. The

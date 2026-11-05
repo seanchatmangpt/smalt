@@ -1,4 +1,5 @@
 # BK-PRDR — PRD §4 court-matrix refresh (receipt-cited, post-board-v1)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — every cell in the refreshed PRD §4/§4a cites receipt
 paths re-read and `[ -f ]`-verified on disk 2026-10-22; standings quoted from

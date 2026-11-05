@@ -1,4 +1,5 @@
 # W6AZ — Event Hubs CAPTURE parity (JSONL sink over real BlobStorage)
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier)
 

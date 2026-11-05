@@ -1,4 +1,5 @@
 # Wire-Parity Matrix — T24WIRE (2026-10-21)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (5 SDKs witnessed end-to-end; 1 new witness closed
 with 3 server-side fixes; 1 client-bound OPEN divergence)

@@ -1,4 +1,5 @@
 # DoD-12 Receipt — Documentation Definition-of-Done
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: DoD-12 (docs truth-sync, /Users/sac/smalt)

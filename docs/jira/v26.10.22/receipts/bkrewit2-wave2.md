@@ -1,4 +1,5 @@
 # BK-REWIT2 — wave 2: kd-row witness SUSPECT exit-capture re-witnesses
+Standing: SUSPECT
 
 - **Standing**: ALIVE — all 10 dispatched rows re-witnessed or typed with real
   exit-captured probes; 38 → 28 suspects (exactly the dispatched set, none

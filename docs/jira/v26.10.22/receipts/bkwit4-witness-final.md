@@ -1,4 +1,5 @@
 # BK-WIT4 — witness-all reap-relaunch (post-WPARSE, post-SUB3)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — gate ALIVE and fail-closed; 111 real greens; every one of the 180 fails classified (zero real substrate/surface defects); residue is owner-work, artifacts, and one new typed scope finding.
 Context: solo

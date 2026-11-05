@@ -1,4 +1,5 @@
 # BENCH-6 — native :json SAX streaming (pure Erlang)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

@@ -1,4 +1,5 @@
 # BK-B4RD — JSON child-PUT route end-to-end verify + creation-path census
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

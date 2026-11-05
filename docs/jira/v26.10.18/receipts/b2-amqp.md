@@ -1,4 +1,5 @@
 # Receipt: B2 AMQP batch — five-file sleep/timing/singleton rewrite
+Standing: UNVERIFIED
 
 Context: full (mix test test/amqp/ directory + wire tier x2 green)
 

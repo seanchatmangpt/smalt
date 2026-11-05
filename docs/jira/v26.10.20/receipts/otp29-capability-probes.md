@@ -1,4 +1,5 @@
 # OTP-29 capability probes — six claims, empirically settled on this machine
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (6/6 claims executed on both toolchains; every verdict command-backed below)
 Context: solo

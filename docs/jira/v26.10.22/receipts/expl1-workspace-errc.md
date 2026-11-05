@@ -1,4 +1,5 @@
 # EXPLORE-1 (expl1) — workspace/ ERRC sweep: engine, terminal page, workers, courts
+Standing: ALIVE
 
 **Standing:** **ALIVE (explore lane)** — read-only sweep, all findings are observations
 against the working tree at HEAD `23976f3` (+dirty `lib/smalt/messaging/event_hubs.ex`,

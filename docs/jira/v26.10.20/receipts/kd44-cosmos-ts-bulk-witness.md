@@ -1,4 +1,5 @@
 # KD-44 witness — cosmos TS bulk (K2 lane, 2026-2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE — fixed this lane; `KD-COVERS: KD-44` at
 `lib/smalt/data_plane/cosmos.ex` bulk_operations/2.

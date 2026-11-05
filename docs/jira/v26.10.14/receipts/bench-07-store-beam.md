@@ -1,4 +1,5 @@
 # Receipt: bench-07-store-beam (lane B-7)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Subject**: `/Users/sac/smalt` @ `518b31a54ccc0829cafb9e04538714e58c287a30` (main), working tree.

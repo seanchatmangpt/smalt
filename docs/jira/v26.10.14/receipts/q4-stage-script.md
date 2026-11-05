@@ -1,4 +1,5 @@
 # Q-4 Receipt: stage_atomic_commits.sh
+Standing: UNVERIFIED
 
 Lane: Q-4 (finish support). Subject: `scripts/stage_atomic_commits.sh` on
 `/Users/sac/smalt` @ main (HEAD 518b31a). Executed by F-7 — this lane did NOT commit.

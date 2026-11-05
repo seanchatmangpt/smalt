@@ -1,4 +1,5 @@
 # kd110-throttling-infinity-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+Standing: OPEN
 
 - **KD row**: KD-110 (throttling defaults :infinity)
 - **Standing**: PASS-EVIDENCED (burst witness) + **LIMITER DEFECT FOUND+FIXED 2026-10-19 (repair evidence below); KD-110 row itself stays OPEN (:infinity default is the registered divergence)**

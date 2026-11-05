@@ -1,4 +1,5 @@
 # BK-39 — KD-144/145/146 blob-face fixes (fix lane)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 - **Standing:** ALIVE (kd_flip witness token — machine-readable form of the line above)

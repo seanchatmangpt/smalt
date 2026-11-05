@@ -1,4 +1,5 @@
 # kd112-arm-policy-initiatives-tbd.md — evidence receipt (witness lane, 2026-10-19)
+Standing: PARTIAL
 
 - **KD row**: KD-112 (policy initiatives/exemptions absent)
 - **Standing**: PARTIAL — routes live and enforcement witnessed over the wire, but the

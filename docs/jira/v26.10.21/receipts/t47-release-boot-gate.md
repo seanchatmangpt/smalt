@@ -1,4 +1,5 @@
 # t47 RELBOOT — prod-release boot vs NFR-FOOTPRINT 500 ms cold-start ceiling
+Standing: UNVERIFIED
 
 Context: solo
 

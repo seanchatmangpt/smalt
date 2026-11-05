@@ -1,4 +1,5 @@
 # Receipt — R18 (ARM list fences: deny-by-default before type projections)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

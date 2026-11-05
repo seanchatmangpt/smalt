@@ -1,4 +1,5 @@
 # BK-WSKEP — adversarial skeptic re-audit of the workspace engine repairs
+Standing: ALIVE
 
 **Standing:** **ALIVE** (every landed claim re-verified; 2 new findings, neither invalidates a landed claim)
 Context: solo

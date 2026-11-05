@@ -1,4 +1,5 @@
 # Witness receipt: KD-120 close-condition probe (EH per-partition consumer isolation)
+Standing: PASS
 
 - **Standing: PASS** (close condition met, 3/3 runs; register NOT flipped — flip is registrar-gated via `scripts/kd_flip.py`)
 - Subject: smalt @ `c72e47c3d17364b2af288f714e234cd8accf3e96` (working tree; popcorn_demo W2-7 wire client as client-side basis)

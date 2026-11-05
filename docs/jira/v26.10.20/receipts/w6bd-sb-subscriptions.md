@@ -1,4 +1,5 @@
 # w6bd — Service Bus topic subscriptions ARM child face
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (module+witness ALIVE on the real stores; tree-wide strict compile blocked only by sibling-owned warnings)
 Context: solo

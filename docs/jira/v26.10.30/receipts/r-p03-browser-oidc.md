@@ -1,4 +1,5 @@
 # r-p03 — Browser + openid-client OIDC code/PKCE flow (P03, CLM-03)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE**

@@ -1,4 +1,5 @@
 # Receipt — R143b (replay timeout tag — trace result)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PARTIAL_ALIVE (trace)

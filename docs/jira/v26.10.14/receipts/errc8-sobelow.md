@@ -1,4 +1,5 @@
 # ERRC Lane 8 (Raise) — sobelow static security analysis
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Repo: /Users/sac/smalt · Tool: sobelow (Hex, added `{:sobelow, "~> 0.13", only: :dev, runtime: false}` to mix.exs)
 Run: `MIX_ENV=dev mix deps.get && mix sobelow --config` (non-blocking first pass, `just sobelow` records, does not gate)

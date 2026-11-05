@@ -1,4 +1,5 @@
 # APEX-2 — SCVD apex scenario: 500 parallel intake submissions, three-leg gateway
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — functional composition ALIVE on both backends
 (500/500 submissions, zero egress violations, zero CORS, byte-equal GET on

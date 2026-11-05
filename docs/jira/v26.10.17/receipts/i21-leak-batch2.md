@@ -1,4 +1,5 @@
 # i21 — leak-court batch 2 (test-isolation save-prev/restore conversions)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-17
 - **Lane**: i21 leak-batch2

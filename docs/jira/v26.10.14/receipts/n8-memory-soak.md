@@ -1,4 +1,5 @@
 # N-8 Memory Soak Receipt — Next.js Workspace Lifecycle
+Standing: PASS
 
 - **Lane**: N-8 (`scripts/bench/n8_soak_bot.mjs`)
 - **Subject**: `workspace/` Next.js 16.4.2 production build (`next build` + `next start -p 3100`), soak witnessed 2026-10-16T04:09–04:12Z

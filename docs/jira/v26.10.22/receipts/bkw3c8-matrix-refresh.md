@@ -1,4 +1,5 @@
 # BK-W3C8 — W3C-FORMALIZATION matrix refresh (per-row on-disk verification)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22
 

@@ -1,4 +1,5 @@
 # GWS-14 — WASM+DuckDB Wave Final Spec-Compliance Skeptic Audit
+Standing: ALIVE
 
 - **Lane**: GWS-14 (skeptic, both repos, current branches)
 - **Repos**: /Users/sac/graphlaw (main, ahead 4, dirty tree), /Users/sac/smalt (main, ahead 137)

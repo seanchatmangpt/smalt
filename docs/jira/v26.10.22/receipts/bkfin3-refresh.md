@@ -1,4 +1,5 @@
 # BK-FIN3 — FINAL-RELEASE-26.10.22 refresh (census re-run + gate-ledger refresh + seal inputs)
+Standing: ALIVE
 
 **Standing:** ALIVE · **Context:** solo · 2026-10-22 · Lane BK-FIN3
 Files owned/edited: `docs/jira/v26.10.22/FINAL-RELEASE-26.10.22.md` (only doc),

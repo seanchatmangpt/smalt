@@ -1,4 +1,5 @@
 # i29 — fresh stress leg (churn court calibration + fence conversions)
+Standing: UNVERIFIED
 
 Standing: BLOCKED[BUILD_BROKEN_TEST_COMPILE] — pre-existing, foreign-lane, same class as dda0bf5.
 

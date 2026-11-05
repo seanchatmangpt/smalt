@@ -1,4 +1,5 @@
 # Receipt — w6bm: Azure Resource Health face
+Standing: ALIVE
 
 - **Lane**: w6bm (wave-6, v26.10.20)
 - **Standing**: ALIVE (module tier)

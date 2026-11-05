@@ -1,4 +1,5 @@
 # Receipt — i29 EH shim-marker audit (event_hubs.ex SHIM-COURT markers)
+Standing: PARTIAL_ALIVE
 
 Context: solo(lib/smalt/messaging/event_hubs.ex marker audit, kd_flip dry-run, docs grep, host)
 

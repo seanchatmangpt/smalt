@@ -1,4 +1,5 @@
 # BK-5 POWLBENCH fresh re-run (PB-1..6)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — PB-1/2/3/5/6 measured fresh end-to-end with 0
 errors across all lanes; PB-4 typed BLOCKED (its own ground-truth identity

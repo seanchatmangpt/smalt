@@ -1,4 +1,5 @@
 # w6x — Azure Event Hubs Event Hubs Schema Registry emulation
+Standing: ALIVE
 
 **Standing: ALIVE** — module + delegator routes landed; module-direct faces + real
 delegator dispatch witnessed this session, exit 0, real output embedded below.

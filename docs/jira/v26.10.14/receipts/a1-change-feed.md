@@ -1,4 +1,5 @@
 # Receipt: A-1 adversarial cross-product bench — Cosmos change-feed → Event Hubs → Blob tiering
+Standing: UNVERIFIED
 
 - Lane: A-1, v26.10.14 bench wave
 - Subject: `scripts/bench/a1_change_feed.exs` (bench-local, no lib edits)

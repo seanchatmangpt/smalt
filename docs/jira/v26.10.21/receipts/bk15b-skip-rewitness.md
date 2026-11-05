@@ -1,4 +1,5 @@
 # BK-15b — SKIP-leg re-witness after BK-21's CORS fix (mcp / queue / keyops / blob)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 `Context: solo`

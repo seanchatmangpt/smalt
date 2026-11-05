@@ -1,4 +1,5 @@
 # fin-15 — Receipts index refresh (DoD-only finish lane)
+Standing: ALIVE
 
 - Lane: fin-15 (DoD-only finish), 2026-10-15, repo `/Users/sac/smalt`
 - Standing: ALIVE — `receipt_index.py` regenerated both index files, exit 0,

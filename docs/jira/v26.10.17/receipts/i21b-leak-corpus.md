@@ -1,4 +1,5 @@
 # i21b — leak-court closure: compliance corpus c3/c5/c7
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-17
 - **Lane**: i21b leak-corpus (lease: test/compliance/c5_servicebus.exs, c7_events.exs, c3_cosmos.exs)

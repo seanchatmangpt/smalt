@@ -1,4 +1,5 @@
 # BK-15 — In-browser SKIP legs census + first Transport.Fetch ports
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

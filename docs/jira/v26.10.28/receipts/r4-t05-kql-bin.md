@@ -1,4 +1,5 @@
 # r4 — T-05 increment 1: KQL bin() shipped + latent parse_by crash fixed
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T05-kql-extended-operators.md` (1 of 4 operators) · date: 2026-10-28
 - tier: beam (`test/integration/kql_bin_test.exs`)

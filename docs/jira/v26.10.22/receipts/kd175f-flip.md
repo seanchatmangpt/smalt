@@ -1,4 +1,5 @@
 # KD-175F — KD-175 flip receipt (OPEN → CLOSED-WITH-EVIDENCE)
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: KD-175F

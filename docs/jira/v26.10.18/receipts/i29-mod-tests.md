@@ -1,4 +1,5 @@
 # i29: mods/ratchet test suite + plugin validation (receipt i29-mod-tests)
+Standing: UNVERIFIED
 Context: solo(mods/ratchet plugin test suite + claude plugin validate)
 
 - Date: 2026-10-18

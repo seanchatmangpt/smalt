@@ -1,4 +1,5 @@
 # BK-8 Lane Clean + Ledger Reconcile
+Standing: ALIVE
 
 **Standing:** ALIVE · Context: solo · Date: 2026-10-22 · Lane: BK-8 (hygiene)
 · Repo: /Users/sac/smalt

@@ -1,4 +1,5 @@
 # Receipt — w6aw: Blob soft-delete + versioning
+Standing: PARTIAL_ALIVE
 
 Date: 2026-10-20
 Lane: w6aw (wave-6)

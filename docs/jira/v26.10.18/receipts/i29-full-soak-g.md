@@ -1,4 +1,5 @@
 # Receipt: i29 full-suite pre-gate leg G (`mix test`)
+Standing: PARTIAL_ALIVE
 
 - Date: 2026-10-19
 - Subject: `MIX_BUILD_ROOT=_build-ft-fsg mix test` from /Users/sac/smalt (canonical checkout, main @ ab608be)

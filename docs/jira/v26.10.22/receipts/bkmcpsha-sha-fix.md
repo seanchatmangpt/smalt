@@ -1,4 +1,5 @@
 # Receipt: BK-MCPSHA — MCP-T1 receipt sha correction / FD-2 resolution
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-MCPSHA

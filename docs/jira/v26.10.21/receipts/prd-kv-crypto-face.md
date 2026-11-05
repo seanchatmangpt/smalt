@@ -1,4 +1,5 @@
 # PRD-KV close: KV REST crypto face witnessed (sign/verify, ES256/RS256 legs)
+Standing: ALIVE
 
 Context: solo
 

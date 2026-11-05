@@ -1,4 +1,5 @@
 # KD-64 witness — cosmos Patch RFC 6902 (K2 lane, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE — PATCH route + RFC 6902 engine landed in lib/ (route at
 `lib/smalt/egress/CosmosRoutes.ex` with `KD-COVERS: KD-64`; engine

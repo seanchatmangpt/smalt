@@ -1,4 +1,5 @@
 # GWS-11 — wasm memory-wall court on the real binary (graphlaw)
+Standing: ALIVE
 
 **Standing:** ALIVE (court file landed; 7/7 courts green against the real
 `priv/graphlaw.wasm`, 2 runs incl. parallel; binary sha256 pinned by

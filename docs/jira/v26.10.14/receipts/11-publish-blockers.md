@@ -1,4 +1,5 @@
 # Receipt — V261014-11 (publish blockers, lane 11)
+Standing: UNVERIFIED
 
 - Date: 2026-10-15 · Subject: /Users/sac/smalt @ main 3fc2543 (uncommitted lane edits)
 - Decision (c) hybrid executed. Key rotation NOT performed (coordinator-owned).

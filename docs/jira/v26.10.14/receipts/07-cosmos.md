@@ -1,4 +1,5 @@
 # Receipt — V261014-07 (lane 07, cosmos)
+Standing: UNVERIFIED
 
 - **Subject**: /Users/sac/smalt @ main, working tree (no commits; coordinator owns git), 2026-10-15
 - **Work order**: docs/jira/v26.10.14/07-cosmos.md — decision gate taken: option (a) whitelist gate

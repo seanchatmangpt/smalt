@@ -1,4 +1,5 @@
 # X-1 — Put Block List data-corruption fix (P0, from bench B-5)
+Standing: UNVERIFIED
 
 - lane: X-1 (execution lane on /Users/sac/smalt)
 - date: 2026-10-15

@@ -1,4 +1,5 @@
 # DoD-11 Receipt — relay/environment bootstrapping
+Standing: UNVERIFIED
 
 Lane: DoD-11 · Repo: /Users/sac/smalt · Date: 2026-10-15 · No commits (per dispatch).
 

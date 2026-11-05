@@ -1,4 +1,5 @@
 # Receipt — GAP(blob-x-ms-date-unvalidated) → typed UNSUPPORTED (lane 06)
+Standing: UNSUPPORTED
 
 - **Status:** UNSUPPORTED for v26.10.14 — for lane 13 consumption.
 - **Surface:** blob lane `:8443` (`egress_router.ex` blob_route guard).

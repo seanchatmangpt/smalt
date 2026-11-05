@@ -1,4 +1,5 @@
 # R10A — MCP router split
+Standing: ALIVE
 
 window: v26.10.29 · lane: L12 · ticket: T10 (mcp leg) · status: ALIVE (28/30 gate,
 2 pre-existing failures disclosed)

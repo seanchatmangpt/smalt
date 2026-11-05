@@ -1,4 +1,5 @@
 # BK-BMIR — tmp/bench jsonl citation census + whitepaper anchor snapshots
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

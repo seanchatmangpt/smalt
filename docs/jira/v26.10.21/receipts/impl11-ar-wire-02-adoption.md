@@ -1,4 +1,5 @@
 # IMPL-11 — AR-WIRE-02 adoption on the OTP-29 pinned tree
+Standing: UNVERIFIED
 
 Context: pair(concurrent IMPL lanes collapsed shared-file comment stacks mid-run; coordinator tick commit swept shared deltas)
 

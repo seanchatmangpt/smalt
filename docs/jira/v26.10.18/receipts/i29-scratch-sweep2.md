@@ -1,4 +1,5 @@
 # i29 — scratch-py sweep #2 (blob_worm_witness None-guards)
+Standing: UNVERIFIED
 
 Date: 2026-10-18
 

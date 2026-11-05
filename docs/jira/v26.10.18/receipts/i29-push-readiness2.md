@@ -1,4 +1,5 @@
 # i29-push-readiness2 — re-audit of the unpushed b9a6dc1 lineage
+Standing: UNVERIFIED
 
 Context: solo(read-only audit, no mutations)
 

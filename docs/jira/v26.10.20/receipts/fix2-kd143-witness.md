@@ -1,4 +1,5 @@
 # FIX-2 KD-143 Witness — SB rule SQL filter persistence
+Standing: ALIVE
 
 - **Standing:** ALIVE
 - Context: pair

@@ -1,4 +1,5 @@
 # STORE-2: Store supervision wiring (TTV-5 decomposition)
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE — compile-verified against the current tree; boot-test
 BLOCKED on PENDING-MODULE (Smalt.Store.Heir / Smalt.Store.Partition not yet on disk).

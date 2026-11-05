@@ -1,4 +1,5 @@
 # BK-PPDOC — receipt-size prose alignment across doc set: 2 stale PRD cells fixed, rest verified sync-token — PASS
+Standing: PASS
 
 **Standing**: PASS
 Context: solo

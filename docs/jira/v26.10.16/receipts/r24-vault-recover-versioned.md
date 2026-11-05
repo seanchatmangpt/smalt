@@ -1,4 +1,5 @@
 # Receipt — R24 (vault soft-delete / recover restores versioned material)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # r6 — T-05 increments 3+4: KQL mv-expand and cross-workspace CLOSED
+Standing: CLOSED
 
 - window: v26.10.28 · ticket: `tickets/T05-kql-extended-operators.md` (increments 3 and 4 of 4) · date: 2026-10-28
 - tier: beam (`test/integration/kql_mv_expand_test.exs` — two modules, 10 tests)

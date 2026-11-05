@@ -1,4 +1,5 @@
 # EXPL-10 — pipeline/ + powl2/ ERRC Read-Only Sweep
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE
 - **Context**: solo

@@ -1,4 +1,5 @@
 # PB-2: reductions-per-workflow-step denominator (settlement orchestration)
+Standing: UNVERIFIED
 
 Context: solo
 

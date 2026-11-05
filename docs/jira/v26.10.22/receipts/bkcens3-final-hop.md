@@ -1,4 +1,5 @@
 # BK-CENS3 — final hop: ets_auto court repair + census verification
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — the assigned REAL defect (ets_auto 64-task ArgumentError) is
 CLOSED and witnessed green in isolation (×5 runs) and in the full test/internal census batch

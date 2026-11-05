@@ -1,4 +1,5 @@
 # SPOF-4 — Browser-tab hardening (fallback peer guard, rehydrate-on-promotion, leased surface)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (all three SPOFs closed on HEAD; 19/19 spof4-court PASS, exit 0; ws-lint + ws-build green)
 Date: 2026-10-21

@@ -1,4 +1,5 @@
 # BENCH-7 — Pure-Erlang Actor Concurrency Ceiling
+Standing: PASS
 
 **Standing:** PASS (no ceiling reached through 32k processes; gentle degradation only)
 

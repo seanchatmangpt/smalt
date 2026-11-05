@@ -1,4 +1,5 @@
 # W7 residual review — group 6 (review lane, Context: solo)
+Standing: PASS
 
 Context: slice(reviewed-file batch, 95 tests 0 failures, x2, exit 0)
 

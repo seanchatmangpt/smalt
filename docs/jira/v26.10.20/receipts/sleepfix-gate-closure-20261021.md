@@ -1,4 +1,5 @@
 # sleep-gate residual closure — 2026-10-21
+Standing: UNVERIFIED
 
 - **Subject**: smalt @ /Users/sac/smalt, branch main (dirty shared tree; lane touched only
   annotation lines, zero logic edits, zero gate edits).

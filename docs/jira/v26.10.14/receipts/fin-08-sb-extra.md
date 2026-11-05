@@ -1,4 +1,5 @@
 # fin-08 — sb-extra.probe.cjs CRC coverage
+Standing: UNVERIFIED
 
 - Lane: fin-08 (DoD-only finish), 2026-10-15, repo `/Users/sac/smalt`
   (v26.10.14, branch `main`), no commits

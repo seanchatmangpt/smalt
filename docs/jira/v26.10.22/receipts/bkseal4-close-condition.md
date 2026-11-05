@@ -1,4 +1,5 @@
 # BK-SEAL4 — seal close-condition run (v26.10.22)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-SEAL4

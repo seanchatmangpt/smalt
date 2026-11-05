@@ -1,4 +1,5 @@
 # BK-CITEV — post-integration citation-fence verify
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 

@@ -1,4 +1,5 @@
 # BK-SUSP5 — final SUSPECT sweep (receipt_index evidence tokens)
+Standing: SUSPECT
 
 **Standing:** ALIVE — 9/9 targeted receipts cleared (receipt_index suspects 9 → 1 residual, individually typed with owner below); witness-window real NO-STANDING failures 2 → 0.
 Context: solo

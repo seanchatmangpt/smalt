@@ -1,4 +1,5 @@
 # Receipt: bknistw3-trivy — NIST W3 / RA-5 trivy image-scan gate, ALIVE
+Standing: ALIVE
 
 **Standing: ALIVE** — real scans ran, the freshness gate refuses stale scans and
 rebuilt images, and both refusal channels were witnessed firing (non-vacuity).

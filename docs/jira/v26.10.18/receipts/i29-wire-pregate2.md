@@ -1,4 +1,5 @@
 # i29 AMQP wire pre-gate ×2 — build root _build-ft-w9
+Standing: UNVERIFIED
 
 Command: `MIX_BUILD_ROOT=_build-ft-w9 mix test --include amqp_wire` — executed **4 legs**
 (task asked ×2; two extra legs from the identity-capture pass and the full-log pass,

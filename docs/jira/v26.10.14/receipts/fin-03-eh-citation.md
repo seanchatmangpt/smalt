@@ -1,4 +1,5 @@
 # fin-03: Event Hubs wire-lane row citation reword (WIRE_PARITY.md)
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Repo: /Users/sac/smalt. No commits.
 

@@ -1,4 +1,5 @@
 # SPC Drift Watch — scvd_tier1 continuous ground-truth watch (C09 increment)
+Standing: PARTIAL_ALIVE
 
 - **Standing:** **PARTIAL_ALIVE** (typed DRIFT verdict emitted; load-confounded — see Confound)
 - Context: full

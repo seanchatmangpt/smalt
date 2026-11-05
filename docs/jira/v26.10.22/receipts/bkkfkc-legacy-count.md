@@ -1,4 +1,5 @@
 # Receipt: BK-KFKC — legacy-face count/1 defect repair (BK-KFKSKEP follow-up)
+Standing: ALIVE
 
 - **Lane**: BK-KFKC (`/Users/sac/smalt`, canonical checkout, `_build-bkfkfc`)
 - **Standing**: ALIVE

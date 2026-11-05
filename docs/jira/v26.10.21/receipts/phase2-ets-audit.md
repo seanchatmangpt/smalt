@@ -1,4 +1,5 @@
 # T38P2 Receipt — ARD Phase-2 ETS Claims vs. Actual Substrate (Census)
+Standing: PARTIAL
 
 Context: solo
 

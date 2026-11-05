@@ -1,4 +1,5 @@
 # fin26 — parity re-stamp after S-wave KD closures (v26.10.15)
+Standing: UNVERIFIED
 
 Lane: fin26. No commits (lane discipline). Subject: canonical checkout
 `/Users/sac/smalt`, branch `main`, uncommitted lane tree.

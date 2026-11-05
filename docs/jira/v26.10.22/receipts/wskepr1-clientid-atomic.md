@@ -1,4 +1,5 @@
 # WSKEP-R1 — clientId mint+persist atomic (F1) + loud rehydratePlan fallback (F2)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

@@ -1,4 +1,5 @@
 # Q-2: `wire-delivery-*` probe rewrite — receipt
+Standing: UNVERIFIED
 
 Lane: Q-2 (finish-support), repo /Users/sac/smalt, branch main, no commits, no
 lib edits. Subject: `test/sdk-full/eventhubs.probe.mjs` (probe 5 only).

@@ -1,4 +1,5 @@
 # r17 — T-10: Container Instances control plane (execution out-of-scope)
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T10-container-instances-control-plane.md` · date: 2026-10-29
 - tier: beam (`test/integration/container_groups_test.exs`) · status: **CODE-COMPLETE (r17), awaiting integration run**

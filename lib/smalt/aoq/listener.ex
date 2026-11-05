@@ -87,9 +87,9 @@ defmodule Smalt.Aoq.Listener do
     port = Keyword.fetch!(cfg, :port)
 
     with {:ok, sock} <- :socket.open(:inet, :dgram, :udp),
-         :ok <- :socket.bind(sock, {:socket.sockaddr_in, {127, 0, 0, 1}, port}) do
+         :ok <- :socket.bind(sock, %{family: :inet, addr: {127, 0, 0, 1}, port: port}) do
       case :socket.sockname(sock) do
-        {:ok, {_tag, _addr, bound}} -> {:ok, sock, bound}
+        {:ok, %{port: bound}} -> {:ok, sock, bound}
         other -> {:error, other}
       end
     else

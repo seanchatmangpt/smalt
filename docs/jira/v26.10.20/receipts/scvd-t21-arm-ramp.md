@@ -1,4 +1,5 @@
 # SCVD-T21 — ARM control-plane ramp (128 concurrent, 512 ops)
+Standing: PASS
 
 **Standing:** **PASS** (0 errors), with a disclosed, counted transport-retry load of
 562/3072 requests (~18%) — see Honest-Run Ledger.

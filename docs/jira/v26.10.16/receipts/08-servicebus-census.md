@@ -1,4 +1,5 @@
 # Receipt — V261016-08 (lane333, Service Bus SDK census + private-port SDK sweep)
+Standing: ALIVE
 
 - **Subject**: `/Users/sac/smalt` working tree @ `main` `fd9cfea` (uncommitted in-flight lane diffs in `lib/` owned by other lanes; no lib/ edits by this lane)
 - **Date**: 2026-10-16

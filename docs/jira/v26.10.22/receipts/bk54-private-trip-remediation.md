@@ -1,4 +1,5 @@
 # BK-54 — COURT-PRIVATE-TRIP remediation: honest RED → GREEN
+Standing: RED
 
 **Standing:** **ALIVE** (gate exit 0 on the real tree; touched surfaces witnessed)
 Context: solo

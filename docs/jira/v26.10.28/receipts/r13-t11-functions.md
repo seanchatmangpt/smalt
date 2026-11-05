@@ -1,4 +1,5 @@
 # r13 — T-11: Azure Functions resource type + admin management API + host.json validation
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T11-functions-resource-and-admin-api.md` · date: 2026-10-29
 - tier: beam (`test/integration/functions_test.exs`) · status: **CODE-COMPLETE (r13), awaiting integration run**

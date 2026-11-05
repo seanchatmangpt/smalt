@@ -1,4 +1,5 @@
 # BK-ZOMBR — zombie reap (ops lane, coordinator-authorized drain of BK-ZOMB §2)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

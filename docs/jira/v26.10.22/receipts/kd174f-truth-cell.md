@@ -1,4 +1,5 @@
 # KD-174F — KD-174 truth-cell reconciliation (two-layer magic-2)
+Standing: PARTIAL_ALIVE
 
 - **Lane**: KD-174F (`/Users/sac/smalt`, canonical checkout)
 - **Date**: 2026-10-22

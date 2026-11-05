@@ -1,4 +1,5 @@
 # Receipt — V261014-14 Docs Drift Close-Out (lane 14)
+Standing: DONE
 
 - **Date:** 2026-10-15 · **Lane:** 14 (docs drift) · **Checkout:** `~/smalt` (canonical)
 - **Status:** DONE with two disclosed cross-lane findings (below)

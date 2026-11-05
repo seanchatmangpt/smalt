@@ -1,4 +1,5 @@
 # Receipt — A-2: High-Contention Optimistic CAS (lane A-2, v26.10.14)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Subject**: `scripts/bench/a2_cas_contention.exs` (BEAM tier), `scripts/bench/a2_cas_contention.mjs` (SDK tier)

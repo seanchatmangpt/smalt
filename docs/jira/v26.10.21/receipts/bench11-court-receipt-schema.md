@@ -1,4 +1,5 @@
 # BENCH-11: court_bench receipt schema + first receipts
+Standing: ALIVE
 
 **Standing**: ALIVE
 - **Context**: solo

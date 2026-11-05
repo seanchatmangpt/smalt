@@ -1,4 +1,5 @@
 # Receipt: R3 T03 — courtroom-platform-az consumer court
+Standing: UNVERIFIED
 
 Lane T03 · 2026-10-29 · harness: `scripts/courtroom_consumer_court.sh`, recipes
 `justfile.d/56-courtroom.just` (`just courtroom-court` / `just courtroom-check`),

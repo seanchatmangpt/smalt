@@ -1,4 +1,5 @@
 # Receipt — R43 (0x44 sasl-outcome descriptor pin — parity tier)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `test/amqp/pyamqp_parity_test.exs` / AMQP attach-shape pinions @ working tree (v26.10.16 repair wave W2)
 - **Standing:** PARTIAL_ALIVE — one parity assertion conflicts with R16's landed 7-field target

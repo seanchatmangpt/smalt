@@ -1,4 +1,5 @@
 # KD-06 witness — cosmos query whitelist (K2 lane, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE (closed as typed-UNSUPPORTED closure via the Smalt.CosmosSql translator)
 

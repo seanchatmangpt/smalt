@@ -1,4 +1,5 @@
 # Receipt — V261014-18 (lane 18): Mutation Courts
+Standing: UNVERIFIED
 
 - **Date:** 2026-10-15
 - **Lane:** 18 of 20, canonical checkout `/Users/sac/smalt`

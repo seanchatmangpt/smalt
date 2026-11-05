@@ -1,4 +1,5 @@
 # Receipt: BK-CELL1 — topology matrix cell 1a witnessed
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-CELL1

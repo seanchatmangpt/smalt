@@ -1,4 +1,5 @@
 # Receipt — popcorn waves 2–3 consolidated (milestone-doc M-lane)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — wave-2/3 capability and defect-closure legs are
 ALIVE on the live substrate (real wire, no mocks); the browser blob leg and

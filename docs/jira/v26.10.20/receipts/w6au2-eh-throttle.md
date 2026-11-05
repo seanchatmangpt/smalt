@@ -1,4 +1,5 @@
 # w6au2 — Event Hubs ingress quota/limit parity (eh_throttle)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE**
 Date: 2026-10-20

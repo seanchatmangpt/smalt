@@ -1,4 +1,5 @@
 # AR-OBS-03 — tprof memory-ceiling fence landed (v26.10.21)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE → fence LANDED, gate+court PASS** (cell can rise to
 ALIVE once the AR-OBS-03 row's remaining scope — if any — is adjudicated by

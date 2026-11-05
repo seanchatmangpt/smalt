@@ -1,4 +1,5 @@
 # Receipt: A-4 — Confidential Ledger / SKR cryptographic throughput (BEAM tier)
+Standing: UNVERIFIED
 
 - **Lane**: A-4 (adversarial cross-product bench)
 - **Subject**: `/Users/sac/smalt` @ `fd9cfeaec3ebd8e56b6bb530453901118ca89582` (main, uncommitted lane tree)

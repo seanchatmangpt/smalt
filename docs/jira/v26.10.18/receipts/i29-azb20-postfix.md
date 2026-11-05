@@ -1,4 +1,5 @@
 # i29 — azb-20 postfix re-test (GAP-AZB20-1/4)
+Standing: UNVERIFIED
 
 - Date: 2026-10-19
 - Subject: smalt HEAD `502c4ed` (post 9a351e3), canonical checkout, no lib/ edits by this lane.

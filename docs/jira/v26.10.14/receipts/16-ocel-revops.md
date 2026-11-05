@@ -1,4 +1,5 @@
 # Receipt — V261014-16 (lane 16, ocel-revops)
+Standing: UNVERIFIED
 
 Executed per `docs/jira/v26.10.14/16-ocel-revops.md`, items 1–5, on the
 canonical checkout `/Users/sac/smalt` (main, no commits made).

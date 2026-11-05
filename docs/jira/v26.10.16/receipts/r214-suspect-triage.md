@@ -1,4 +1,5 @@
 # Receipt: r214 — SUSPECT remainder triage (docs lane, 2026-10-16)
+Standing: SUSPECT
 
 - **Standing: PASS** — counts re-derived from `receipt_index.py` at execution
   time; every disposition names the on-disk receipt and was verified by reading

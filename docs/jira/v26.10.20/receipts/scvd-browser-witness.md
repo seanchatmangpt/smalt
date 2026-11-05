@@ -1,4 +1,5 @@
 # scvd-browser-witness — S4, Tier-1 in-browser witness (popcorn_demo)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (mixed: Tier-1 boot budget FAIL at current bundle size; one leg FAIL; Concurrency witness [SKIP])
 

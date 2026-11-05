@@ -1,4 +1,5 @@
 # w6h — Cosmos DB users / permissions / resource tokens (wave-6)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — wire-proven face (module-direct + real-TCP +
 real-pipeline admission); full-app boot deferred: the shared tree was

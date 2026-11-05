@@ -1,4 +1,5 @@
 # KD-36 witness — cosmos TS upsert (K2 lane, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE — fixed in lib/ (`KD-COVERS: KD-36` at
 `lib/smalt/data_plane/cosmos.ex` upsert?/do_create_doc_sized), wire-proved

@@ -1,4 +1,5 @@
 # TTV-7: Warmed-P99 Standard + Measured Cold/Warm Split
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (standard landed; tail falsifier FIRED —
 ms-tail reproduces warmed under load, so the "cold-start noise" premise

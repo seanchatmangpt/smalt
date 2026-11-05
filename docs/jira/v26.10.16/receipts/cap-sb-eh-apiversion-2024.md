@@ -1,4 +1,5 @@
 # Receipt: SB queues + EH eventhubs lattice top 2021-04-01 → 2024-01-01
+Standing: PASS
 
 - **Lane**: DoD lane (no build/test runs this session)
 - **Date**: 2026-10-16

@@ -1,4 +1,5 @@
 # GWS-12 — Cross-Engine Determinism Court (cold-chain admission surface)
+Standing: PASS
 
 **Standing:** PASS (3 legs, partition identical; 2 typed findings recorded)
 Context: solo · Date: 2026-10-21 · Lane: GWS-12 · Milestone: v26.10.21

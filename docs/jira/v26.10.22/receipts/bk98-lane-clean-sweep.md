@@ -1,4 +1,5 @@
 # BK-98 Lane-Clean Sweep
+Standing: ALIVE
 
 **Standing:** **ALIVE** (deletions executed and re-verified on disk; one disclosed protocol deviation)
 Context: solo

@@ -1,4 +1,5 @@
 # KD-129 frame-capture witness — empty-body heartbeat frame misread as :truncated
+Standing: ALIVE
 
 - **Standing: ALIVE (fix landed, end-to-end witnessed). KD-129's row flip is coordinator-owned — no register edit by this lane.**
 - Lane: S19-A (substrate-op + writer), repo /Users/sac/smalt, 2026-10-20.

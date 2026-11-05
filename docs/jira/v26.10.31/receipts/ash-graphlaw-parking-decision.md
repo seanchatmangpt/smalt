@@ -1,4 +1,5 @@
 # Decision Receipt — ash_graphlaw Dependency Parking (P4 Unit 6)
+Standing: UNVERIFIED
 
 - **Subject**: smalt's optional `:ash_graphlaw` dependency (mix.exs) and the skip-gated
   `graphlaw_shacl_admission_test.exs`.

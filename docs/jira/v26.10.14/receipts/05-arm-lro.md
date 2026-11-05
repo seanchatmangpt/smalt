@@ -1,4 +1,5 @@
 # Receipt — V261014-05 (ARM LRO sweeper + :lro_retention)
+Standing: LANDED
 
 Lane: 05-arm-lro · Checkout: /Users/sac/smalt (canonical, main) · Date: 2026-10-15 · Decision-gate option (a) — LANDED
 

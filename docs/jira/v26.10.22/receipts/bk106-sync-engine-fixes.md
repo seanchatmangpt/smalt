@@ -1,4 +1,5 @@
 # BK-106 — Sync engine fixes: auth seam, lease-nesting deadlock, P12 cumulative verify
+Standing: ALIVE
 
 **Standing:** **ALIVE** (sync-e2e-court 9/9 ×2 exit 0 against the fixed engine; spof4 19/19, receipt, snapback courts exit 0; ws-lint / ws-build exit 0)
 Context: solo

@@ -1,4 +1,5 @@
 # BK-ZOMB — reparented-process census + duckdb source hunt
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

@@ -1,4 +1,5 @@
 # Receipt: AZB-15 Plane subtree DR kills (enterprise disaster scenarios)
+Standing: UNVERIFIED
 
 Context: solo (dr_scenarios_test.exs 4/0)
 

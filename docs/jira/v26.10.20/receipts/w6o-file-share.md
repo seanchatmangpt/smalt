@@ -1,4 +1,5 @@
 # w6o — Azure Files REST face (capability wave 6, lane w6o)
+Standing: ALIVE
 
 **Standing: ALIVE** - full wire witness GREEN (41 PASS / 0 FAIL) over real
 HTTP against a real substrate (private block v12, STS bearer :enforce), plus

@@ -1,4 +1,5 @@
 # SPOF-A1/A-3 — JournalSink degraded mode + seal-window quarantine (SPOF-1)
+Standing: ALIVE
 
 **Standing**: ALIVE — both audit findings fixed on the working tree, falsification court 3/3 green (real disk-error injection, real crash-window simulation, real Store boot), SJ-1 + TTV-4 regression courts green on the patched tree.
 **Context**: solo

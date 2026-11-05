@@ -1,4 +1,5 @@
 # BK-92 — Receipt single-source-of-truth audit
+Standing: ALIVE
 
 **Standing:** **ALIVE** (no mint/parse divergence; cross-mint byte-identical; all layout courts green)
 Context: solo

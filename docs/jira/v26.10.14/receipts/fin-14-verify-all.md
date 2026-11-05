@@ -1,4 +1,5 @@
 # fin-14 verify-all witness receipt
+Standing: UNVERIFIED
 
 Lane: fin-14 (DoD-only finish lane, no commits) · Checkout: /Users/sac/smalt · Date: 2026-10-15 · Head at witness: 518b31a (moving — coordinator landing mid-run)
 

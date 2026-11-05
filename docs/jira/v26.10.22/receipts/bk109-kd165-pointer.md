@@ -1,4 +1,5 @@
 # BK-109 — KD-165 pointer-doc bump receipt
+Standing: PASS
 
 **Standing:** **PASS** — pointer doc, canonical register, and gates all verified;
 no diff required, no commit (per order).

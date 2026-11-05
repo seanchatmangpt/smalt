@@ -1,4 +1,5 @@
 # BK-93: KD gate run — kd-stale / kd_flip (read-only) / docs-dod-check
+Standing: ALIVE
 
 **Standing**: ALIVE — all three gates exit 0; register clean, no pending flips, no new rows.
 

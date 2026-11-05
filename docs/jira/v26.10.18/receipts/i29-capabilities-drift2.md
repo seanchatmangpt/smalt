@@ -1,4 +1,5 @@
 # i29 capabilities.json drift — takeover verification (pair)
+Standing: UNVERIFIED
 
 Context: pair(probe lane i29-capabilities-drift.md never landed; this receipt supersedes it)
 

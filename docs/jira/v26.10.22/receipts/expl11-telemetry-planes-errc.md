@@ -1,4 +1,5 @@
 # EXPL-11 — Telemetry / Planes / ConfidentialLedger / WebPubSub ERRC sweep (read-only)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-22
 - **Lane**: EXPL-11, repo /Users/sac/smalt (canonical checkout, read-only sweep; only this receipt written)

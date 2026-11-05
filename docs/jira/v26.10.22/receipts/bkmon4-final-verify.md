@@ -1,4 +1,5 @@
 # BK-MON4 — final consolidated monitor-face verify
+Standing: ALIVE
 
 **Standing**: ALIVE · **Context**: solo · **Date**: 2026-10-22 · **Subject**: `/Users/sac/smalt` @ HEAD `daea2d87`
 

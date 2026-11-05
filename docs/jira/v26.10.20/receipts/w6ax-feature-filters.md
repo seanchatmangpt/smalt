@@ -1,4 +1,5 @@
 # Receipt: w6ax — App Config feature flags (TimeWindow + Targeting filters)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-20
 - **Lane**: w6ax (wave-6)

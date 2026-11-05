@@ -1,4 +1,5 @@
 # Receipt: bkmkt2-nist-overlay — NIST packs witnessed against the smalt k8s fact graph
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — the two NIST packs' queries and all 22 gates were
 actually executed against the union graph (pack ontologies + `priv/smalt-k8s.ttl`

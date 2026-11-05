@@ -1,4 +1,5 @@
 # KD-127 Post-Shim Witness 2 (B-K3, mtime cure)
+Standing: PASS
 
 - **Standing: PASS**
 - Date: 2026-10-21 10:19–10:24 PDT

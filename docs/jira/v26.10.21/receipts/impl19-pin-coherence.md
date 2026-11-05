@@ -1,4 +1,5 @@
 # IMPL-19: Toolchain pin coherence census + warnings backlog
+Standing: ALIVE
 
 Context: solo
 

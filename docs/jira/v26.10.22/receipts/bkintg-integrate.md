@@ -1,4 +1,5 @@
 # BK-INTG — seal-residue integration receipt
+Standing: PASS
 
 - **Standing**: PASS
 - **Context**: solo

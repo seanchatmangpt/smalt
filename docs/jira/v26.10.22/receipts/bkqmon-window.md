@@ -1,4 +1,5 @@
 # BK-QMON — Bench Window Census (BQUIET-support monitor)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (BK-STAND6: census receipt — embedded output is complete and typed: 1-min load 85–99 on 16 cores, 0.17% idle, 3 orphaned duckdb recursions ~750% CPU, 4/5 BQUIET remeasures landed with b4 stalled; verdict BENCH-WINDOW-BLOCKED is a window disposition, not a capability standing; b5/c8 remeasures flagged load-window provenance)
 - **Context**: solo

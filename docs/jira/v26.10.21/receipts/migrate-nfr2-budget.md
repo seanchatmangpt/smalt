@@ -1,4 +1,5 @@
 # Migrate NFR-2 budget receipt (50 resources under 30s)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

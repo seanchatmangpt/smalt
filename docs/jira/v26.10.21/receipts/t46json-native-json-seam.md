@@ -1,4 +1,5 @@
 # T46JSON — native `:json` seam behind config flag (AR-WIRE-01 partial adoption)
+Standing: ALIVE
 
 Context: solo
 

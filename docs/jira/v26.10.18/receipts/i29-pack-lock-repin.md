@@ -1,4 +1,5 @@
 # i29 — Pack-lock repin (`:lock_drift` resolved)
+Standing: PASS
 
 - **Date**: 2026-10-18
 Context: pair(i29-replay-fences.md, i29-sdk-census-fresh.md)

@@ -1,4 +1,5 @@
 # Receipt: BK-JUSTDOC — Justfile/doc audit for the new-engineer path
+Standing: PARTIAL_ALIVE
 
 - Standing: PARTIAL_ALIVE (doc fixes landed; retired-subject successor harnesses remain not-landed — V261019-08/09)
 - Context: solo

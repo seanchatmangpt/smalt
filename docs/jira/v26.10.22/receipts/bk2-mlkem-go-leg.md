@@ -1,4 +1,5 @@
 # BK-2 — IMPL-14 ML-KEM Go-client leg (raw ML-KEM-768 interop)
+Standing: UNVERIFIED
 
 Context: solo
 

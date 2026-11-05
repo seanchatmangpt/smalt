@@ -1,4 +1,5 @@
 # Receipt: A-8 LRO sweeper storm under high-rate cancellation
+Standing: UNVERIFIED
 
 - Date: 2026-10-15 21:40-21:47 PDT (run 5, the landed jsonl; earlier runs are
   described under Session findings)

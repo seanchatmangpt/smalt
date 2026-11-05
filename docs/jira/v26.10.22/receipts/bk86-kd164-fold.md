@@ -1,4 +1,5 @@
 # BK-86 — KD-164 fold lane (wait-for-and-fold on BK-85)
+Standing: SKIP-LOUD
 
 **Standing:** SKIP-LOUD (no-fold — BK-85 witness receipt absent within the bounded wait window; KD-164 NOT minted, register UNCHANGED)
 Context: solo

@@ -1,4 +1,5 @@
 # r12 — GGEN-IDP lane: SAML IdP capability into the ggen/ontology layer
+Standing: PARTIAL_ALIVE
 
 - window: v26.10.29 · lane: GGEN-IDP (r12) · date: 2026-10-29
 - standing: **PARTIAL_ALIVE** (graph + generated config census + gate: ALIVE;

@@ -1,4 +1,5 @@
 # W3C-C - ACP (Solid ACP) ethics-wall matcher shapes + sieve court
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE (law files + court ALIVE on the exact subject below; both engines evaluate the ACP shapes natively over real op execution)
 **Context: solo**

@@ -1,4 +1,5 @@
 # JA-13 Supervisor Restart-Intensity Court — smalt @ main
+Standing: ALIVE
 
 - **Date**: 2026-10-21
 - **Lane**: JA-13

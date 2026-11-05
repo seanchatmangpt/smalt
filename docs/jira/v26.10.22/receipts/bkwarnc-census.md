@@ -1,4 +1,5 @@
 # Receipt: bkwarnc-census
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

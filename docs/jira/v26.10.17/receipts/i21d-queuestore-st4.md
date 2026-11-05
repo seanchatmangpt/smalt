@@ -1,4 +1,5 @@
 # i21d — QueueStore ST4 renew/sweep court T1 classification
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-17
 - **Lane**: i21d

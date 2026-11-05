@@ -1,4 +1,5 @@
 # Receipt — R131 (confidential-ledger non-UTF8 name fence)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

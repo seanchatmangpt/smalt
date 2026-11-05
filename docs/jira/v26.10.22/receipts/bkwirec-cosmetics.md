@@ -1,4 +1,5 @@
 # BK-WIREC — wire.py cosmetic residue repair (EXPL12-F owner notes)
+Standing: ALIVE
 
 **Standing**: ALIVE · **Context**: solo · Date: 2026-10-22
 

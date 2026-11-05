@@ -1,4 +1,5 @@
 # BK36 — Wave-minted OPEN row triage (verify lane)
+Standing: OPEN
 
 **Standing:** **ALIVE**
 - Context: solo

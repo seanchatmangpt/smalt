@@ -1,4 +1,5 @@
 # SCVD-T14 — Skeptic Audit of the SCVD Wave Receipts
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — every figure below was re-read from on-disk jsonl
 at audit time (2026-10-21); the only live re-execution is T1 (reproduced). No

@@ -1,4 +1,5 @@
 # BK-130 — RU-3 adoption #2–5: react-use pattern-port hook batch
+Standing: PASS
 
 **Standing: PASS** (hooks court ×2 green, ws-lint 0 errors, ws-build green, patterns-court 13/3/0 unchanged)
 **Context: solo**

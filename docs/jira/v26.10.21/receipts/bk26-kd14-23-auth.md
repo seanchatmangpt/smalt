@@ -1,4 +1,5 @@
 # BK-26 — KD-14 + KD-23 fix/verify receipt
+Standing: ALIVE
 
 **Standing:** ALIVE (both rows verified on the live wire; KD-23 fix landed; KD-14 fix already in tree, witnessed)
 Context: solo

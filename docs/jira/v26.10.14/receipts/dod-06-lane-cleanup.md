@@ -1,4 +1,5 @@
 # Receipt: DoD-6 lane cleanup (v26.10.14)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Lane**: DoD-6, owner of `justfile.d/06-lane-cleanup.just`

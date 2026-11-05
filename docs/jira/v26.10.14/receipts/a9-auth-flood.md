@@ -1,4 +1,5 @@
 # A-9 Receipt — Adversarial Cross-Tenant Auth Challenge Flood (v26.10.14)
+Standing: PASS
 
 **Lane**: A-9 (adversarial cross-product bench)
 **Date**: 2026-10-16

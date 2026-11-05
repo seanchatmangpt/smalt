@@ -1,4 +1,5 @@
 # GLD-5 — SQL-Ingestion Skeptic Audit (adversarial, v26.10.21)
+Standing: SUSPECT
 
 - **Date**: 2026-10-21
 - **Lane**: GLD-5 (skeptic, OTP-29), read-only except this receipt

@@ -1,4 +1,5 @@
 # KD-84 witness — settlement flush on receiver close
+Standing: PASS
 
 - **KD row**: `KNOWN_DIVERGENCES.md` KD-84 — "SB settlement race on receiver close" (OPEN)
 - **Standing**: **PASS** (witness; flip-eligible) — falsifier met 4/4 (3 DLQ rounds + unsettled-close redelivery)

@@ -1,4 +1,5 @@
 # BK-45: RollingCounters heir parity + DetsMirror EXIT/catch-all clauses + kill court
+Standing: ALIVE
 
 **Standing: ALIVE** (for the three BK-45 changes; verified on the exact subject described
 below). `Context: solo`

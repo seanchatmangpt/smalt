@@ -1,4 +1,5 @@
 # BK-IMG — production-honest container images (both tiers)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-22
 - **Lane**: BK-IMG (solo lane, shared checkout; coordinator owns git)

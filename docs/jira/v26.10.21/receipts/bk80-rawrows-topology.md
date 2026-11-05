@@ -1,4 +1,5 @@
 # BK-80: Monitor.Metrics raw_rows match-shape fix + blast-radius topology reconcile
+Standing: ALIVE
 
 **Standing: ALIVE** — verified on the exact subject described below. `Context: solo`
 

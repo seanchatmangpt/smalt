@@ -1,4 +1,5 @@
 # w6ae — Service Bus auto-forwarding (`ForwardTo`)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (module surface + witness ALIVE on isolated lane beams; tree-wide compile + census + AMQP SDK leg staged for the post-router-split integration window)
 

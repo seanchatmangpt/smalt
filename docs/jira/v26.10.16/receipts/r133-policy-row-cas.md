@@ -1,4 +1,5 @@
 # Receipt — R133 (serialized policy-row CAS for blob container policy)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

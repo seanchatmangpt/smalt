@@ -1,4 +1,5 @@
 # BK-139r — KD-166 dual-claim fold (Confidential Ledger renumber)
+Standing: ALIVE
 
 **Standing: ALIVE** — the dual-claim is folded: the Confidential Ledger row
 is minted as **KD-170** in the canonical register (CLOSED-WITH-EVIDENCE,

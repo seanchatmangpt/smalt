@@ -1,4 +1,5 @@
 # w6bi — ERROR_CODES wave-6 regen + extractor families
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier)
 Context: solo

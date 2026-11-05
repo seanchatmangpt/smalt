@@ -1,4 +1,5 @@
 # BK-SEAL: full-green HEAD sweep
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE
 - **Context**: solo

@@ -1,4 +1,5 @@
 # BK-83 — Authenticated sync end-to-end witness (full client path, enforce mode)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (9/9 legs PASS, court exit 0)
 Context: solo

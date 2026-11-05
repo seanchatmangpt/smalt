@@ -1,4 +1,5 @@
 # i29 — KQL fuzz determinism (cosmos_test.exs:1055)
+Standing: PASS
 
 **Standing: PASS** · 2026-10-18
 

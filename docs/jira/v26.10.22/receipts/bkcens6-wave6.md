@@ -1,4 +1,5 @@
 # BK-CENS6 — census reconcile wave 6: bkmon3r registered, BK-POWLH3-1 closed
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

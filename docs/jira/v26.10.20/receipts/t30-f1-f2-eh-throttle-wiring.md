@@ -1,4 +1,5 @@
 # T30-F1/F2 — EhThrottle wiring + RouteNotReady Retry-After hint
+Standing: ALIVE
 
 **Standing: ALIVE** (both audit findings closed at wire level)
 Date: 2026-10-21

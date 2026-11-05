@@ -1,4 +1,5 @@
 # SQLD-3 — SQLite Ingestion Court (duckdb sqlite_scanner, real CLIs)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo · Date: 2026-10-21 · Lane: SQLD-3 · Milestone: v26.10.21

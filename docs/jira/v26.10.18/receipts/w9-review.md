@@ -1,4 +1,5 @@
 # W9 residual review — group 8 (review lane, Context: solo)
+Standing: UNVERIFIED
 
 Context: slice(5-file batch, 82 tests 0 failures x2, exit 0)
 

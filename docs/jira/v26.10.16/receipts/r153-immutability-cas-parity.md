@@ -1,4 +1,5 @@
 # Receipt — R153 (immutability policy CAS parity)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PASS

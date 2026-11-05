@@ -1,4 +1,5 @@
 # Receipt — V261014-17 semantic epoch doc-fact reconciliation
+Standing: UNVERIFIED
 
 - **Lane**: 17 of 20, v26.10.14 fan-out, canonical checkout `/Users/sac/smalt`
 - **Scope honored**: docs + comments only; no production code, no git state changes.

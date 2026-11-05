@@ -1,4 +1,5 @@
 # GOLEG — AR-SEC-01 real Go-client leg (TLS 1.3 unpin residual)
+Standing: ALIVE
 
 Context: pair(wire witness against the shared live TLS twin (9444 control) + private-boot legs; other lanes held adjacent port blocks)
 

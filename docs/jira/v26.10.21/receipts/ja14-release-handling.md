@@ -1,4 +1,5 @@
 # JA-14 — Release Handling (hot-upgrade vs cold-restart)
+Standing: PARTIAL
 
 Repo: `/Users/sac/smalt` · Branch: `main` · Milestone v26.10.21 · Date: 2026-10-21 · Context: solo
 Toolchain: Elixir 1.20.4-otp-29 / OTP 29.1.2. READ-ONLY agent; parent persisted.

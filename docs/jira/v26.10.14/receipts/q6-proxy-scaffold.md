@@ -1,4 +1,5 @@
 # Receipt — Q-6: WO-23 substrate proxy scaffold
+Standing: UNVERIFIED
 
 - **Subject:** standalone `proxy/` mix project at `/Users/sac/smalt/proxy`
 - **WO:** docs/jira/v26.10.15/23-substrate-proxy.md (scaffold slice only —

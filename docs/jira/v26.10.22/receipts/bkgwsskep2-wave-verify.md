@@ -1,4 +1,5 @@
 # BK-GWSSKEP2 — full GWS/SQLD/GLD/BENCH wave re-run + baseline comparison
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

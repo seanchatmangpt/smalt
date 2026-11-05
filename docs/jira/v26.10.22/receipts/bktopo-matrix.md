@@ -1,4 +1,5 @@
 # Receipt: BK-TOPO — deployment topology matrix (docs lane)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-TOPO (docs/design)

@@ -1,4 +1,5 @@
 # BK-66 — P12 Constant Seal live DOM wiring (renderReceiptFields residue retired)
+Standing: ALIVE
 
 **Standing**: ALIVE (static + browser tiers; live receipt-over-wire leg stays typed SKIP pending SYNC-1)
 **Context**: solo

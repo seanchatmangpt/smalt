@@ -1,4 +1,5 @@
 # i22 — seed-order hardening: shacl_fuzz under shuffled seeds (churn harness)
+Standing: ALIVE
 
 - **Date**: 2026-10-18
 - **Lane**: fix lane (seed-order hardening), `MIX_BUILD_ROOT=_build-ft-r12`, repo `/Users/sac/smalt`

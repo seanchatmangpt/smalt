@@ -1,4 +1,5 @@
 # Receipt: KD-P6 — KD-176 register row (MAA nonce-registry bounds)
+Standing: UNVERIFIED
 
 - **Lane**: KD-P6 (registrar)
 - **Date**: 2026-10-22

@@ -1,4 +1,5 @@
 # Receipt: i29-courtface-harden — cross-plane boot-premise faces hardened (GracefulStop pattern)
+Standing: PASS
 
 - **Window**: v26.10.18 / i29
 - **Subject**: `test/azsim/topology_test.exs`, `test/wire/arm_wire_test.exs` @ main (no commit; lane-owned diff)

@@ -1,4 +1,5 @@
 # Receipt — V261014-10 (MCP Plane) — lane 10
+Standing: UNVERIFIED
 
 - **Date:** 2026-10-15 · **Repo:** /Users/sac/smalt @ main 3fc2543 (dirty, shared checkout)
 - **Work order:** docs/jira/v26.10.14/10-mcp.md

@@ -1,4 +1,5 @@
 # BK-DUCK — orphan drain (duckdb load-court leaks)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

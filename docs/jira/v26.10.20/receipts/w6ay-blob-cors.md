@@ -1,4 +1,5 @@
 # w6ay — Blob service CORS rules (wave-6)
+Standing: ALIVE
 
 **Standing: ALIVE** (module + wire-preflight tiers)
 

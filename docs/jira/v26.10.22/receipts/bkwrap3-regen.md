@@ -1,4 +1,5 @@
 # BK-WRAP3 — post-surge receipt-index regen + gates (seal feed)
+Standing: ALIVE
 
 - **Standing**: ALIVE — all four steps executed with embedded real output; regen committed.
 - **Context**: solo

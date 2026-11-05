@@ -1,4 +1,5 @@
 # W30-S — SCVD second-backend proof (storage contract on Azurite)
+Standing: PASS
 
 **Standing:** **PASS** — the storage portion of the SCVD contract
 (container create → blob PUT byte-equal → GET → delete, plus container

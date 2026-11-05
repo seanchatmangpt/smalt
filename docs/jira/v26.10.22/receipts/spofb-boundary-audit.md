@@ -1,4 +1,5 @@
 # SPOF-B — Boundary audit, vectors 3 + 4 (adversarial, read-only)
+Standing: UNKNOWN
 
 **Standing:** UNKNOWN (SUSPECT — 2 OPEN defect classes found, findings typed and unverified; no code edits made)
 Date: 2026-10-21

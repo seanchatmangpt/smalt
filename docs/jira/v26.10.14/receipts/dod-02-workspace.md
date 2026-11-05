@@ -1,4 +1,5 @@
 # DoD-2 Workspace Receipt — v26.10.14
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Lane: DoD-2 · Subject: /Users/sac/smalt (branch main, no commit — per lane instruction)
 

@@ -1,4 +1,5 @@
 # r5 — T-05 increment 2: KQL join shipped
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T05-kql-extended-operators.md` (2 of 4 operators) · date: 2026-10-28
 - tier: beam (`test/integration/kql_join_test.exs`)

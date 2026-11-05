@@ -1,4 +1,5 @@
 # i21 surfaces postfix — verification lane receipt
+Standing: PARTIAL_ALIVE
 
 Context: /Users/sac/smalt
 **Standing:** PARTIAL_ALIVE (2 of 3 surfaces green; naming-sweep RED).

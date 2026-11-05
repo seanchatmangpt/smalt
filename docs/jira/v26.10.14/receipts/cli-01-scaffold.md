@@ -1,4 +1,5 @@
 # Receipt: cli-01-scaffold — smalt-cli Python substrate
+Standing: UNVERIFIED
 
 - **Lane**: CLI-1 (scaffold owner)
 - **Date**: 2026-10-15

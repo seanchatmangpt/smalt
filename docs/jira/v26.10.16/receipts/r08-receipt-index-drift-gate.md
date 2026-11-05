@@ -1,4 +1,5 @@
 # Receipt — R8 (receipt-index-check real gate + injected-drift flip)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

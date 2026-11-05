@@ -1,4 +1,5 @@
 # VAL-NFR — NFR + smalt-migrate §3.2 validation cells (validator lane)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 **Standing:** PARTIAL_ALIVE

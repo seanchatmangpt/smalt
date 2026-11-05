@@ -1,4 +1,5 @@
 # Receipt: DoD-07 — two-green-court receipt runner (court-x2)
+Standing: PARTIAL_ALIVE
 
 - Repo: /Users/sac/smalt, branch main
 - Date: 2026-10-15

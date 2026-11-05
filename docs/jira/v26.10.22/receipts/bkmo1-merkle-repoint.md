@@ -1,4 +1,5 @@
 # BK-MO1 — COURT-MERKLE-O1 citation re-point (BK-PRDA F1)
+Standing: ALIVE
 
 **Standing:** ALIVE — both cells re-pointed, receipts verified on disk, gates exit 0.
 **Context:** solo

@@ -1,4 +1,5 @@
 # r3 — integration lane: the closed 80/20 tickets validated through both integration tiers
+Standing: UNVERIFIED
 
 - window: v26.10.28 · date: 2026-10-28 · tickets validated: T-03, T-17, T-18 (+ the 8a6ce57 blob/queue batch)
 - tiers: beam ExUnit (`test/integration/`) + official python SDKs (`verification/py/`)

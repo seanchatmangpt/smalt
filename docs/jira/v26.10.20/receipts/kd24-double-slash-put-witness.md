@@ -1,4 +1,5 @@
 # KD-24 witness — ARM generic PUT with double-slash provider segment (stale-row disposition)
+Standing: CLOSED
 
 **Standing:** CLOSED (KD-24 row OBSOLETE — row evidence stale, close condition already met on wire)
 

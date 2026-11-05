@@ -1,4 +1,5 @@
 # Receipt: BK-ARM5 — Armstrong ordering audit (work → beautiful → fast)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — WORK and BEAUTIFUL stages audited to receipts + live witness; FAST stage measured with real docker/kind numbers but the full kind→first-200 chain is typed SUSPECT on one contaminated leg. Context: solo. Lane BK-ARM5, repo /Users/sac/smalt, 2026-10-22.
 

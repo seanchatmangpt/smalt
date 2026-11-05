@@ -1,4 +1,5 @@
 # BK-49 — Mcp.Router flatten_children/2 compile warning
+Standing: ALIVE
 
 **Standing:** **ALIVE** (warning eliminated, witnessed; MCP surface boots + deferred-listeners court 3/3)
 Context: solo

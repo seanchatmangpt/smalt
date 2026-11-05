@@ -1,4 +1,5 @@
 # COST-4 — smalt-migrate rehearsal displacement model (enterprise replatform)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Lane: COST-4 (research/value) · Date: 2026-10-21 · Region: eastus · Currency: USD · All figures LIST

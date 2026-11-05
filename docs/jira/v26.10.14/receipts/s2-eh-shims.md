@@ -1,4 +1,5 @@
 # S-2: KD-18/19/20 EH shims — receipt
+Standing: UNVERIFIED
 
 Lane: S-2 (v26.10.15 wave), repo /Users/sac/smalt, branch main, no commits.
 Subject SHAs (final, post-court): `connection.ex` 0446c9bf…, `management_rpc.ex`

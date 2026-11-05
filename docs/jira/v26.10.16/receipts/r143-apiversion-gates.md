@@ -1,4 +1,5 @@
 # Receipt — R143 (egress api-version admission gates: AKV SKR + Azure Monitor)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PASS

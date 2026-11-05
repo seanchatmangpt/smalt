@@ -1,4 +1,5 @@
 # KD-11 / KD-16 / KD-17 / KD-33 / KD-34 — KV face wire witnesses (fix-landed rows, live substrate)
+Standing: PASS
 
 **Standing:** **PASS** (wire witnesses on the live substrate, pid 57559, build 15:33Z 2026-10-20 — current HEAD code; lane K3, 2026-10-20)
 

@@ -1,4 +1,5 @@
 # BK-SEAL6 — seal ×2 post-quiet leg (successor to BK-SEAL5)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-SEAL6

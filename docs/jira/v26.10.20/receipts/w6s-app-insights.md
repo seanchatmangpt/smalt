@@ -1,4 +1,5 @@
 # Receipt: w6s — Application Insights Breeze ingest emulation
+Standing: PARTIAL_ALIVE
 
 - **Lane**: w6s (wave-6)
 - **Date**: 2026-10-20

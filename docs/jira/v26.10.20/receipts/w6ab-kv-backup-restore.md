@@ -1,4 +1,5 @@
 # w6ab — KV backup/restore (keys + certificates)
+Standing: ALIVE
 
 **Standing: ALIVE** at the module tier; wire routes staged as a post-split
 draft (router hold honored — no egress_router.ex / arm_gateway edits).

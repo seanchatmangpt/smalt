@@ -1,4 +1,5 @@
 # w6av — Azure Blob Static Website face
+Standing: ALIVE
 
 **Standing: ALIVE**
 

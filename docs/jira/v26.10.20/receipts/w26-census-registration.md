@@ -1,4 +1,5 @@
 # W26 — Internal-Tier Census Registration
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 

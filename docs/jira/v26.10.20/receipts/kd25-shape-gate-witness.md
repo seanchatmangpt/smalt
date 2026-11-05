@@ -1,4 +1,5 @@
 # KD-25 witness — ARM shape gate sku shape (stale-row disposition)
+Standing: CLOSED
 
 **Standing:** CLOSED (KD-25 row OBSOLETE — row evidence stale, close condition already met on wire)
 

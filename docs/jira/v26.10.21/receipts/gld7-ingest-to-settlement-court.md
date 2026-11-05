@@ -1,4 +1,5 @@
 # GLD-7 — ingest -> governance -> execution loop court
+Standing: ALIVE
 
 **Standing**: ALIVE
 Context: solo

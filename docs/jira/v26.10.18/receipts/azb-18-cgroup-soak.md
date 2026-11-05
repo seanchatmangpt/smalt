@@ -1,4 +1,5 @@
 # AZB-18 — cgroup-constrained soak harness
+Standing: UNVERIFIED
 
 Context: solo (STAGED harness validation; container leg not executed)
 **Standing: BLOCKED[unledgered-failure-faces + harness-mount-gap]** — leg executed 2x (2026-10-19, see Adopted execution); gate refused both (STANDING_REFUSED, 4x DIRTY_ROW UNHANDLED_EXIT); data+identity planes completed the suite (2740 tests, 44/45 failures), control+integration SIGKILLed; dominant face is a harness mount-surface gap (.ggen_igniter/receipts absent in container)

@@ -1,4 +1,5 @@
 # Receipt — V261019-FIN (test-volume census)
+Standing: UNVERIFIED
 
 Context: solo(V261019-FIN) — all numbers below are output of commands run by
 this lane at the working tree, 2026-10-19.

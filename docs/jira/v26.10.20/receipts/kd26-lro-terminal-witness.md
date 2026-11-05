@@ -1,4 +1,5 @@
 # KD-26 witness — ARM LRO terminal provisioningState (stale-row disposition)
+Standing: CLOSED
 
 **Standing:** CLOSED (KD-26 row OBSOLETE — row evidence stale, matches the AUD-3 note at
 KNOWN_DIVERGENCES.md:115-116 that R:623-624 already writes provisioningState)

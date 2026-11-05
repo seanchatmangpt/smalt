@@ -1,4 +1,5 @@
 # w6bc — KV key parity gaps (versions pagination, update attributes, AES-KW, randomnumbers)
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier)
 Context: solo

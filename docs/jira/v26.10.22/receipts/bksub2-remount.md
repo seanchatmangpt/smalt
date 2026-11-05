@@ -1,4 +1,5 @@
 # Receipt: BK-SUB2 — FD-1 shared-substrate remount: ALREADY CLOSED (premise rot), goal state re-witnessed
+Standing: CLOSED
 
 - **Date**: 2026-10-22
 - **Lane**: BK-SUB2 (substrate ops)

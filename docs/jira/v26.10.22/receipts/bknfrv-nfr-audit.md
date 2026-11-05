@@ -1,4 +1,5 @@
 # BK-NFRV — NFR-row terminal audit of PRD.md v26.10.22 (skeptic, read-only)
+Standing: ALIVE
 
 **Standing**: ALIVE (audit; every NFR row holds its evidence class; 3 residuals still honestly typed). `Context: solo`
 Lane: BK-NFRV · Date: 2026-10-22 · Method: per-row disk re-read of receipts cited by PRD §3/§4/§4a + raw-number spot-verify against receipt bodies and bench jsonl on disk.

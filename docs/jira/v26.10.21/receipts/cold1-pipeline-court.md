@@ -1,4 +1,5 @@
 # COLD-1 — Cold-Chain Pipeline Court (real duckdb CLI)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo · Date: 2026-10-21 · OTP-29 / OTP 29.1.2, Elixir 1.20.4-otp-29

@@ -1,4 +1,5 @@
 # X-8: messaging bench re-measure on KD-18/19/20 fixed substrate — receipt
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-16
 - **Repo**: /Users/sac/smalt @ main (518b31a, working tree — no commits, no lib edits by this lane)

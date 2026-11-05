@@ -1,4 +1,5 @@
 # KD-123 close witness — queue urlencoded body survives (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

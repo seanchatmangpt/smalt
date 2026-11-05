@@ -1,4 +1,5 @@
 # Receipt: lc2-tco-ledger
+Standing: UNVERIFIED
 
 - **Lane**: LC-2 on `/Users/sac/smalt` (canonical checkout)
 - **Date**: 2026-10-15/16

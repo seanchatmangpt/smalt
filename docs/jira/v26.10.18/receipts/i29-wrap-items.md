@@ -1,4 +1,5 @@
 # i29 wrap items — G1 register flip + s10 verify
+Standing: PASS
 
 - **Standing: PASS**
 Context: solo(canonical checkout /Users/sac/smalt, no git actions)

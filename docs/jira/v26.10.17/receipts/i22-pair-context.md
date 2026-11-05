@@ -1,4 +1,5 @@
 # i22 — pair-context lane: court leg composition T1/T2 back-to-back x2
+Standing: SUSPECT
 
 - **Lane**: bench-runner pair-context, repo `/Users/sac/smalt`
 - **Date**: 2026-10-18

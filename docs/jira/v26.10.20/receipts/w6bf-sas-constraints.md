@@ -1,4 +1,5 @@
 # w6bf — Storage SAS constraint parity (sip + spr)
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier; full-tree strict gate deferred on sibling churn — see typed deferral)
 Context: solo

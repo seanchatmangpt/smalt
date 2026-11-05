@@ -1,4 +1,5 @@
 # w6z — EH blob checkpoint store (module-direct, router-hold lane)
+Standing: UNVERIFIED
 
 Date: 2026-10-20
 Lane: w6z (wave-6)

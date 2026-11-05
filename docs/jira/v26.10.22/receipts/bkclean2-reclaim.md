@@ -1,4 +1,5 @@
 # BK-CLEAN2 — lane build-root reclaim
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

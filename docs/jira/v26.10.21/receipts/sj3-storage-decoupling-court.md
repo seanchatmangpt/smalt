@@ -1,4 +1,5 @@
 # SJ-3 — storage-decoupling court (sealed log sink)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (court PASS x2 on OTP 29, gates 1-5)
 Context: solo

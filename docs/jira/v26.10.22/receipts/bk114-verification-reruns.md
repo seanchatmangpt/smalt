@@ -1,4 +1,5 @@
 # BK-114 — Verification re-runs at current HEAD
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (8 of 9 checks re-witnessed PASS at HEAD; `just private-trip` FAIL — real regression, owner dispatch below)
 Context: full

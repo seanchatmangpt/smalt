@@ -1,4 +1,5 @@
 # BK-10c — FINAL-RELEASE KD census refresh (BK-10b F1)
+Standing: PASS
 
 **Standing**: PASS
 **Context**: solo

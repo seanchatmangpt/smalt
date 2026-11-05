@@ -1,4 +1,5 @@
 # BK-68 — witness standing-line backfill (mechanical hygiene pass over v26.10.21 receipts)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt (branch main, uncommitted)

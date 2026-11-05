@@ -1,4 +1,5 @@
 # BK-22 — BOARDV3 fold: VALIDATION.md v6 → v7 + _LANES.md drift repair
+Standing: ALIVE
 
 **Standing:** **ALIVE as artifact** (board v7 landed; every cited receipt path
 `[ -f ]`-verified on disk; `just docs-dod-check` exit 0)

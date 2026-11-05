@@ -1,4 +1,5 @@
 # DoD-3 Receipt — CLI wiring (lane 03-cli-wiring)
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Owner: DoD-3 · Repo /Users/sac/smalt · Branch main @ 3fc2543
 Files owned/edited: `justfile.d/03-cli-wiring.just` (rewritten),

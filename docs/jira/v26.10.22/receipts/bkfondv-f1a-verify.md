@@ -1,4 +1,5 @@
 # BK-FONDV — F1-A false-refusal fix independent verification
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE
 - **Context**: solo

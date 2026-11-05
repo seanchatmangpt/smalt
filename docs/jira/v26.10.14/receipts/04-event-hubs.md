@@ -1,4 +1,5 @@
 # Receipt — V261014-04 (Event Hubs wire delivery + session-lock consistency)
+Standing: UNVERIFIED
 
 Lane 04 of the v26.10.14 20-lane fan-out. Canonical checkout `/Users/sac/smalt`, branch `main` (no commits made, working-tree diff only).
 

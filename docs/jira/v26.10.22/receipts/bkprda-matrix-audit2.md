@@ -1,4 +1,5 @@
 # BK-PRDA — second-pass skeptic over the PRD §4/§4a court matrix (18 cells)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — 17/18 cells disk-true; 1 typed reconciliation finding (owner: BK-PRDR).
 Context: solo · Date: 2026-10-22 · Lane: BK-PRDA · Repo: /Users/sac/smalt (canonical checkout, read-only audit)

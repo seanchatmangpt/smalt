@@ -1,4 +1,5 @@
 # Receipt: c9-cost-model
+Standing: UNVERIFIED
 
 - **Lane**: C-9 (cross-product consolidation / cost model)
 - **Date**: 2026-10-15 (poll window 20:31–21:0x local)

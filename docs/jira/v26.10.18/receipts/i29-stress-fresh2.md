@@ -1,4 +1,5 @@
 # i29-stress-fresh2 — stress tier rerun post 0009df3
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-18
 Context: solo(MIX_BUILD_ROOT=_build-ft-str3 mix test --include stress)

@@ -1,4 +1,5 @@
 # BK6 — VALIDATION partial-cell closures (SEC-01 / WIRE-02 / OBS-04)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (all three backlog cells were already receipt-typed ALIVE
 on disk — the backlog snapshot was premise rot; the lane's real work was

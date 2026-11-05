@@ -1,4 +1,5 @@
 # S-3 Receipt — KD-15 KV Challenge Auth (v26.10.15, execution lane S-3)
+Standing: UNVERIFIED
 
 Subject: KD-15 landed per explore design E-3a on the canonical smalt checkout.
 Status: CLOSED-with-receipt. No commits (per dispatch).

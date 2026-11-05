@@ -1,4 +1,5 @@
 # BK-72 gates toolchain self-resolution — v26.10.21
+Standing: ALIVE
 
 **Standing**: **ALIVE (toolchain fix)** / **PARTIAL (full 6-gate sweep)** — the toolchain gap is fixed and proven before/after on blob-worm; the full `just invariant-gates` sweep was not re-run green because queue-capacity fails on real merits (pre-existing, matches BK-35's asdf run) and the shared tree carried sibling-lane compile freezes during the window.
 - **Context: solo**

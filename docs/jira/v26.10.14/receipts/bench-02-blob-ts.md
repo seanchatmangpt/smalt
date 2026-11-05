@@ -1,4 +1,5 @@
 # Bench receipt — B-2: blob SDK (TypeScript) vs live substrate
+Standing: UNVERIFIED
 
 - Lane: B-2, v26.10.14 bench wave
 - Date: 2026-10-15 (single final clean run; two prior runs discarded as

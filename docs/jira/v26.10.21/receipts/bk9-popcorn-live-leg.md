@@ -1,4 +1,5 @@
 # BK-9: popcorn_demo live loopback leg (browser WASM BEAM → smalt 9443)
+Standing: ALIVE
 
 **Standing:** ALIVE (host-side leg witnessed live; browser e2e typed PENDING-DEMO-HOST, see §5)
 

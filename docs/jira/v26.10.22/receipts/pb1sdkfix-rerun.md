@@ -1,4 +1,5 @@
 # PB1SDKFIX — PB-1 SDK leg ifMatchEtag→accessCondition repair + fresh sweep rerun
+Standing: ALIVE
 
 **Standing:** **ALIVE** — corrected-leg rerun shows `injection_failures=0` at all
 11 contention points with real 412 conflicts on the wire; the

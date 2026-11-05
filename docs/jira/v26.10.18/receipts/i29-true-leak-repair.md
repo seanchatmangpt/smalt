@@ -1,4 +1,5 @@
 # i29 true-leak repair — scoped isolation court 6→0
+Standing: UNVERIFIED
 
 Date: 2026-10-19
 Context: pair(i29 true-leak repair lane, isolation-court

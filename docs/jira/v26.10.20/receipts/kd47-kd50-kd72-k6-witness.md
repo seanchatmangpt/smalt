@@ -1,4 +1,5 @@
 # K6 SB/EH-face witness + dispositions (lane K6, trapped by ENOSPC, persisted by coordinator 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

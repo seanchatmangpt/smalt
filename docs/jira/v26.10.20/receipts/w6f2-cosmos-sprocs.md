@@ -1,4 +1,5 @@
 # Receipt w6f2 — Cosmos stored-procedures witness + close-out
+Standing: ALIVE
 
 **Standing:** **ALIVE** (module tier)
 Date: 2026-10-20

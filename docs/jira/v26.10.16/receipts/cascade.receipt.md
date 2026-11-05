@@ -1,4 +1,5 @@
 # Receipt — cascade (W2a CascadeEdge projection replay fence)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, HEAD `650a8ff`
 - **Standing:** PASS

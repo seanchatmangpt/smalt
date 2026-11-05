@@ -1,4 +1,5 @@
 # i29 Checkpoint 7 — census at HEAD 2e0b9b2
+Standing: UNVERIFIED
 
 - Subject: /Users/sac/smalt @ `2e0b9b2` (parent `83d3052`; coordinator landed TWO commits mid-census: `83d3052` budget-final2 and `2e0b9b2` azb-20 verification)
 Context: solo(census; read-only git; no git mutations)

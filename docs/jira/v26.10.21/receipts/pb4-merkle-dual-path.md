@@ -1,4 +1,5 @@
 # PB-4: seal_receipt dual-path bench (sorted-tuple current vs fingerprint-gated maps:fold variant)
+Standing: UNVERIFIED
 
 Context: solo
 

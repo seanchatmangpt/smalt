@@ -1,4 +1,5 @@
 # W9-B — generalized KD closer `close_kd.sh`
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (all four exit-path branches witnessed live; no flip executed this lane)
 

@@ -1,4 +1,5 @@
 # BK-99 — KD-164 pointer-doc fold (BK-86 handoff executed)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — pointer doc synced to the canonical register; both gates
 green; no structural fix owed.

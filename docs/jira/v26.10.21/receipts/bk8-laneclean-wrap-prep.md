@@ -1,4 +1,5 @@
 # BK8 — Lane-Clean + _LANES.md Reconciliation + Wrap-Prep
+Standing: PASS
 
 Repo: `/Users/sac/smalt` · Branch: `main` · Milestone v26.10.21 · Date: 2026-10-21 · Context: solo
 

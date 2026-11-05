@@ -1,4 +1,5 @@
 # i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates)
+Standing: PARTIAL_ALIVE
 
 Context: solo (gate run: compile + naming-sweep + invariant-gates; no mix test invocation)
 - Repo: /Users/sac/smalt

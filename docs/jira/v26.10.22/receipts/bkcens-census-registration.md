@@ -1,4 +1,5 @@
 # BK-CENS — internal-tier census registration reconcile
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-CENS

@@ -1,4 +1,5 @@
 # KD-114 — SharedKey admit close witness (W20-B)
+Standing: PASS
 
 **Standing:** PASS — blob SharedKey admit landed, wired, and witnessed on the
 real official SDK over the TLS twin; the KD-114 DO-NOT-FLIP hold can be

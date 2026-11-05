@@ -1,4 +1,5 @@
 # Receipt — R47 (ARM read-only facade: resources.getById binding)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

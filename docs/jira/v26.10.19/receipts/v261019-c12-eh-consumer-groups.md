@@ -1,4 +1,5 @@
 # Receipt: v261019-C12 — Event Hubs consumer-group engine (lane C12)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Repo**: /Users/sac/smalt (canonical checkout, no git actions; commit-ready diff)

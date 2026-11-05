@@ -1,4 +1,5 @@
 # VAL-PRD — PRD cell validation (validator lane, 2026-10-21)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 **Standing:** PARTIAL_ALIVE

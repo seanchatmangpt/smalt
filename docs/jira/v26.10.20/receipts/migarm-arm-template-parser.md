@@ -1,4 +1,5 @@
 # MIGARM — ARM template JSON parser (smalt-migrate, PRD Module 1, third language)
+Standing: ALIVE
 
 **Standing:** ALIVE (all 14 new tests pass; full migrate surface 62 passed / 1 skipped, pre-existing skip)
 Repo: /Users/sac/smalt

@@ -1,4 +1,5 @@
 # Receipt: Y2 — BFF reconciliation gateway route /api/sync/state
+Standing: ALIVE
 
 **Standing:** ALIVE (live witnessed end to end against the running substrate)
 

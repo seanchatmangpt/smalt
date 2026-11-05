@@ -1,4 +1,5 @@
 # Receipt — R51 + R57 + R58 + R68 + R95 + R96 + R81 (AMQP/DET-S batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

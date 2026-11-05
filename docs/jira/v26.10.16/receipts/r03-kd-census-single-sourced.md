@@ -1,4 +1,5 @@
 # Receipt — R3 (KD census prose single-sourced)
+Standing: ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** ALIVE

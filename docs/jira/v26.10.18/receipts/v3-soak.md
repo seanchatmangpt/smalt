@@ -1,4 +1,5 @@
 # Receipt: v3-soak — 3x full-suite soak, failure-identity classification
+Standing: UNVERIFIED
 Context: full (mix test, full suite x3, logs /tmp/v3-soak-run{1,2,3}.log, _build-ft-v3)
 
 Date: 2026-10-18 (~21:15–21:55 PDT) · Tree: working tree at `git rev-parse HEAD` = `efd8e1c` (HEAD moved twice mid-session: `014bb7a` at run 1/2 → `efd8e1c` at run 3).

@@ -1,4 +1,5 @@
 # X-7 Receipt: `just bench-report` wiring + BENCH_RESULTS.md regeneration
+Standing: UNVERIFIED
 
 Lane: X-7 (B-12 finding). Date: 2026-10-15. No commits (per dispatch).
 

@@ -1,4 +1,5 @@
 # BK-ARM1 — Armstrong error-kernel audit across the k8s boundary
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (audit complete, all four findings typed; no lib/ edit was this lane's to make — every defect is owned by a named surface, ticketed below)
 **Context:** solo

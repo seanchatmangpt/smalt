@@ -1,4 +1,5 @@
 # BK-62: HEAD Test Census (current HEAD, concurrent-lane tree)
+Standing: UNVERIFIED
 
 **Standing:** **BLOCKED-LANE-COMPILE** (full suite never reached a summary line; three attempts, each aborted by a different concurrent-lane in-flight file)
 

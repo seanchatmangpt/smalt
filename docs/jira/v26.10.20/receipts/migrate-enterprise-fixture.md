@@ -1,4 +1,5 @@
 # Receipt: migrate-enterprise showcase fixture (MIGDEMO)
+Standing: UNVERIFIED
 
 - Date: 2026-10-21
 - Lane: writer (smalt-migrate Fortune-5 demo fixture)

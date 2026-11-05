@@ -1,4 +1,5 @@
 # i29 — courtface-harden premise verification (solo-green ×3 ×2 files)
+Standing: PASS
 
 - Context: slice
 - Standing: PASS (solo-green baseline confirmed on current uncommitted state)

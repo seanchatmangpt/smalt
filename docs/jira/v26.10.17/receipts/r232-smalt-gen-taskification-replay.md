@@ -1,4 +1,5 @@
 # r232 — smalt.gen Mix task-ification: byte-identical replay over all 6 artifacts
+Standing: PASS
 
 - Date: 2026-10-17
 - Lane: I2 (WO-3)

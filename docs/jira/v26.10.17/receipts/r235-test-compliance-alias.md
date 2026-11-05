@@ -1,4 +1,5 @@
 # r235 — mix.exs `test.compliance` alias: first witnessed run FAILS (40 failures)
+Standing: UNVERIFIED
 
 - Date: 2026-10-17
 - Lane: I2 (WO-3)

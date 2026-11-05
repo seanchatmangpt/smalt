@@ -1,4 +1,5 @@
 # SCVD-T5: Connection-Pool Exhaustion Chaos — Receipt
+Standing: PASS
 
 **Standing:** **PASS** (recovery verified; flood refusal behavior typed)
 

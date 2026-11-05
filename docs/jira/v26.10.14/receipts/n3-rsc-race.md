@@ -1,4 +1,5 @@
 # N-3 RSC Streaming Race Bench — Receipt
+Standing: UNVERIFIED
 
 - **Lane**: N-3 (workspace/app/bench/audit)
 - **Date**: 2026-10-16

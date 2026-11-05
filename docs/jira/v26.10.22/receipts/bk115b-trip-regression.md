@@ -1,4 +1,5 @@
 # BK-115b — private-trip regression fix: sync-e2e-court.mjs absolute paths
+Standing: ALIVE
 
 **Standing**: ALIVE — both gates green on the exact subject
 (`/Users/sac/smalt/workspace/scripts/sync-e2e-court.mjs`, working tree, branch main, uncommitted).

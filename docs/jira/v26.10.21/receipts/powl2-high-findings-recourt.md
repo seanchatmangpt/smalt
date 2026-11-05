@@ -1,4 +1,5 @@
 # POWLSK2 — HIGH-1/HIGH-2 re-court against the landed POWL-4 compiler
+Standing: PASS
 
 Date: 2026-10-21. Lane: POWLSK2 (skeptic re-court). Files owned: `test/internal/powl2_nonseparable_court.exs` (new) + this receipt.
 Subject: `lib/smalt/powl2/compiler.ex` (md5 7c04d99bc0c21e5c8c7b1768959d96bc), `lib/smalt/powl2.ex`.

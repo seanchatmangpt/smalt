@@ -1,4 +1,5 @@
 # VAL: AR-SEC-01..03 validator receipt
+Standing: PARTIAL
 
 **Standing:** **PARTIAL / PARTIAL / UNSUPPORTED (N/A per airgap)**
 

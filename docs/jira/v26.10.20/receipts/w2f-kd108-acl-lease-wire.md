@@ -1,4 +1,5 @@
 # w2f — KD-108 remainder: container ACL wire persistence + blob snapshot lease wire arm
+Standing: ALIVE
 
 **Standing:** ALIVE (wire-witnessed on lane b5, 39050-39055)
 

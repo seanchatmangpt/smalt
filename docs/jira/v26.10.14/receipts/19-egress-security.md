@@ -1,4 +1,5 @@
 # Receipt — V261014-19 Egress Security & Envelope Correctness Sweep
+Standing: ALIVE
 
 - **Lane:** 19 · **Date:** 2026-10-15 · **Status:** ALIVE (items 1-7 landed and fenced; suites green except pre-existing failures disclosed below)
 - **Subject:** /Users/sac/smalt @ working tree (no git state changes, per lane rules)

@@ -1,4 +1,5 @@
 # W32 API-Conformance Audit (real-Azure REST spec vs smalt wire)
+Standing: PARTIAL_ALIVE
 
 - **Standing:** PARTIAL_ALIVE
 - Date: 2026-10-21

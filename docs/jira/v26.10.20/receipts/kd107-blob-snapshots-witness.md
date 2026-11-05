@@ -1,4 +1,5 @@
 # KD-107 close witness — blob snapshot lifecycle (lane K7, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

@@ -1,4 +1,5 @@
 # w6c — Certificate issuers + contacts (Azure KV REST parity)
+Standing: ALIVE
 
 **Standing:** ALIVE (real-wire witness over a private lane substrate, block v62)
 

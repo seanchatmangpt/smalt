@@ -1,4 +1,5 @@
 # r10 — T-02: Resource pre-seeding — import existing Azure resources into local state
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T02-resource-pre-seeding.md` · date: 2026-10-29
 - tier: beam (`test/integration/seed_test.exs`) · status: **CODE-COMPLETE (r10), awaiting integration run**

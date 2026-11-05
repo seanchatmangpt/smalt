@@ -1,4 +1,5 @@
 # ERL-4r receipt: VC export + digital twins + lakehouse mount
+Standing: ALIVE
 
 - **Standing:** ALIVE (court 8/8 PASS, exit 0)
 - **Context**: solo

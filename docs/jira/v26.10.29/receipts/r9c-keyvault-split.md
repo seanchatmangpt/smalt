@@ -1,4 +1,5 @@
 # r9c-keyvault-split
+Standing: PARTIAL_ALIVE
 
 **Lane**: L11 — KeyVault split (T09 dataplane splits)
 **Standing**: PARTIAL_ALIVE

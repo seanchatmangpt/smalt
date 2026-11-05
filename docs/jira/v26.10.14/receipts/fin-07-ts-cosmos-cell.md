@@ -1,4 +1,5 @@
 # Receipt: fin-07 — TS cosmos probe cell registration (RAISE)
+Standing: UNVERIFIED
 
 - date: 2026-10-15
 - lane: fin-07 (DoD-only finish lane; no commits, no lib edits, no probe edits)

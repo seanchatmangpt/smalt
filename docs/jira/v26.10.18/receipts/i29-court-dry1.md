@@ -1,4 +1,5 @@
 # i29 court-x2 DRY-RUN leg 1 — full `mix test` under load
+Standing: UNVERIFIED
 
 Context: solo(MIX_BUILD_ROOT=_build-ft-court1 mix test, two full runs)
 

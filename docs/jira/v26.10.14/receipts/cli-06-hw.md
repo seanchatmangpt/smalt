@@ -1,4 +1,5 @@
 # CLI-6 Receipt — AtomVM Hardware Bridge
+Standing: UNVERIFIED
 
 Lane: CLI-6 · Repo: `/Users/sac/smalt/smalt-cli` (canonical checkout) · Date: 2026-10-15
 Branch: main (uncommitted, per lane contract — no commits)

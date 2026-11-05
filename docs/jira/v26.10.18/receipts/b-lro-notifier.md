@@ -1,4 +1,5 @@
 # Receipt — B0: LRO one-writer convergence (Notifier + await)
+Standing: ALIVE
 
 - **Window**: v26.10.18
 - **Lane**: B0 (solo context)

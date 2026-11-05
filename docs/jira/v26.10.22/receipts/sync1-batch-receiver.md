@@ -1,4 +1,5 @@
 # SYNC-1 — Batch-frame receiver: finish-and-relay (reap audit + completion)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (compile 0 / court 11/11 / witness 9/9 PASS)
 Context: solo

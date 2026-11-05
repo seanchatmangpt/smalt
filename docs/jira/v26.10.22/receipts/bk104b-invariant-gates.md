@@ -1,4 +1,5 @@
 # BK-104b — Invariant Gates Full Re-run (Toolchain Self-Resolution)
+Standing: ALIVE
 
 **Standing: ALIVE**
 **Context: full**

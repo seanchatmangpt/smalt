@@ -1,4 +1,5 @@
 # JA-1 Supervision Census — smalt @ main (2026-10-21)
+Standing: UNVERIFIED
 
 Context: solo
 

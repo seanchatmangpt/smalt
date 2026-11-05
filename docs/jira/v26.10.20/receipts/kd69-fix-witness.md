@@ -1,4 +1,5 @@
 # KD-69 fix witness — cross-connection epoch-eviction detach now delivered to an idle incumbent
+Standing: ALIVE
 
 **Standing:** **ALIVE** (fix landed, live-wire witness on a private beam; live-substrate flip needs the next recycle)
 

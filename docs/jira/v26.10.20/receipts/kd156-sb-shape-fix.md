@@ -1,4 +1,5 @@
 # KD-156 fix — ARM SB provisioning shape gate (child PUT location coercion)
+Standing: ALIVE
 
 **Standing:** ALIVE (fix landed, wire-witnessed post-fix, KD-156 court PASS 4/4 legs, 9 tests 0 failures)
 

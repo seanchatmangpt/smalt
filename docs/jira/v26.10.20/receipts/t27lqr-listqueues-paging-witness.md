@@ -1,4 +1,5 @@
 # T27LQ-r: listQueues ATOM feed paging — wire repro, root cause, fix
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: T27LQ-r (relaunch of dead lane T27LQ; atom_bridge feed + integration

@@ -1,4 +1,5 @@
 # BK-149C — smalt-cli closeout residual-failure closure receipt
+Standing: ALIVE
 
 **Standing: ALIVE** — full smalt-cli suite on a live substrate: **129 passed,
 2 skipped, 0 failed, exit 0** (was 3 failed / 116 passed / 11 skipped at

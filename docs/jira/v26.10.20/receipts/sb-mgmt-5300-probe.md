@@ -1,4 +1,5 @@
 # SB Management Plane Interop Probe — official emulator 5300 vs smalt ARM SB face
+Standing: PARTIAL_ALIVE
 
 - **Lane**: W30-H (bench-runner, interop probe), 2026-10-21
 - **Standing**: PARTIAL_ALIVE (all legs executed on real transports; findings below)

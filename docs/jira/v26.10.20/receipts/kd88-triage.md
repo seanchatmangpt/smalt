@@ -1,4 +1,5 @@
 # KD-88 triage — client-side frame capture lane (kd88)
+Standing: PARTIAL_ALIVE
 
 - **Standing: PARTIAL_ALIVE — KD-88 confirmed CLIENT-BOUND; smalt-side decoder refuted as the truncation source with a 330-frame real-wire differential; no smalt fix to land; recommending the registrar keep the row OPEN as client-bound and re-type the falsifier to the client surface.**
 - Lane: kd88 (writer), repo /Users/sac/smalt, 2026-10-21. MIX_BUILD_ROOT=_build-kd88; lane-private ports 39600-39606; no shared-substrate restart. HEAD 4e1efe35adb03b3c31c5dfaaedf7b75fedc663eb.

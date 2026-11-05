@@ -1,4 +1,5 @@
 # Receipt — R188 / R194 / R196 / R197 (WORM / settle / tombstone batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 late docs sweep, lane 267)
 - **Standing:** PASS (R188, R194, R196, R197) — amended 2026-10-16: R196

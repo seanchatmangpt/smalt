@@ -1,4 +1,5 @@
 # POWL-2: Algorithms 1 & 2 (conflict-/concurrency-hiding partition)
+Standing: ALIVE
 
 **Standing:** ALIVE
 

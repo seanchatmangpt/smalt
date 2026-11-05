@@ -1,4 +1,5 @@
 # W30-E — Port-collision audit: smalt port plan vs official Azure emulators
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: W30-E (bench-runner), repo `/Users/sac/smalt`

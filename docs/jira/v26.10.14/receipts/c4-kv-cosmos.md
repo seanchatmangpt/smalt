@@ -1,4 +1,5 @@
 # Receipt — Bench Lane C-4: Key Vault envelope-encryption -> Cosmos
+Standing: UNVERIFIED
 
 - **Lane**: c4 (cross-product bench wave, v26.10.14)
 - **Repo**: `/Users/sac/smalt` (canonical checkout)

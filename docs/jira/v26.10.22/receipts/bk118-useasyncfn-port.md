@@ -1,4 +1,5 @@
 # BK-118 — useAsyncFn pattern-port (RU-3 adoption #1)
+Standing: ALIVE
 
 **Standing: ALIVE** — courts green ×1 (dom-contract / spof4 / patterns / asyncfn all exit 0, ws-lint 0 errors, ws-build exit 0).
 Context: solo

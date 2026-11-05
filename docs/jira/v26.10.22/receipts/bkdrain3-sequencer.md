@@ -1,4 +1,5 @@
 # BK-DRAIN3 — drain sequencer: 7-lane wait-bounded reap + seal verdict
+Standing: ALIVE
 
 - **Lane**: BK-DRAIN3 (`/Users/sac/smalt`, canonical checkout, read-only except this receipt)
 - **Standing**: ALIVE (all census values are disk/ps/`just quiet-check` reads, not inferred)

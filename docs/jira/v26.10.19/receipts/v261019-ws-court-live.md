@@ -1,4 +1,5 @@
 # Receipt: ws-court LIVE leg — substrate up, ARM probe PASS
+Standing: PASS
 
 - **Date**: 2026-10-19
 - **Lane**: read-mostly witness lane (ws-court live leg)

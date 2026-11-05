@@ -1,4 +1,5 @@
 # EXPL7-R1 — BFF sync + bench/debug route repairs (E7-1..E7-4)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all repairs landed on the working tree and witnessed with
 real route probes (real Next dev server + real substrate, zero mocks).

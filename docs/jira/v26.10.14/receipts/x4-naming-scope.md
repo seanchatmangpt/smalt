@@ -1,4 +1,5 @@
 # Receipt: X-4 naming-sweep scope fix (2026-10-15)
+Standing: UNVERIFIED
 
 **Lane**: X-4 (F-14 finding). **No commits** (per dispatch).
 

@@ -1,4 +1,5 @@
 # X-5 Receipt: Event Hubs sweep() flake — deterministic expiry fix
+Standing: UNVERIFIED
 
 Lane: X-5, v26.10.14. Subject: `test/amqp/broker_facade_test.exs:151`
 "GCs expired Event Hubs processing claims" returned `sweep() >= 1` → 0 under

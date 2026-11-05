@@ -1,4 +1,5 @@
 # W5D — deletedcertificates twin-family completion witness (ERRC wave-5, lane w5d)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (witnessed execution on the exact running subject, both legs)
 

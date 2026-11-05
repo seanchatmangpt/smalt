@@ -1,4 +1,5 @@
 # Receipt — V261014-09 (lane 09, auth-trust-profile)
+Standing: UNVERIFIED
 
 - **Subject:** /Users/sac/smalt @ main, working tree (no commits made; lane-owned files only)
 - **Work order:** docs/jira/v26.10.14/09-auth-trust-profile.md — items 1, 2A, 3, 4-fence, 5a; 5b skipped per dispatch

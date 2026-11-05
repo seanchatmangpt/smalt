@@ -1,4 +1,5 @@
 # W30-I — Cosmos vNext health-probe pattern witness (REPORT ONLY)
+Standing: ALIVE
 
 **Standing:** **ALIVE (pattern witnessed)** — real emulator booted, three-way probe
 surface executed, bounded no-sleep poll, zero errors.

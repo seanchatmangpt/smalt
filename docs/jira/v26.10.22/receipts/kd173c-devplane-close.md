@@ -1,4 +1,5 @@
 # Receipt: KD-173C — ingest POST dev-default key dev-plane close
+Standing: ALIVE
 
 - Standing: ALIVE
 - Context: solo

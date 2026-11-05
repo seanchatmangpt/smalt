@@ -1,4 +1,5 @@
 # r9a — blob split (T09: BlobStorage 3,444 → Blob.Core/Worm/Leases/Website)
+Standing: ALIVE
 
 - window: v26.10.29 · date: 2026-10-30 · lane: L09
 - subject: smalt @ 35bd36d0 (shared tree heavily dirty — 47+ sibling-lib files

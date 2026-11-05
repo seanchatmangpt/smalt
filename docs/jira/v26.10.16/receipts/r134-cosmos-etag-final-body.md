@@ -1,4 +1,5 @@
 # Receipt — R134 (cosmos etag = pure function of final stored body)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # AZ-5 — Azure Web PubSub face (Tier 2 → promote)
+Standing: ALIVE
 
 **Standing: ALIVE** — Web PubSub broker face over the landed BK-58 WS
 relay substrate, witnessed end-to-end (5/5 court, exit 0).

@@ -1,4 +1,5 @@
 # r-p01 — Browser-witnessed zero-touch SAML sign-in (P01, CLM-01)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE**

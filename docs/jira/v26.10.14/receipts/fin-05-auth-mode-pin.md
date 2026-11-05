@@ -1,4 +1,5 @@
 # fin-05: substrate auth-mode pin on shared ports 9443/8443 (flake face 2/2)
+Standing: UNVERIFIED
 
 ## Identity
 - Subject: /Users/sac/smalt @ main (uncommitted working-tree change, no commits per lane contract)

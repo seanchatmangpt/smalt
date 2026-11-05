@@ -1,4 +1,5 @@
 # w6t — Registrar pass 2 + ERROR_CODES extractor gap
+Standing: ALIVE
 
 **Standing:** ALIVE (mechanical lane; real command output embedded)
 Date: 2026-10-20

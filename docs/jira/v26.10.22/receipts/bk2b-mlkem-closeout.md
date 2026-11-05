@@ -1,4 +1,5 @@
 # BK-2b — ML-KEM Go-client leg residual close-out
+Standing: ALIVE
 
 Context: solo
 

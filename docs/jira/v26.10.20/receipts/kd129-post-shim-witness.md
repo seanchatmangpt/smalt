@@ -1,4 +1,5 @@
 # KD-129 fresh post-shim witness (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

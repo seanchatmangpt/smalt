@@ -1,4 +1,5 @@
 # W30-F — Azure SDK guideline testing-8 recorded-test pattern against smalt
+Standing: PASS
 
 **Standing: PASS** (record → replay green → mutate red triple witnessed)
 Date: 2026-10-21 · Lane: W30-F · Context: solo

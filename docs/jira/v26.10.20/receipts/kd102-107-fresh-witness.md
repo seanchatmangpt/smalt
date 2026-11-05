@@ -1,4 +1,5 @@
 # Fresh post-shim witnesses — KD-102 / KD-107 (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

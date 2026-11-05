@@ -1,4 +1,5 @@
 # WS-8 receipt — pure-Azure ARM client layer (workspace)
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Subject: /Users/sac/smalt v26.10.14 working tree (multi-lane)

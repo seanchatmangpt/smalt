@@ -1,4 +1,5 @@
 # TLS13 — AR-SEC-01 unpin trial (private boot, no lib change)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 

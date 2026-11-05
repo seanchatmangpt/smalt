@@ -1,4 +1,5 @@
 # BK-10b — Citation Audit of FINAL-RELEASE-26.10.22.md
+Standing: PASS
 
 **Standing:** **PASS** (1 stale-count finding, 0 broken citations, 0 unindexed receipts)
 

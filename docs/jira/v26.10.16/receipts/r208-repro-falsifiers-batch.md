@@ -1,4 +1,5 @@
 # Receipt — R208 (repro falsifier tests batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (lane 294, W11 docs lane)
 - **Standing:** PASS (7 tests, 0 failures)

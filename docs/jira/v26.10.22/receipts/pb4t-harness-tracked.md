@@ -1,4 +1,5 @@
 # PB4-T — PB-4 harness relocated to tracked capital — ALIVE
+Standing: ALIVE
 
 Closes the harness-durability debt PB4-R disclosed: the PB-4 ground-truth
 harness lived at `tmp/bench/pb4_merkle_dual.exs` — gitignored lane-local

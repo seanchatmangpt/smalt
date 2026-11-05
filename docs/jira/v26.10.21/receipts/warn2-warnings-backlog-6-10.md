@@ -1,4 +1,5 @@
 # WARN2 — Warnings backlog items 6-10 (IMPL-19)
+Standing: ALIVE
 
 Context: solo
 

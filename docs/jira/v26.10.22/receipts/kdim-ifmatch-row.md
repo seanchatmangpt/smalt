@@ -1,4 +1,5 @@
 # KD-IM — IF-MATCH-IGNORED witness verification (PB-1 SDK leg)
+Standing: ALIVE
 
 **Standing:** ALIVE (witnessed refutation) — the PB-1 `IF-MATCH-IGNORED` divergence claim is
 REFUTED; the emulator honors If-Match → 412 on every face probed. No KD row

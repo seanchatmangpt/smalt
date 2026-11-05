@@ -1,4 +1,5 @@
 # w6u — SB F1/F2 SDK-divergence fixes (KD-120/KD-121)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all witness legs passed on the real wire, real SDKs.
 

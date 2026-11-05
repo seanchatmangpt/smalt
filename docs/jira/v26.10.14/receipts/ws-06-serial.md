@@ -1,4 +1,5 @@
 # WS-06 Receipt — Web Serial Hardware Gateway
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Lane**: WS-6

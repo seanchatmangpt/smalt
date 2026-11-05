@@ -1,4 +1,5 @@
 # w6R — EgressRouter structural split (BEAM implementation-limit blocker fix)
+Standing: ALIVE
 
 **Standing:** ALIVE (compile green, internal tier 48/0, live-wire smoke per delegator + blob/queue planes, typed faces verified)
 

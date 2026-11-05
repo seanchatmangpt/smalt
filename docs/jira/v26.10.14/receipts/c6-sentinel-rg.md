@@ -1,4 +1,5 @@
 # Bench C-6 — Sentinel (Log Analytics) ingest + KQL + Resource Graph
+Standing: UNVERIFIED
 
 - lane: c6
 - date: 2026-10-15

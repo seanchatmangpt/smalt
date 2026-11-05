@@ -1,4 +1,5 @@
 # Receipt — DoD-13 manufacturing-receipt index
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: DoD-13 (receipt-index)

@@ -1,4 +1,5 @@
 # BK-97: ops-receipt environment notes (TMPDIR class)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

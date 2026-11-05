@@ -1,4 +1,5 @@
 # Receipt — PAT-B sync semantics (patterns 8, 10, 12)
+Standing: ALIVE
 
 **Standing:** ALIVE (node courts exit 0; ws-lint/ws-build exit 0)
 Date: 2026-10-21

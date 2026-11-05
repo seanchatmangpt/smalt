@@ -1,4 +1,5 @@
 # FIN-10 — Enclave testbed doc reconciliation (DoD finish lane)
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Repo: `/Users/sac/smalt` (no commits made). Scope: doc-only.
 

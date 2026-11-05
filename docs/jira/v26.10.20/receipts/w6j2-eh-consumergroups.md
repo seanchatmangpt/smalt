@@ -1,4 +1,5 @@
 # W6J2 — Event Hubs Consumer Groups Close-Out (w6j witness executed)
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier, real Plug dispatch over real Store+engine)
 Context: pair (close-out of lane w6j; single-lane execution)

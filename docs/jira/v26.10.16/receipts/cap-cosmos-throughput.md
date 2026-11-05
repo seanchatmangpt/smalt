@@ -1,4 +1,5 @@
 # Receipt: cap-cosmos-throughput
+Standing: PARTIAL_ALIVE
 
 - **Lane**: DoD (capability receipts), v26.10.16
 - **Date**: 2026-10-16

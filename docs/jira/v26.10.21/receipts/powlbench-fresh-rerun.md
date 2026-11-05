@@ -1,4 +1,5 @@
 # POWLBENCH fresh re-run + adversarial non-vacuity leg (PB-1..6 family)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — fresh measured baseline + non-vacuity proven by
 mutation; one gate breach typed honestly (see §3)

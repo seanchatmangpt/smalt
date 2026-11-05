@@ -1,4 +1,5 @@
 # KV404 writer receipt — GET missing KV row answers 404 KvNotFound, not empty 500
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (wire 404 verified on live substrate + non-vacuous regression test green; popcorn p99 latency fence flaky under concurrent load, unverified-at-quiescence)
 

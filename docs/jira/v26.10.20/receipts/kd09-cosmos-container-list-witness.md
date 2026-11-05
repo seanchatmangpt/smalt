@@ -1,4 +1,5 @@
 # KD-09 witness — cosmos container list pagination (K2 lane, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE — fixed this lane; `KD-COVERS: KD-09` at
 `lib/smalt/data_plane/cosmos.ex` list_collections/2.

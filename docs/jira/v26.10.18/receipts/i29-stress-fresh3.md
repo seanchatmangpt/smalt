@@ -1,4 +1,5 @@
 # i29 — stress-tier convergence fresh leg 3 (full `--include stress`)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt. Two full runs launched from snapshot HEAD `b9b9199`.

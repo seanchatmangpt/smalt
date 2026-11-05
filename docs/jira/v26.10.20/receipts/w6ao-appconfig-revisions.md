@@ -1,4 +1,5 @@
 # w6ao - App Configuration revision history
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** (module tier; full-tree compile blocked by sibling
 in-flight `arm/deployments.ex:187` for the entire lane window — modules

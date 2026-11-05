@@ -1,4 +1,5 @@
 # C15 — Atlas v2 fidelity raise (purview_atlas.ex)
+Standing: ALIVE
 
 - Lane: ERRC RAISE, C15
 - File ownership: `lib/smalt/data_plane/purview_atlas.ex` (exclusive)

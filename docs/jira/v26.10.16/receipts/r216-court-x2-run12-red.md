@@ -1,4 +1,5 @@
 # Court-x2 wrap run 12 — RED (shifting-failure)
+Standing: RED
 
 - Standing: **RED — gate FAIL, no two-green** (both runs `COURT_X2_RC=1`)
 - Lane: Terminal court tail (T1), 2026-10-16

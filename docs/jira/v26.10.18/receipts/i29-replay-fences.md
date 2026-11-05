@@ -1,4 +1,5 @@
 # i29 — Generated-Artifact Replay Fences (post-0009df3 tree)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-19T05:29:57Z
 Context: solo

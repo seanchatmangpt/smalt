@@ -1,4 +1,5 @@
 # CLI-4 receipt — SDK test lanes (Gate 1, part A)
+Standing: UNVERIFIED
 
 Lane: CLI-4, 2026-10-15. Suite: `smalt-cli/tests/` (24 tests, 4 lanes + conftest).
 Runner env: `/Users/sac/smalt/smalt-cli/.venv-cli` (py3.13, pytest 9.0.3, requests,

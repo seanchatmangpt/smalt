@@ -1,4 +1,5 @@
 # GLD-4 — Cold-Chain SQL-Seed Closure Court (seed loop: SQL in → same pipeline → same decisions)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo · Date: 2026-10-21 · OTP 29.1.2 / Elixir 1.20.4-otp-29

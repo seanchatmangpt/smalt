@@ -1,4 +1,5 @@
 # BK-14 KD-143 Witness — SB rule sqlFilter persistence across recycle
+Standing: ALIVE
 
 **Standing:** ALIVE
 - Context: solo

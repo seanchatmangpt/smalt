@@ -1,4 +1,5 @@
 # KD-135 / KD-136 / KD-138 — registrar closures (lane KD-REG)
+Standing: PASS
 
 - **Date**: 2026-10-22
 - **Standing**: PASS

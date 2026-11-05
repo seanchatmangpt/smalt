@@ -1,4 +1,5 @@
 # WS-7 Receipt: Dynamic Bellman Solver
+Standing: UNVERIFIED
 
 - **Subject**: `workspace/lib/solver/{bellman.ts, policy.ts, fixtures.ts, README.md, sanity.mjs}` on `main` (working tree, uncommitted — lane-owned paths only)
 - **Date**: 2026-10-15

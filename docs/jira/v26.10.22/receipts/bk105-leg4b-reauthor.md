@@ -1,4 +1,5 @@
 # BK-105 — leg4b re-author against the partitioned tree
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · Date: 2026-10-21 · Lane: BK-105 (test-authoring WO from BK-69r) · Build root: `_build-bk105` · Toolchain: asdf elixir 1.20.4-otp-29 / erlang 29.1.2 (repo `.tool-versions`)
 

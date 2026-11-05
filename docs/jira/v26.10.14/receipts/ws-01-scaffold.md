@@ -1,4 +1,5 @@
 # WS-1 Scaffold Receipt — Smalt Sovereign Next.js Workspace
+Standing: UNVERIFIED
 
 - Subject: /Users/sac/smalt/workspace (new Next.js 16 + React 19 + Tailwind v4 scaffold)
 - Base: smalt main @ `3fc2543e53ef34df733c6aa2536429f4122cd143`

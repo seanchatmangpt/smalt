@@ -1,4 +1,5 @@
 # Receipt — R128 + R129 + R132 (DLQ-full parking, session-gate bypasses, sweeper boot validation)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

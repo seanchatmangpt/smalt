@@ -1,4 +1,5 @@
 # EXPL-4 — Wire-Protocol Front-Ends ERRC Sweep (read-only)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — findings executed as read-only probes against the real
 compiled modules; no repairs implemented (explorer lane). Repair tickets below are for

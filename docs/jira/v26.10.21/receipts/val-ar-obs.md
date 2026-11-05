@@ -1,4 +1,5 @@
 # VAL-OBS — AR-OBS-01..04 validation (validator, v26.10.21)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (4/4 cells adjudicated: 0 ALIVE, 1 PASS, 1 PARTIAL, 2 UNSUPPORTED — every verdict command-backed below)
 Context: solo

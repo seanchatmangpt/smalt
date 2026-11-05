@@ -1,4 +1,5 @@
 # i29 — Push-readiness audit #3 (origin/main..main)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-18
 - **Subject**: HEAD `3cf366723131f1bc56e1db185863a80795605a14`, base `origin/main` (1eb89df)

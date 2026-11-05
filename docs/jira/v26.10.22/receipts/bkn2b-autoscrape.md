@@ -1,4 +1,5 @@
 # BK-N2B — n2 harness auto-scrape of `$ACTION_ID_` (optional env, fail-closed)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

@@ -1,4 +1,5 @@
 # VAL-WIRE — AR-WIRE-01/02/03 validation receipt
+Standing: PARTIAL_ALIVE
 
 Context: solo
 

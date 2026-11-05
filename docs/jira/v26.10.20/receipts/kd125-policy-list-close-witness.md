@@ -1,4 +1,5 @@
 # KD-125 close witness — policy list faces post-fix (coordinator, 2026-10-20)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

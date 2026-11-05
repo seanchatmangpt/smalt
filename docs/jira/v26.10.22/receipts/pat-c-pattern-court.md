@@ -1,4 +1,5 @@
 # PAT-C: 12-pattern verification court — receipt
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — court executes for real (logic tier genuinely runs the
 codec court; DOM lint genuinely parses `app/terminal/page.tsx`); browser tier typed

@@ -1,4 +1,5 @@
 # PB-5 — Cross-Language Differential: Erlang FOND/POWL Runner vs Smalt.POWL2.Executor
+Standing: UNVERIFIED
 
 Context: solo
 

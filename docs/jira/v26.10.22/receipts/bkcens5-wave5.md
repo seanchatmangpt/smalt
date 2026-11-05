@@ -1,4 +1,5 @@
 # BK-CENS5 — census reconcile wave 5: JA10 dead allowlist entry closed; fence verified clean
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

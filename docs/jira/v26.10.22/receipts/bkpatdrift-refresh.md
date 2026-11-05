@@ -1,4 +1,5 @@
 # BK-PATDRIFT — PATTERN-LANGUAGE.md drift refresh (20 cells vs landed tree)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — every anchor below was re-read from the landed tree this
 session; the pattern court was re-run as the standing proof.

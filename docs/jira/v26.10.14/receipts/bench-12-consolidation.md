@@ -1,3 +1,4 @@
+Standing: UNVERIFIED
 
 ## Replay (2026-10-19, i29 suspect-hygiene lane)
 The receipt's Replay block re-run verbatim:

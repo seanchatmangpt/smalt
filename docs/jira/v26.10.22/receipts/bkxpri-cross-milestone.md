@@ -1,4 +1,5 @@
 # BK-XPRI — v26.10.21 → v26.10.22 cross-milestone court re-run
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — 12 v26.10.21 ALIVE-class cells re-courted fresh on the
 current tree; 11 GREEN, 1 deterministic RED (HIGH regression finding, typed below),

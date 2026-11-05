@@ -1,4 +1,5 @@
 # BK-55 — kd_flip witness identity pinning (tooling hardening)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 - **Standing:** ALIVE (kd_flip witness token — machine-readable form of the line above)

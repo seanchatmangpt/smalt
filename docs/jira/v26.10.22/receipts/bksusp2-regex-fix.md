@@ -1,4 +1,5 @@
 # BK-SUSP2 — receipt_index.py evidence-regex fix (EXIT=/RC=/rc=N accepted)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE — fix landed and proven non-vacuous on scratch
   probes; SUSPECT count on the live corpus is unchanged (43 → 43) because the

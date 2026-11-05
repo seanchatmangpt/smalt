@@ -1,4 +1,5 @@
 # w6bj — Cosmos DB database-account consistency face
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier)
 Context: solo

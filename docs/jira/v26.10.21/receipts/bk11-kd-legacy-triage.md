@@ -1,4 +1,5 @@
 # BK-11 — pre-window KD legacy triage (anti-escape-hatch #3)
+Standing: PASS
 
 **Standing:** PASS (11/11 rows triaged; 2 CLOSED verified, 9 DISPOSITIONED with falsifier + next action; live-probe evidence on substrate pid 1895)
 Context: solo

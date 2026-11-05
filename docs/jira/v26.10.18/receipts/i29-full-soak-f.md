@@ -1,4 +1,5 @@
 # i29 leg F — full-suite pre-gate soak at HEAD
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-19 00:32–00:47 PDT
 - **Subject**: /Users/sac/smalt @ main 2e0b9b2 (dirty tree: in-flight AZB-20-lane edits — blob_storage / egress_router / arm_gateway router / queue_storage, per `git status`)

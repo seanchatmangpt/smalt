@@ -1,4 +1,5 @@
 # BK-126 — SPOF-4 receipt reconcile (post-BK-106 deadlock fix)
+Standing: UNVERIFIED
 
 Date: 2026-10-22
 Context: solo

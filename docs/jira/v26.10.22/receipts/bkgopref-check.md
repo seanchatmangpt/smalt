@@ -1,4 +1,5 @@
 # BK-GOPRE — GOSEQ pre-flight progress census
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22
 - **Standing**: PARTIAL_ALIVE (census lane; all claims from live observation, Context: solo)

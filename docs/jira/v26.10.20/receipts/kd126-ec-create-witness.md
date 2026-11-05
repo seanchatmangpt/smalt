@@ -1,4 +1,5 @@
 # KD-126 EC create seam — W10-A receipt
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (fix landed + court green x2; live wire witness + kd_flip BLOCKED by host ENOSPC)
 Date: 2026-10-20 (~19:40 PDT)

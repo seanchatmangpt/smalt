@@ -1,4 +1,5 @@
 # Receipt: ERRC lane 2 (Raise) — benchee adoption for BEAM micro-benchmarks
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Repo**: /Users/sac/smalt (main, uncommitted working tree)

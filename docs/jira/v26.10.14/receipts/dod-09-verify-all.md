@@ -1,4 +1,5 @@
 # dod-09-verify-all.md — DoD-9 receipt (v26.10.14)
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Subject: one-command verify-all. Checkout: `~/smalt` (canonical, main).
 

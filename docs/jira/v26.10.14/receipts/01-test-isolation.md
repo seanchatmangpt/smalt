@@ -1,4 +1,5 @@
 # Receipt — V261014-01 (test-isolation lane 01)
+Standing: DONE
 
 - Subject: smalt @ working tree on HEAD db2fe05 (uncommitted, 20-lane shared checkout)
 - Date: 2026-10-15

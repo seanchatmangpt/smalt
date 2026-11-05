@@ -1,4 +1,5 @@
 # W21-B — KD-127 expired-lock redelivery: broker fix + premise-rot finding
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (fix ALIVE with wire+SDK witnesses; the row's original
 falsifier text is refuted as premise-rot — see "Premise rot" below; the row

@@ -1,4 +1,5 @@
 # i29 — Wire tier 2x fresh at HEAD (fresh4)
+Standing: UNVERIFIED
 
 Context: slice(amqp_wire ×2)
 - **Subject**: /Users/sac/smalt, HEAD `c2a304c84377135ef3c0cfb7bdd314bd3a0746ad` (≥ 334f3f8 verified: `git merge-base --is-ancestor 334f3f8 HEAD` → ANCESTOR-OK). Runs at working tree, which carries other lanes' in-flight edits (test/ files, docs) per `git status`; no clean checkout.

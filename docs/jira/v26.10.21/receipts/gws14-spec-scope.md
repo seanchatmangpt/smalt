@@ -1,4 +1,5 @@
 # GWS-14 — WASM-SANDBOX-SPEC honest scoping amendment (milestone-doc)
+Standing: UNVERIFIED
 
 - **Lane**: GWS-14 spec-scope (milestone-doc)
 - **Date**: 2026-10-21

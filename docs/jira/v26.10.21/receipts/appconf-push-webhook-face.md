@@ -1,4 +1,5 @@
 # Receipt: PRD-APPCONF push sub-claim — App Config webhook event-notification face
+Standing: ALIVE
 
 Context: solo
 

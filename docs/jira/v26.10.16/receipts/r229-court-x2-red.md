@@ -1,4 +1,5 @@
 # Court-x2 wrap runs 29–30 — RED, typed defect list (terminal auditor)
+Standing: RED
 
 - Standing: **RED — no two-green** (run 29 `COURT_X2_RC` never emitted; run 30 `COURT_X2_RC=1`)
 - Lane: Terminal auditor (lane 664), 2026-10-17, subject `/Users/sac/smalt`

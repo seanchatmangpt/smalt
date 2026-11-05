@@ -1,4 +1,5 @@
 # w6aq2 — Deployments what-if close-out witness
+Standing: ALIVE
 
 - **Subject**: smalt @ main (uncommitted wave-6 tree), `lib/smalt/arm/deployments.ex` what-if face
 - **Date**: 2026-10-20

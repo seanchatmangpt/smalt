@@ -1,4 +1,5 @@
 # JA-R1: Silent-violation fixes (V1-V4 from ja2-let-it-crash-audit)
+Standing: ALIVE
 
 Repo: `/Users/sac/smalt` · Branch: `main` · Date: 2026-10-21 · Context: solo · Lane: JA-R1 (owns `planes.ex`, `egress_router.ex`, `arm_gateway/router.ex`, `affidavit/seal.ex`, `security/ledger_writer.ex` only)
 

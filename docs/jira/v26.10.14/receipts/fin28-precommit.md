@@ -1,4 +1,5 @@
 # fin-28 — Final Pre-Commit Checklist
+Standing: UNVERIFIED
 
 **Release**: v26.10.14 · **Lane**: fin-28 · **Date**: 2026-10-15 · **Agent**: checklist runner
 **Gate condition**: poll for S/X lane receipts s1/s2/s3/s4/s5 + x10-s-wave-integration, up to 45 min.

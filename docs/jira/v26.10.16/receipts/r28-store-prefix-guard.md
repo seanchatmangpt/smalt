@@ -1,4 +1,5 @@
 # Receipt — R28 (Store.prefix_keys binary-prefix guard fixup)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # IMPL-20: post-upgrade wire-tier re-validation (OTP 29.1.2 recycled substrate)
+Standing: ALIVE
 
 Context: pair(wire census against the coordinator-recycled shared substrate (bounded-poll recycle observation))
 

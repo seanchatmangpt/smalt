@@ -1,4 +1,5 @@
 # Receipt — DoD-10 gap/defect register sync
+Standing: UNVERIFIED
 
 - Lane: DoD-10 (documentation truth-sync) · Repo `/Users/sac/smalt` (canonical checkout, main, v26.10.14 working tree) · 2026-10-15
 - Scope: docs only — no `lib/`, no `test/`, no git state changes, no commits.

@@ -1,4 +1,5 @@
 # EXPL12-B: CLI `login`/`monitor` groups (EXPL12-9 closure)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22 · Lane EXPL12-B
 · Closes the EXPL12-9 typed P3 (no login/monitor command group in smalt-cli).

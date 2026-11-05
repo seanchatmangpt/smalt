@@ -1,4 +1,5 @@
 # Receipt: AZB-20 — Unmodified Microsoft SDK interop per plane
+Standing: PARTIAL_ALIVE
 
 - **Ticket**: AZB-20 (`docs/jira/v26.10.18/azsim-burn/TICKETS.md`, binding)
 - **Standing**: PARTIAL_ALIVE — per-plane matrix + header audit executed for real; accept `just azsim-sdk` exit 0 NOT met (6 FAIL-class cells stand as open typed gaps)

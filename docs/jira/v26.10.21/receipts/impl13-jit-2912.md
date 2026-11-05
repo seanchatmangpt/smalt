@@ -1,4 +1,5 @@
 # IMPL-13: JIT multi-segment binary matching on OTP 29.1.2 (pinned release re-adjudication)
+Standing: UNVERIFIED
 
 Context: solo
 

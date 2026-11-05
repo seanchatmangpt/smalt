@@ -1,4 +1,5 @@
 # c13-router-kd111-lro-kd113-tags-leg.md — ERRC RAISE lane (2026-10-19)
+Standing: ALIVE
 
 - **Lane**: C13-router (exclusive owner: `lib/smalt/arm_gateway/router.ex`)
 - **Standing**: ALIVE (compile green; all witness legs witnessed on a live substrate with real curl output; internal tier carries 3 concurrent-lane failures NOT attributable to this lane)

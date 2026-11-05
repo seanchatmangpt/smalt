@@ -1,4 +1,5 @@
 # KD-102 close witness — KV secrets soft-delete plane (lane K7, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

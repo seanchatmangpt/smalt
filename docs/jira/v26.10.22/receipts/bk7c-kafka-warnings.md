@@ -1,4 +1,5 @@
 # Receipt: bk7c-kafka-warnings
+Standing: PASS
 
 - **Lane**: BK-7C (`/Users/sac/smalt`)
 - **Standing**: PASS

@@ -1,4 +1,5 @@
 # KD-FIXF — register prose repair (F1/F2/F3 forward-fix)
+Standing: PASS
 
 **Standing:** **PASS**
 Context: solo

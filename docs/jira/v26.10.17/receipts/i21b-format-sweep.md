@@ -1,4 +1,5 @@
 # Receipt: i21b-format-sweep — integration hygiene, format + compile gate
+Standing: PASS
 
 - Date: 2026-10-17
 - Lane: integration hygiene (i21b)

@@ -1,4 +1,5 @@
 # fin-23 — post-commit re-verification (fin lane)
+Standing: UNVERIFIED
 
 Date: 2026-10-15, 19:40 PT. Repo: /Users/sac/smalt. Subject: commit 518b31a ("v26.10.14: release work-order landing …"), parent 3fc2543.
 

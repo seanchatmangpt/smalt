@@ -1,4 +1,5 @@
 # Receipt: BK-ASDF — README quickstart asdf pin block
+Standing: ALIVE
 
 - Standing: ALIVE
 - Context: solo

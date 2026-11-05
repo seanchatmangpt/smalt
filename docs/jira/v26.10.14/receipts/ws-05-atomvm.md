@@ -1,4 +1,5 @@
 # WS-05 Receipt — AtomVM WebAssembly Bridge
+Standing: ALIVE
 
 - **Date**: 2026-10-15
 - **Lane**: WS-5

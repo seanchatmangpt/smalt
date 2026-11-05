@@ -1,4 +1,5 @@
 # BK-KIND2 — swarm spread on the multi-node kind cluster
+Standing: ALIVE
 
 - **Lane**: BK-KIND2
 - **Date**: 2026-10-22

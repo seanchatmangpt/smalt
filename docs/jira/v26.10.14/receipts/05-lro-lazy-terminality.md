@@ -1,4 +1,5 @@
 # Flip-gate receipt — GAP(lro-lazy-terminality) CLOSED
+Standing: CLOSED
 
 Lane: 05-arm-lro · Checkout: /Users/sac/smalt (canonical, main) · Date: 2026-10-15 · Consumer: lane 13 (gap-register flip gate)
 

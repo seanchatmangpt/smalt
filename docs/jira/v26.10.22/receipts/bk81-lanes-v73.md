@@ -1,4 +1,5 @@
 # BK-81 — `_LANES.md` v7.3 lanes fold
+Standing: ALIVE
 
 **Standing:** ALIVE · Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt · Lane: BK-81 (milestone-doc)
 

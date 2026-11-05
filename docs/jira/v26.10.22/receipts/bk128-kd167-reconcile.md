@@ -1,4 +1,5 @@
 # BK-128 — KD-167 duplicate-id registrar reconciliation
+Standing: ALIVE
 
 **Standing:** ALIVE (register + pointer + maa.ex marker reconciled; verification gates green below).
 Context: solo

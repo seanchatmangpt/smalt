@@ -1,4 +1,5 @@
 # r8 — T-08: Service Bus native DLQ, scheduled messages, message deferral
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T08-servicebus-dlq-scheduled-deferral.md` · date: 2026-10-29
 - tier: beam (`test/integration/sb_delivery_test.exs`) · status: **CODE-COMPLETE (2026-10-29): r8, awaiting integration run**

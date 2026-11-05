@@ -1,4 +1,5 @@
 # WP-1 — "Industrialization of Computation / Deterministic Software Lithography" whitepaper
+Standing: ALIVE
 
 **Standing**: ALIVE — paper written, compiled clean (0 LaTeX errors), PDF verified on disk.
 - **Context**: solo

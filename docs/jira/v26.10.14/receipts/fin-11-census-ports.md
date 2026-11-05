@@ -1,4 +1,5 @@
 # fin-11: census front door pins substrate ports (TS-4 harness finding)
+Standing: ALIVE
 
 - Subject: `scripts/sb_census_replay.sh` (repo `/Users/sac/smalt`, branch `main`, no commit)
 - Standing: ALIVE (witnessed execution on exact subject)

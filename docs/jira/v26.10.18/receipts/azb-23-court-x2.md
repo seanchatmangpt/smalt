@@ -1,4 +1,5 @@
 # AZB-23 — court-x2 final close (typed-RED, gate carried)
+Standing: UNVERIFIED
 
 - **Window**: v26.10.18 / i29
 - **Subject**: AZB-23 court-x2 at the v26.10.18 wrap tree (receipt of record:

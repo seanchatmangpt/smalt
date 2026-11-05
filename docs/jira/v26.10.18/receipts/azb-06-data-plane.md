@@ -1,4 +1,5 @@
 # AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT
+Standing: PASS
 
 Context: solo (data_plane_test.exs 8/0 x3) + pair(blob_hardening + data_plane, 124/0) + full (2686 tests / 28 failures exit 1 — all foreign, disclosed below)
 

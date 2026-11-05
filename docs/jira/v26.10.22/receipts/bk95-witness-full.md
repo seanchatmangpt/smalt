@@ -1,4 +1,5 @@
 # BK-95 — witness-all FULL gated run (attempt 1)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — exit 1, every red typed below; no untyped reds. A green
 re-run is blocked on in-flight lane churn on the shared `lib/` tree, not on this gate.

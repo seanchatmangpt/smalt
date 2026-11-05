@@ -1,4 +1,5 @@
 # fin30 — Commit Executor Landing Receipt
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Lane: COMMIT EXECUTOR. Base HEAD at start: `518b31a`.
 

@@ -1,4 +1,5 @@
 # Receipt: B-11 chaos kill + TLS churn re-run
+Standing: UNVERIFIED
 
 - Date: 2026-10-15 18:49-18:54 PDT
 - Lane: B-11 (chaos + TLS churn under load), v26.10.14 release DoD wave

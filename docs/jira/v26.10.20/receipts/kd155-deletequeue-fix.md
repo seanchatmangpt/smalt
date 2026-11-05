@@ -1,4 +1,5 @@
 # KD-155 fix receipt — SB ATOM DELETE framing (two layers)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Date: 2026-10-21

@@ -1,4 +1,5 @@
 # APEX-4B — telemetry emit/collect bench (fresh lane)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (clean run landed; 4-subscription fan-out shape BLOCKED by a typed broker defect, disclosed below)
 

@@ -1,4 +1,5 @@
 # DoD-1: substrate lock leak fix
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Repo: /Users/sac/smalt

@@ -1,4 +1,5 @@
 # r200g — KD-76 pk-routing witness (lane 296)
+Standing: FAIL
 
 **Standing: FAIL (real defect witnessed; register NOT flipped)**
 

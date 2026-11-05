@@ -1,4 +1,5 @@
 # C-5 Receipt: ARM Control-Plane Saturation Storm
+Standing: UNVERIFIED
 
 - **Lane**: C-5 (cross-product bench)
 - **Script**: `scripts/bench/c5_arm_storm.py` (new, this lane)

@@ -1,4 +1,5 @@
 # FIX-3 lane: KD-147..152 conformance fixes — witness receipt
+Standing: ALIVE
 
 - Date: 2026-10-21 (UTC)
 - Lane: FIX-3 (kv/cosmos/queue conformance), HEAD ccb575b base, shims staged in working tree

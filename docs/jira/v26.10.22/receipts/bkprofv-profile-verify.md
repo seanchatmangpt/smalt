@@ -1,4 +1,5 @@
 # BK-PROFV: CLI profile contract independent verification (EXPL12-B/W follow-up)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22 · Lane BK-PROFV (read-only verify)
 · Verifies `expl12b-login-monitor.md` + `expl12w-arm-handshake.md` on the current tree.

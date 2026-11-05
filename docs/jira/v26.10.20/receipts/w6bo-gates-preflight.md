@@ -1,4 +1,5 @@
 # W6BO — Mechanical Gates Preflight (court-x2 #9 prep)
+Standing: ALIVE
 
 - **Lane**: w6bo (fork, one-shot)
 - **Date**: 2026-10-20

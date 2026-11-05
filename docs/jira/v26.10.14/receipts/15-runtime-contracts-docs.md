@@ -1,4 +1,5 @@
 # Receipt — V261014-15 runtime-contracts docs (lane 15)
+Standing: UNVERIFIED
 
 - **Lane:** 15 · **WO:** `docs/jira/v26.10.14/15-runtime-contracts-docs.md` · **Date:** 2026-10-15
 - **Files edited (only these):** `lib/smalt/runtime_contracts.ex` (moduledoc only), `docs/PACK_INTEGRATION/runtime-contracts.md`

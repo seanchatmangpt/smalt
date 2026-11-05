@@ -1,4 +1,5 @@
 # BK-NENV — N-lane harness vs gated debug faces (SMALT_DEBUG_FACES)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

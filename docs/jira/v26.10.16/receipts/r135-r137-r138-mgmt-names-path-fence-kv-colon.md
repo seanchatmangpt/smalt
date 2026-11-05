@@ -1,4 +1,5 @@
 # Receipt — R135 + R137 + R138 (mgmt entity-name resolution, raw path-segment fence, KV colon-name collision)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

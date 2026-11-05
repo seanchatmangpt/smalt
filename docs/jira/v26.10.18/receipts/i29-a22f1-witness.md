@@ -1,4 +1,5 @@
 # Receipt — i29 audit-A22-F1 witness (multi-data-section batch split heuristic)
+Standing: PASS
 
 Context: pair(lib/smalt/messaging/event_hubs.ex :136 heuristic, test/amqp/event_hubs_test.exs new describe, host)
 

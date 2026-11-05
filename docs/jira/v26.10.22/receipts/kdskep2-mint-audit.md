@@ -1,4 +1,5 @@
 # Receipt: KD-SKEP2 — read-only skeptic audit of the five v26.10.22 KD mints (KD-174..179 family)
+Standing: ALIVE
 
 - **Lane**: KD-SKEP2 (read-only skeptic audit; only this receipt written)
 - **Date**: 2026-10-22

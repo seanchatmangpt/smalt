@@ -1,4 +1,5 @@
 # FIN-19 — WIRE_PARITY row 150 restated (Event Hubs SDK smoke)
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: fin-19 (F-3 fix), repo `/Users/sac/smalt`, no commits

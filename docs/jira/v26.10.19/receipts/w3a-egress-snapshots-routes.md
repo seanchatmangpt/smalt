@@ -1,4 +1,5 @@
 # Receipt — W3A (ERRC wave-3, lane W3A): AppConfig snapshots egress routes (W2N fragment)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (wire-witnessed end to end on an enforce-mode b3 substrate; internal tier has 7 failures, all attributable to other lanes' in-flight files — see Internal tier below)
 - **Repo**: /Users/sac/smalt (canonical checkout, no worktrees)

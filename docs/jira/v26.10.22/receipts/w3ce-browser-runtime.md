@@ -1,4 +1,5 @@
 # Receipt — W3C-E browser-runtime tranche (rows 7-11)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — rows 8/9/10 implemented + gated; rows 7/11 census + typed WO only
 Context: solo

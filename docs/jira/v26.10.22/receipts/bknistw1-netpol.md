@@ -1,4 +1,5 @@
 # Receipt: bknistw1-netpol — NIST W1 (SC-7): NetworkPolicy facts + refusal gate in smalt-k8s-pack
+Standing: ALIVE
 
 **Standing: ALIVE** — NetworkPolicy facts render to deployable manifests, the
 refusal gate refuses a stripped graph, and the full rendered set passes

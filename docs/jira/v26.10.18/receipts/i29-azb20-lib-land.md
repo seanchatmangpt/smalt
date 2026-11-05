@@ -1,4 +1,5 @@
 # i29-azb20-lib-land — azb-20 lib lane adoption
+Standing: ALIVE
 
 - Standing: **ALIVE**
 Context: pair(bench azb-20 census lane → adopt lane `_build-ft-az20h`, 2026-10-19)

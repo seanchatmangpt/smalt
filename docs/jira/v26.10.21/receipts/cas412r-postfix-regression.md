@@ -1,4 +1,5 @@
 # CAS412R — Post-fix regression pass (recycled OTP-29 beam)
+Standing: PASS
 
 Context: pair(regression witness against the shared recycled beam pid 85369 (reused as-is, never restarted))
 **Standing:** PASS

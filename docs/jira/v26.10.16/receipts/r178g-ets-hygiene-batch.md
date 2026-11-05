@@ -1,4 +1,5 @@
 # Receipt — R178g / R189 / R195 (ETS hygiene + test cleanup batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 late docs sweep, lane 267)
 - **Standing:** PASS (R178g, R189, R195)

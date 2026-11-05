@@ -1,4 +1,5 @@
 # fin-22 — Final index + FINAL.md (finish lane)
+Standing: UNVERIFIED
 
 - Repo: /Users/sac/smalt, branch main, landed head `518b31a` (uncommitted doc edits by this lane only).
 - Date: 2026-10-15. Trigger: G-4 receipt `fin-21-final-wrap.md` appeared (poll, ~<1 min into lane start).

@@ -1,4 +1,5 @@
 # BK-25 — KD-92 + KD-93 fix lane receipt
+Standing: ALIVE
 
 **Standing: ALIVE** — both DISPOSITIONED rows witnessed closed on a live substrate;
 KD-92 fix landed (`# KD-COVERS: KD-92`), KD-93 refuted as probe artifact (emulator

@@ -1,4 +1,5 @@
 # AMQP10SK — crash-only router skeptic audit
+Standing: BLOCKED
 
 Context: solo
 

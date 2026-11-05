@@ -1,4 +1,5 @@
 # Receipt — GAP(blob-x-ms-error-code-header-absent) CLOSED (lane 06)
+Standing: CLOSED
 
 - **Status:** CLOSED (landed) — for lane 13 consumption.
 - **Surface:** all blob-plane error responses (`Smalt.EgressRouter`).

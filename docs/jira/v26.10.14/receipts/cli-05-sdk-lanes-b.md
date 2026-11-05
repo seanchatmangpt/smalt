@@ -1,4 +1,5 @@
 # Receipt — CLI-5 SDK test lanes (Gate 1 part B)
+Standing: UNVERIFIED
 
 Owner: CLI-5. Date: 2026-10-15. Branch: main @ 3fc2543 (uncommitted, per no-commit order).
 Files owned/written (all under /Users/sac/smalt/smalt-cli/):

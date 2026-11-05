@@ -1,4 +1,5 @@
 # Receipt — r-kd63: cosmos change feed close (KD-63)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main working tree, lane I4 (lane 523)
 - **Standing:** PASS

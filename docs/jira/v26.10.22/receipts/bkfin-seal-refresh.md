@@ -1,4 +1,5 @@
 # BK-FIN — FINAL-RELEASE seal-refresh (gate table + census to disk truth)
+Standing: ALIVE
 
 **Standing**: ALIVE (doc edit + census receipt; the seal itself remains PENDING-GATE on 4 rows — typed, not smoothed)
 **Context**: solo

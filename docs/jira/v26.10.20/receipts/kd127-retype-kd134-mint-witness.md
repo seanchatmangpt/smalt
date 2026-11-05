@@ -1,4 +1,5 @@
 # W24 (kd-registrar) — KD-127 premise-rot re-type + KD-134 mint receipt
+Standing: ALIVE
 
 **Standing:** ALIVE (register edits verified on disk; kd_flip dry-run exit 0)
 

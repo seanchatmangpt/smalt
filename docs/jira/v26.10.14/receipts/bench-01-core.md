@@ -1,4 +1,5 @@
 # Receipt — bench-01-core (lane B-1, shared bench infra)
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Repo: /Users/sac/smalt @ main (post-518b31a) · No commits (per dispatch).
 

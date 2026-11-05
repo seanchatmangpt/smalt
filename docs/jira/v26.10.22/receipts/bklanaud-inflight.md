@@ -1,4 +1,5 @@
 # BK-LANEAUD — in-flight lane audit (post-BK-8)
+Standing: ALIVE
 
 **Standing:** ALIVE · Context: solo · Date: 2026-10-22 · Repo: /Users/sac/smalt
 

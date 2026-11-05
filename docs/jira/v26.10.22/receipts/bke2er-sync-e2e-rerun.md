@@ -1,4 +1,5 @@
 # BK-E2ER: sync-e2e-court re-run addendum (EXP1-C owed leg)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

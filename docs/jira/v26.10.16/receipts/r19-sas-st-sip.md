@@ -1,4 +1,5 @@
 # Receipt — R19 (SAS st/sip: start-time window + IP-range claims)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PARTIAL_ALIVE

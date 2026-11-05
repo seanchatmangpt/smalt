@@ -1,4 +1,5 @@
 # Receipt — R120 (w3 session-ops pytest port fix + skip rationale rewrite)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PARTIAL_ALIVE

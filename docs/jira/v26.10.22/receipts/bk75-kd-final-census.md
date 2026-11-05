@@ -1,4 +1,5 @@
 # BK-75 — KD Register Final Census (v26.10.22 wrap)
+Standing: PASS
 
 **Standing:** **PASS** — register satisfies the terminal gate. Every row is CLOSED-family or a
 typed Disposition; the only 2 OPEN rows (KD-88, KD-153) each carry owner + falsifier +

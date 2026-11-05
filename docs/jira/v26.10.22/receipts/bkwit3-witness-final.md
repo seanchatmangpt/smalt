@@ -1,4 +1,5 @@
 # BK-WIT3 — post-everything witness-all seal rerun
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (130 green / 337 stale-typed / 25 red, all 25 classified — no silent skips, zero untyped SKIP rows on disk; verdict = the substrate and the v26.10.22 receipt corpus hold, residue is harness-extraction artifacts + in-flight compile races, no real regression found)
 Context: solo

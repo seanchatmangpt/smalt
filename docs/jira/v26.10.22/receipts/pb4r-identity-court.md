@@ -1,4 +1,5 @@
 # PB4-R — PB-4 identity-court repair: replica re-derived against current seal_receipt — ALIVE
+Standing: ALIVE
 
 **Standing:** **ALIVE** — PB-4 harness exits 0, ground-truth court passes, 16 real rows
 emitted to `tmp/bench/pb4-merkle-dual.jsonl` (2 fresh runs this window, both exit 0).

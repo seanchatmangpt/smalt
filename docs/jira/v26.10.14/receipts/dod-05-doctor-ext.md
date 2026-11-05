@@ -1,4 +1,5 @@
 # DoD-5 — fail-closed doctor extension (`doctor-dod`)
+Standing: UNVERIFIED
 
 Lane: DoD-5 · v26.10.14 · Base: 3fc2543 + working tree · 2026-10-15
 

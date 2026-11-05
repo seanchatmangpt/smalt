@@ -1,4 +1,5 @@
 # VAL-CORE — AR-CORE-01..04 validation (validator, v26.10.21)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 

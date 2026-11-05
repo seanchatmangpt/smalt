@@ -1,4 +1,5 @@
 # Receipt — R122 (HEAD/DELETE splat-arm comp default-deny, KD-60)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

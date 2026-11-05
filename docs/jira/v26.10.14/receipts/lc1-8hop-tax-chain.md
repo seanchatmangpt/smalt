@@ -1,4 +1,5 @@
 # LC-1 Receipt — 8-Hop Cloud-Chain Tax Pipeline (lifecycle harness)
+Standing: UNVERIFIED
 
 - **Lane**: LC-1 on `/Users/sac/smalt` (canonical checkout)
 - **Date**: 2026-10-15 (run at 2026-10-16T04:36Z)

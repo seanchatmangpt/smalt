@@ -1,4 +1,5 @@
 # w6af — Event Grid advanced filters (w6af-eg-advanced-filters)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (standalone all-green; full-tree compile + census at integration)
 

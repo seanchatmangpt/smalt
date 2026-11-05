@@ -1,4 +1,5 @@
 # w6v2 — KD-112 flip confirmation
+Standing: ALIVE
 
 **Standing:** ALIVE (confirmation-only; no double-flip)
 

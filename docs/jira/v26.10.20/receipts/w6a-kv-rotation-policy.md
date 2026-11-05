@@ -1,4 +1,5 @@
 # w6a — KV key rotationPolicy face (wave-6)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — module-direct witness ALL FACES OK (real Store, real
 crypto-material key create); wire tier compiles; full-tree compile and internal

@@ -1,4 +1,5 @@
 # r-p04 — Concurrent browser sessions on one substrate (P04, CLM-04)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE**

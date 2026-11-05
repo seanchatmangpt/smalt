@@ -1,4 +1,5 @@
 # W30-T2 Integration Sweep (fresh replacement lane)
+Standing: PARTIAL_ALIVE
 
 Date: 2026-10-21 11:52–12:04 PDT · Lane: w30t2 · Build root: `_build-w30t2`
 **Standing:** **PARTIAL_ALIVE**

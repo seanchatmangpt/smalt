@@ -1,4 +1,5 @@
 # Receipt — R22 (redirect:"error" air-gap + e2e court)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

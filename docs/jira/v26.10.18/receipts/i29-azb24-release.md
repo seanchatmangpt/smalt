@@ -1,4 +1,5 @@
 # I29 — AZB-24 release mint (publish-dry green; court-x2 typed-RED carried)
+Standing: PARTIAL_ALIVE
 
 - **Window**: v26.10.18 / i29
 - **Subject**: AZB-24 release mechanics at the v26.10.18 wrap tree,

@@ -1,4 +1,5 @@
 # R10D — Lane L15 tail sweep B: fence splits, seven files
+Standing: ALIVE
 
 - window: v26.10.29 · status: ALIVE (compile gate + named courts witnessed) · class: decomposition
 - lane: L15 · ownership: 7 tail files + new sibling modules + this receipt

@@ -1,4 +1,5 @@
 # BK-73 — Combined-tree workspace verification
+Standing: ALIVE
 
 **Standing**: ALIVE
 - **Context**: full

@@ -1,4 +1,5 @@
 # Receipt — canonical (Canonical.write riders projection fence)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, HEAD `650a8ff`
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # Receipt: KD-ATON — KD-179 register row minted, sas_verifier inet_aton shorthand-loopback observation registered
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-ATON (registrar; owns the KD-179 row + this receipt only)

@@ -1,4 +1,5 @@
 # i29 — Publish-gate dry run + generated-artifact freshness (post-0009df3)
+Standing: UNVERIFIED
 
 Date: 2026-10-18. Subject: /Users/sac/smalt @ 0009df3 (branch main).
 Scope: read-only dry run + check-form regen checks. No edits, no git.

@@ -1,4 +1,5 @@
 # Receipt: i27 — solo bisect of the v2-soak rotating faces
+Standing: UNVERIFIED
 Context: solo(per-file bisect rows, each file 2x under _build-ft-rot)
 
 Date: 2026-10-18 (~20:55–21:05 PDT) · Tree: working tree, `git rev-parse HEAD` = `014bb7ab0b70df4ef87baeb27ce380e6af468200`

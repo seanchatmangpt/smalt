@@ -1,4 +1,5 @@
 # BK-48 — pinion witness: KD-159 / KD-160 (CAS412-minted rows re-witnessed live)
+Standing: ALIVE
 
 **Standing: ALIVE** — both rows typed **PINION-WITNESSED** in the canonical
 register (`docs/jira/v26.10.14/KNOWN_DIVERGENCES.md`). Each row's pinned face

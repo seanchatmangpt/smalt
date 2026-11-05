@@ -1,4 +1,5 @@
 # kd101-eg-webhook-receiver.md — work-order receipt (ERRC lane C3, 2026-10-20)
+Standing: ALIVE
 
 - **KD row**: KD-101 (Event Grid delivery) — NARROWED
 - **Standing**: ALIVE — receiver surface landed + executed (10/10 tests green,

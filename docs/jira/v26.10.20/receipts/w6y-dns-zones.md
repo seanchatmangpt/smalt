@@ -1,4 +1,5 @@
 # w6y — Azure DNS control-plane face (zones + record sets)
+Standing: ALIVE
 
 **Standing:** ALIVE (module + router dispatch landed; witness ALL FACES OK on
 the post-split tree)

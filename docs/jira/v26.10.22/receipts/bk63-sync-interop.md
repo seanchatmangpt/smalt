@@ -1,4 +1,5 @@
 # BK-63 — End-to-end sync interop witness (client ↔ server, real bytes)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (9/9 legs PASS on a live lane runtime)
 Context: solo

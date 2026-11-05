@@ -1,4 +1,5 @@
 # Receipt: fin-33 — v26.10.15 window planning summary
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Repo: /Users/sac/smalt @ main (518b31a, uncommitted working tree; no commits made)

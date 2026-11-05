@@ -1,4 +1,5 @@
 # X-10: S-Wave Integration Gate Receipt
+Standing: UNVERIFIED
 
 - **Lane**: X-10, /Users/sac/smalt, 2026-10-15 19:37–21:5x PDT
 - **Gate window**: receipts s2/s4 by 19:56; s3 by 20:24; s5 by 20:43; **s1-amqp-shims.md landed at ~21:0x (present at close)**. Aggregate run #1 executed with s1 absent; the amqp_framing court itself ran and passed in run #1, so the gate is judged on the full set.

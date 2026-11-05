@@ -1,4 +1,5 @@
 # KD-67 witness — blob x-ms-version grammar validation
+Standing: PASS
 
 - **Standing:** PASS
 - **Context:** solo

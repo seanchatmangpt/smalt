@@ -1,4 +1,5 @@
 # Receipt: KD-KLV — KD-180 row mint + records.ex KD-COVERS token + KD-174 dual-stamp amendment
+Standing: ALIVE
 
 - **Lane**: KD-KLV (`/Users/sac/smalt`, canonical checkout)
 - **Standing**: ALIVE

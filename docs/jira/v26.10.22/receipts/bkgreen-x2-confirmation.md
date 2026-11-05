@@ -1,4 +1,5 @@
 # BK-GREEN — post-wave full-ladder confirmation (×2)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — every stage green except `mix test`, which carries 5 deterministic reds (4 census + 1 ets_auto; real, typed, correctly-refusing) plus load-bound flakes that pass in isolation. This is NOT the seal's full-green ×2 yet; the one open hop is census/registry re-registration of the 4 newly-landed `test/internal` files.
 **Context:** solo

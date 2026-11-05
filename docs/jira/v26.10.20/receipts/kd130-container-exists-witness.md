@@ -1,4 +1,5 @@
 # KD-130 close: container re-create 409 ContainerAlreadyExists
+Standing: PASS
 
 **Standing: PASS (fix landed; live re-probe on the post-fix boot: create 201, re-create 409 ContainerAlreadyExists, 2026-10-21)
 tier 77/77 (×2); live-wire 409 on the real wire PENDING substrate restart (restart

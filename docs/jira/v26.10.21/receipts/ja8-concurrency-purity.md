@@ -1,4 +1,5 @@
 # JA-8 Concurrency Purity Audit — lib/smalt
+Standing: UNVERIFIED
 
 Repo: `/Users/sac/smalt` · Branch: `main` · Date: 2026-10-21 · Context: solo
 Method: exhaustive grep of `Process.put/get`, `:erlang.put/get`, `persistent_term.put/erase`, `send/!` state-pokes, `Agent.*`, `Application.put_env`, GenServer call-density; read of every hit site. READ-ONLY agent; parent persisted.

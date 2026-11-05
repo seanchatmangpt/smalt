@@ -1,4 +1,5 @@
 # PB-6: Dual-Boundary Settlement Walk (wire vs native, per-step boundary tax)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (single full run, 0 errors on both legs, artifacts on disk)
 

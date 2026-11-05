@@ -1,4 +1,5 @@
 # r234 — spc-bands regeneration from scripts/spc_gate.py (rolling window)
+Standing: PASS
 
 - Date: 2026-10-17
 - Lane: I2 (WO-3)

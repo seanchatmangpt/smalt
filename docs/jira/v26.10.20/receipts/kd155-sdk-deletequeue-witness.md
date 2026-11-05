@@ -1,4 +1,5 @@
 # KD-155 final close witness: SDK deleteQueue on the recycled substrate
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: KD155SDK (bench-runner), repo `/Users/sac/smalt`

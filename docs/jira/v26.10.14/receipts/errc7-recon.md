@@ -1,4 +1,5 @@
 # ERRC-7 (Raise): recon BEAM-level soak — no BEAM-level leak
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Lane**: ERRC lane 7 (Raise)

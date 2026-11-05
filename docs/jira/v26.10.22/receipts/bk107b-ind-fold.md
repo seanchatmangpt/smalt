@@ -1,4 +1,5 @@
 # BK-107b — IND records fold: 6 industry packs + consumers into v26.10.22 milestone
+Standing: ALIVE
 
 **Standing:** **ALIVE** (doc fold; external landing receipts are the pack-lane
 receipts in ggen-marketplace/ggen commits below). Context: solo.

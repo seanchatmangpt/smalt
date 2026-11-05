@@ -1,4 +1,5 @@
 # WS-02 Receipt — Sovereign Hierarchy Navigator
+Standing: UNVERIFIED
 
 - **Lane**: WS-2
 - **Date**: 2026-10-15

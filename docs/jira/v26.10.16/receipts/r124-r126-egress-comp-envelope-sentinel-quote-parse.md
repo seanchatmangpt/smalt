@@ -1,4 +1,5 @@
 # Receipt — R124 + R126 + R136 (egress comp envelopes, sentinel quote-aware parse, header strictness)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

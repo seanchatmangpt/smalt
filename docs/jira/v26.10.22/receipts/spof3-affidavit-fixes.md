@@ -1,4 +1,5 @@
 # SPOF-3.1 / SPOF-3.2 — Affidavit WasmEngine fixes (lane spof3)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — both fixes landed and verified post-fix on the
 real wasm artifact; the SPOF-3.1 "256MiB wedge" premise is CORRECTED (does not

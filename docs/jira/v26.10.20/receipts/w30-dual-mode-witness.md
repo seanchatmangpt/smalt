@@ -1,4 +1,5 @@
 # W30-G — Dual-mode blob witness (testing-9 shape)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — azurite leg 5/5 PASS, smalt leg 4/5 with one typed divergence (delete refused 409 by smalt's WORM-by-default container policy). Same suite file, zero assertion changes between runs.
 

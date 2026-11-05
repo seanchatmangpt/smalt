@@ -1,4 +1,5 @@
 # kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19)
+Standing: UNSUPPORTED
 
 - **KD row**: KD-102 (KV secrets no soft-delete)
 - **Standing**: PASS-EVIDENCED (wire behavior witnessed this session; register row flip is registrar's call)

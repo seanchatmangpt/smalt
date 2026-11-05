@@ -1,4 +1,5 @@
 # Receipt — R15 (gate fixtures + verdict tightening)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PARTIAL_ALIVE — mutation fixtures proven non-vacuous; positive

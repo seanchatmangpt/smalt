@@ -1,4 +1,5 @@
 # GWS-13 — WASM+DuckDB Integration Manifest (milestone-doc)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — manifest document landed; every wave item it
 registers is PENDING-GWS-n (no GWS-1..12 receipt has landed yet, verified

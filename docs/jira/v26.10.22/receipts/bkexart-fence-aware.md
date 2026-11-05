@@ -1,4 +1,5 @@
 # BK-EXART — fence-aware extract_standing (embedded tool output no longer over-matches)
+Standing: ALIVE
 
 **Standing:** ALIVE — bk146r extractor artifact gone (parses ALIVE from its header), suspects stable at 23, receipt_index rc=0, non-vacuity probes witnessed; zero evidence edited, zero parser widening beyond fence skipping.
 

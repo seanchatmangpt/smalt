@@ -1,4 +1,5 @@
 # M16 — Byte-Identity Guard first run (v26.10.31, lane 16)
+Standing: PARTIAL
 
 - **Date**: 2026-10-30
 - **Subject**: `/Users/sac/smalt/scripts/tf_cleanroom.sh`, `/Users/sac/cai/courtroom-platform-az/apps/web` harness suites, `/Users/sac/cai/courtroom-platform-az/infra/environments/dev/platform` TF plan, pinned smalt wire files

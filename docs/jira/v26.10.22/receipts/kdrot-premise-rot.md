@@ -1,4 +1,5 @@
 # KD-ROT: register/doc premise-rot repairs (KD-135, KD-141, smalt-cli KD-49 banner)
+Standing: ALIVE
 
 **Standing:** ALIVE — all three repairs landed and grep-verified on disk; no status flips
 (the register cell statuses are byte-unchanged).

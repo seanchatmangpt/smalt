@@ -1,4 +1,5 @@
 # Receipt: i29-corpus-fresh3 — corpus soak ×3 at HEAD ≥ d1298be
+Standing: UNVERIFIED
 
 - Date: 2026-10-18
 Context: slice(corpus ×3)

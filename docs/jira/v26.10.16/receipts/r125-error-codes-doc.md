@@ -1,4 +1,5 @@
 # Receipt — R125 (error-codes doc drift fence)
+Standing: FAIL
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** FAIL WITNESS (fence works; a new drift is live on the tree)

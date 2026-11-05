@@ -1,4 +1,5 @@
 # Receipt — V261014-13 GAP Register Closure & Tokenization Sweep
+Standing: COMPLETE
 
 - **Lane:** 13 (docs-corpus, register flip gate) · Checkout: /Users/sac/smalt (canonical, main) · 2026-10-15
 - **Status:** COMPLETE (see "Test suite" below for the one standing caveat)

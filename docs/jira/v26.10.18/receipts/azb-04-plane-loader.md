@@ -1,4 +1,5 @@
 # AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT
+Standing: PASS
 
 Context: solo (config probes via mix run -e) + full (mix test, 2633 tests / 4 failures — all foreign, disclosed below)
 

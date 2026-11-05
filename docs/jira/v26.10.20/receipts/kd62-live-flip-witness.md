@@ -1,4 +1,5 @@
 # KD-62 live-flip witness — substrate recycle W17-B (2026-10-20)
+Standing: PASS
 
 - **Standing**: PASS (KD-69 + KD-114 faces) / **FAIL — KD-62 envelope face**
 - **Context**: solo

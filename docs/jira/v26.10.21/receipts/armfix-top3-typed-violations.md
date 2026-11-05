@@ -1,4 +1,5 @@
 # ARMFIX — ARMSTRONG census top-3 typed violations closed (v26.10.21)
+Standing: ALIVE
 
 Context: solo
 

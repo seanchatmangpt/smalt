@@ -1,4 +1,5 @@
 # fin-18: cosmos_test.exs "store restart" final disposition
+Standing: UNVERIFIED
 
 - **Subject**: `/Users/sac/smalt/test/data_plane/cosmos_test.exs` (~line 2039),
   test renamed to

@@ -1,4 +1,5 @@
 # i29 — E2E tier full re-verify post-fixes
+Standing: UNVERIFIED
 
 Date: 2026-10-19
 Context: slice(7 scenarios)

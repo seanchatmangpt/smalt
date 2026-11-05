@@ -1,4 +1,5 @@
 # RG404 — T21 ARM-ramp 404 root cause (v26.10.20)
+Standing: ALIVE
 
 **Standing:** ALIVE (REPRODUCED-AND-ROOT-CAUSED — client-side (KD-157), server store CLEAN).
 Lane: rg404 (writer). Repo: /Users/sac/smalt. Build root `_build-rg404`.

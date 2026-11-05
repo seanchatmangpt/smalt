@@ -1,4 +1,5 @@
 # Receipt — V261014-06 (lane 06, Blob Storage hardening)
+Standing: ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ `main` (working tree, no commits per lane contract)
 - **Standing:** ALIVE (all fences executed and green on the edited tree)

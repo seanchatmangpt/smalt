@@ -1,4 +1,5 @@
 # i29-push-readiness4 — Push-Readiness Audit (read-only)
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-19
 - **Subject**: unpushed range `1eb89df..HEAD` (8b4f74f), 68 commits

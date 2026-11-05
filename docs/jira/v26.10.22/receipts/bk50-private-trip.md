@@ -1,4 +1,5 @@
 # BK-50 — COURT-PRIVATE-TRIP: private-token tripwire gate
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (gate + non-vacuity self-test ALIVE; real-tree scan honest RED — 41 hits listed for triage, no mass-delete per WO)
 Context: solo

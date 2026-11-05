@@ -1,4 +1,5 @@
 # BK-7: compiler warnings cleanup (v26.10.22)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

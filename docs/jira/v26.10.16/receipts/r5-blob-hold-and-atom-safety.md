@@ -1,4 +1,5 @@
 # Receipt — R5 (blob create-under-hold + atom-conversion safety)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

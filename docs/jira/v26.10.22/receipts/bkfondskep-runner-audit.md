@@ -1,4 +1,5 @@
 # BK-FONDSKEP — FOND runner adversarial skeptic audit (EXPL10-R repairs)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE
 - **Context**: solo

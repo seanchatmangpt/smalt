@@ -1,4 +1,5 @@
 # ttv6 TTV-6 — release cold-boot gate re-baseline (ceiling re-type 500 ms → 2,000 ms)
+Standing: UNVERIFIED
 
 Context: solo
 

@@ -1,4 +1,5 @@
 # Receipt — R50 + R54 + R67 + R99 + R111 (egress fences batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

@@ -1,4 +1,5 @@
 # KD-177 — Environment-gated hardware-anchored trust class row (census + mint)
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE (class row registered; members' typed dispositions unchanged)
 **Context**: solo

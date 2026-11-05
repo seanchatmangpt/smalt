@@ -1,4 +1,5 @@
 # BK-30 — KD register coherence census (read-only audit)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (census executed and evidenced; 3 structural defects
 and 1 pointer drift found — no register edits applied, BK lanes mid-flight)

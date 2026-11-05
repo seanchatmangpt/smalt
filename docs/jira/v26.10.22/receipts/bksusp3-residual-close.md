@@ -1,4 +1,5 @@
 # BK-SUSP3 — residual SUSPECT close: bucket-(a) successor dispositions + cost3/cost4
+Standing: SUSPECT
 
 - **Standing**: ALIVE — all 7 dispatched rows dispositioned with on-disk
   evidence; 30 → 23 suspects (exactly the dispatched set, none else moved).

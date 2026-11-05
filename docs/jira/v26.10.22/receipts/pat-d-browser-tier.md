@@ -1,4 +1,5 @@
 # PAT-D — pattern-court browser tier (real headless-Chromium verification)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — browser tier ALIVE (4/4 client-only patterns PASS against the real wasm sieve + journal in real headless Chromium); the court exit remains 1 because the pre-existing static dom-lint rows for P1/P2/P6/P8/P10/P12 still FAIL (PAT-A's selector contract not yet fully landed on page.tsx — pre-existing, not session-introduced).
 Context: solo

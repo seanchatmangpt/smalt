@@ -1,4 +1,5 @@
 # KD-131 CBS put-token close witness (shared substrate, canonical ports)
+Standing: ALIVE
 
 - **Date**: 2026-10-21
 - **Lane**: KD131W (bench-runner)

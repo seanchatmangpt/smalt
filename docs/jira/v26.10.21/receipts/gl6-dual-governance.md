@@ -1,4 +1,5 @@
 # GL-6 — dual governance court (same SHACL law, operational + analytical legs)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (court green 11/11, exit 0, real execution on the pinned
 OTP-29/Elixir 1.20.4-otp-29 toolchain)

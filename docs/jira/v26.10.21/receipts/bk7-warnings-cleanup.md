@@ -1,4 +1,5 @@
 # BK-7: Compiler-Warning Cleanup (smalt-owned)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — zero smalt-owned warnings outside another lane's
 lease; the single remaining `lib/smalt/apim.ex` warning is in a file owned by a

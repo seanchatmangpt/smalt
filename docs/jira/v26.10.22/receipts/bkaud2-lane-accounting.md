@@ -1,4 +1,5 @@
 # BK-AUD2 — full lane accounting for the seal's quiet-tree gate
+Standing: ALIVE
 
 **Standing: ALIVE** — every verdict below re-verified on disk at 2026-10-22
 05:30 PDT: receipts dir listing, owned-file mtimes, `git status` /

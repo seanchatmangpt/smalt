@@ -1,4 +1,5 @@
 # BK-MON3 — monitor face final standing after both fix lanes (read-only reconcile-verify)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — the metrics 500 is gone and the CLI face is repaired and honest end to end (BK-MON-1/-3/-4 all repaired at HEAD), but the accumulator fallback's join predicate is dead code, so the "serve live telemetry-accumulator numbers for store-miss resources" half of the fallback contract is NOT alive (BK-MON3-F1, HIGH, owner EXPL12-B/BK-MON2 lineage).
 

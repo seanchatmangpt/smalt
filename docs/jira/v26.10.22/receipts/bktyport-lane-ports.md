@@ -1,4 +1,5 @@
 # BK-TYPORT — ty/w3 enforce AMQP de-pinned from 38672
+Standing: ALIVE
 
 **Standing: ALIVE** — two enforce groups ran CONCURRENTLY, each green on its
 own lane-private block, with a 2-second `lsof` census of 38672 across the

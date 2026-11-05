@@ -1,4 +1,5 @@
 # i29 static gates pre-gate sweep — 2026-10-19
+Standing: UNVERIFIED
 
 Context: solo
 

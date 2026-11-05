@@ -1,4 +1,5 @@
 # Receipt — V261014-02 (store-lifecycle)
+Standing: COMPLETE
 
 - **Lane:** 02, /Users/sac/smalt @ db2fe05 (uncommitted working tree)
 - **Date:** 2026-10-15

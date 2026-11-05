@@ -1,4 +1,5 @@
 # WS-12 Receipt — Workspace E2E Court + Architecture Landing
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - Lane: WS-12 (workspace, `/Users/sac/smalt/workspace`)

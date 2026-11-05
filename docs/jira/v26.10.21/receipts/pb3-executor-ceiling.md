@@ -1,4 +1,5 @@
 # PB-3 — Executor concurrency ceiling (OTP-29)
+Standing: PASS
 
 Context: solo
 **Standing:** PASS

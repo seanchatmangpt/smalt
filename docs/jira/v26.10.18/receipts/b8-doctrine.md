@@ -1,4 +1,5 @@
 # Receipt: B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing)
+Standing: PARTIAL_ALIVE
 
 Context: pair(test/enclave_doctor_severity_test.exs, test/lro_test.exs)
 

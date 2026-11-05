@@ -1,4 +1,5 @@
 # W25-B — KD-134 close: requester-preference redelivery dispatch
+Standing: ALIVE
 
 **Standing:** ALIVE (fix landed + real-wire falsifier green post-fix)
 BEFORE run witnesses the exact divergence on the same wire)

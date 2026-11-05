@@ -1,4 +1,5 @@
 # Receipt: BK-SKEP adversarial skeptic re-audit of the AMQP10 wire front-end
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE
 **Context**: solo

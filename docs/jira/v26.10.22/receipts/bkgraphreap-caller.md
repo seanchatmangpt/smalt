@@ -1,4 +1,5 @@
 # BK-GRAPHREAP — caller-side reap of `--hang` court doubles
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

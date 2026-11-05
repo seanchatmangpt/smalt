@@ -1,4 +1,5 @@
 # BK-88 — SPOF-3 receipt standing flip PARTIAL_ALIVE → ALIVE
+Standing: PARTIAL_ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

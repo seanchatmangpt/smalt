@@ -1,4 +1,5 @@
 # EXPL-9 — ERRC read-only sweep: `egress_router.ex` + `arm_gateway/router.ex` (dispatch surfaces)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

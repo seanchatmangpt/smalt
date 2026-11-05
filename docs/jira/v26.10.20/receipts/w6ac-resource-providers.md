@@ -1,4 +1,5 @@
 # w6ac — ARM resource-provider faces (list / register / unregister)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (module-direct witness all-green, real output below;
 wire tier rides the staged router patch, applied post-split at w6R

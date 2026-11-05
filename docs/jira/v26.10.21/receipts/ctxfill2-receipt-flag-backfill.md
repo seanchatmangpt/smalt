@@ -1,4 +1,5 @@
 # CTXFILL-2 — v26.10.21 receipt flag close-out
+Standing: PASS
 
 **Standing**: PASS
 - **Context**: solo

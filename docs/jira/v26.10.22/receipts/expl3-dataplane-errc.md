@@ -1,4 +1,5 @@
 # EXPL-3: data_plane + messaging protocol-shape ERRC sweep
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE — findings are code-read-confirmed against
 `lib/smalt/data_plane/*` + `lib/smalt/messaging/*` at main `7dcdd9d`

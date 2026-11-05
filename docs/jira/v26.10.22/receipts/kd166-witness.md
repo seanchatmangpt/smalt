@@ -1,4 +1,5 @@
 # KD-166 Wire Witness — SUBPROTOCOL ECHO ABSENT (FIX NOT LANDED) + KD-168 gate confirmation
+Standing: ALIVE
 
 **Standing:** ALIVE (falsifier executed on the real wire, close condition NOT met — KD-166 fix NOT landed, row stays OPEN; typed, no flip).
 Context: solo

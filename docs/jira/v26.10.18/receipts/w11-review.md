@@ -1,4 +1,5 @@
 # W11 residual review — group 10 (review lane, Context: solo)
+Standing: UNVERIFIED
 
 Context: solo (ocel_test.exs x2) + slice(lock_manager batch) + solo (corpus_test.exs x2)
 

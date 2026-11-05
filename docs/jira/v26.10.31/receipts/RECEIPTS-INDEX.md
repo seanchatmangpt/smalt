@@ -1,4 +1,5 @@
 # RECEIPTS-INDEX — v26.10.31 consolidation lane 3
+Standing: UNVERIFIED
 
 Generated 2026-10-30 by consolidation lane 3. Read-only sweep of
 `docs/jira/posh/v26.10.30/receipts/**` plus the adapters receipts dir

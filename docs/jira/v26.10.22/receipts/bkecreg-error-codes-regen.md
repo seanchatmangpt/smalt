@@ -1,4 +1,5 @@
 # BK-ECREG: docs/ERROR_CODES.md regeneration (BK-149b residual 1)
+Standing: ALIVE
 
 **Standing:** ALIVE
 

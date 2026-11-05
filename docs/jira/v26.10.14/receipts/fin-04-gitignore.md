@@ -1,4 +1,5 @@
 # fin-04: .gitignore underscore-variant build dirs (DoD-6 follow-up)
+Standing: UNVERIFIED
 
 ## Change
 `/Users/sac/smalt/.gitignore` — one line added adjacent to the existing build-dir block:

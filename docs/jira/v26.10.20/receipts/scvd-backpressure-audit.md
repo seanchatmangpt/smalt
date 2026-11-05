@@ -1,4 +1,5 @@
 # SCVD-T8 — Backpressure Audit Receipt (lib/smalt)
+Standing: UNVERIFIED
 
 Date: 2026-10-21. Scope: Task.async_stream / max_concurrency, GenServer call
 timeouts, pools, timeout handling on the load (data-plane) paths.

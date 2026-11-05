@@ -1,4 +1,5 @@
 # CLI-7 Receipt — smalt-cli Daemon Bridge
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Lane**: CLI-7

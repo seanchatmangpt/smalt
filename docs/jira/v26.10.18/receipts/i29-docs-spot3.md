@@ -1,4 +1,5 @@
 # i29 docs spot-audit 3 — azsim-burn + checkpoint5 conventions
+Standing: PASS
 
 - Date: 2026-10-19
 - Subject: /Users/sac/smalt (working tree; read-only audit)

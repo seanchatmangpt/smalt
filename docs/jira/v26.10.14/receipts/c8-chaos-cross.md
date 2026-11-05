@@ -1,4 +1,5 @@
 # Receipt: C-8 cross-product chaos overlay (composite stress)
+Standing: UNVERIFIED
 
 - Date: 2026-10-16 04:07-04:12 PDT (run 2; run 1 at 03:55-04:00)
 - Lane: C-8 (chaos overlay DURING cross-product load), v26.10.14 bench wave

@@ -1,4 +1,5 @@
 # BENCH-5 — In-Process Erlang POWL Pipeline Bench (smalt_fond_powl_runner)
+Standing: ALIVE
 
 Context: solo
 **Standing:** ALIVE

@@ -1,4 +1,5 @@
 # Receipt: BK13 — KD registrar-closure lane (KD-135 / KD-136 / KD-138)
+Standing: ALIVE
 
 - **Date**: 2026-10-21 (lane BK13, build root `_build-bk13`)
 **Standing**: ALIVE

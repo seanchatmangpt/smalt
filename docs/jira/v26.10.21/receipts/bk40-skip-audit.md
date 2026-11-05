@@ -1,4 +1,5 @@
 # BK-40 — SKIP-audit: adversarial re-typing of the 9 TYPED-PERMANENT legs + jsonl SKIP census
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

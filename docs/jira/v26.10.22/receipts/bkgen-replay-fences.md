@@ -1,4 +1,5 @@
 # Receipt: BK-GEN — replay-fence full pass over the generated-artifacts table
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-GEN (`MIX_BUILD_ROOT=_build-bkgen`)

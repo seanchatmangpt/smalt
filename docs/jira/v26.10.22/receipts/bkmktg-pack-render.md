@@ -1,4 +1,5 @@
 # Receipt: bkmktg-pack-render — k8s manifests re-derived through kubernetes-workload-pack
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — facts admitted + gates exercised for real (render exit 0, negative control refused exit nonzero, rendered YAML verified line-by-line against the hand-written reference); the rendered files are NOT the deployable set. Hand-written manifests stay canonical; typed diff below.
 

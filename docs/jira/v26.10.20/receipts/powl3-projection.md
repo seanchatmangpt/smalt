@@ -1,4 +1,5 @@
 # POWL-3 — Smalt.POWL2.Projection (Defs 4.2/4.3/4.7/4.8)
+Standing: UNVERIFIED
 
 Date: 2026-10-21. Lane: POWL-3 (writer). Repo: /Users/sac/smalt.
 Context: pair (concurrent POWL wave; shared compile healed by sibling lanes).

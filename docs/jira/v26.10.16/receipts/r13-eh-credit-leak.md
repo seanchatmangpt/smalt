@@ -1,4 +1,5 @@
 # Receipt — R13 (Event Hubs link-credit over-delivery fix + flip witness)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PARTIAL_ALIVE

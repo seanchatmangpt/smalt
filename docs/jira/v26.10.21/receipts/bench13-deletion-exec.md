@@ -1,4 +1,5 @@
 # Receipt: BENCH-13 deletion exec (PRD-DEL-01)
+Standing: PASS
 
 **Standing**: PASS (typed no-op on file deletions; minimal real dep deletions, verified)
 - **Context**: solo

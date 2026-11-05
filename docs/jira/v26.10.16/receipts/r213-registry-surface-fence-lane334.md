@@ -1,4 +1,5 @@
 # Receipt — R212 (ARM registry surface coverage fence, lane 334)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16)
 - **Standing:** PASS (existing fence green; one registered gap family)

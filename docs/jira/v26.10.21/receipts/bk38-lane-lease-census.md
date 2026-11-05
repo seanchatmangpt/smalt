@@ -1,4 +1,5 @@
 # BK38 — Lane-lease census (report-only)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (census executed, all numbers re-read from disk at 2026-10-21 20:08 PDT)
 - Context: solo

@@ -1,4 +1,5 @@
 # i29 — AMQP wire tier, fresh run (2026-10-18)
+Standing: PARTIAL_ALIVE
 
 - Command: `MIX_BUILD_ROOT=_build-ft-amq mix test --include amqp_wire` (from /Users/sac/smalt, no prior build dir removed)
 Context: solo(mix test --include amqp_wire)

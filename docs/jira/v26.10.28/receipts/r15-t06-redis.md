@@ -1,4 +1,5 @@
 # r15 — T-06 (REVISED): Azure Cache for Redis emulation on Cachex; RESP wire listener DROPPED
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T06-redis-resp2-data-plane.md` · date: 2026-10-29
 - tier: beam (`test/integration/azure_cache_test.exs`)

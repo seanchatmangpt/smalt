@@ -1,4 +1,5 @@
 # Receipt — V261014-08 (lane 08, servicebus census)
+Standing: LANDED
 
 - **Subject**: working tree of /Users/sac/smalt on `main` @ 3fc2543 (uncommitted lane diffs; connection.ex carries lane 04's large in-flight diff plus my 8-line deliver_to_link edit — not separable in `git diff --stat`)
 - **Date**: 2026-10-15

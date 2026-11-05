@@ -1,4 +1,5 @@
 # Receipt — w6bg: Cosmos query-metrics + request-charge parity
+Standing: ALIVE
 
 **Standing: ALIVE** (module tier; strict full-tree compile green, real-output witness)
 

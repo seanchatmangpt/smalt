@@ -1,4 +1,5 @@
 # BK-90 — witness_all scope fix: both receipt windows + asdf-exec class
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

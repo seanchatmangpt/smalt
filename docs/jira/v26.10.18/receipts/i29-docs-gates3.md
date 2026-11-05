@@ -1,4 +1,5 @@
 # i29 docs gates 3 — post-d1298be receipt-index / docs-dod-check / naming-sweep
+Standing: UNVERIFIED
 
 Context: solo(docs gates leg; receipt-index sanctioned regen; no lib/ edits)
 

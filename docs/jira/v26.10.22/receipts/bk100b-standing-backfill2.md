@@ -1,4 +1,5 @@
 # BK-100b — Class C receipt-format backfill #2 (BK-95 witness-all red ledger)
+Standing: PARTIAL_ALIVE
 
 **Standing**: PARTIAL_ALIVE — all 8 Class-C format reds repaired in the receipt
 files; `just witness-all-dry` NO-STANDING 5 → 0, dry-run failed 5 → 0

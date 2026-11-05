@@ -1,4 +1,5 @@
 # i29 — Gates Re-run at Release SHA (AZB23-PREFLIGHT table D refresh)
+Standing: PASS
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `8b7cbcd190af619d171412ce6f007dd49f4b33a4` (branch main, committed 2026-10-18T23:20:28-07:00)

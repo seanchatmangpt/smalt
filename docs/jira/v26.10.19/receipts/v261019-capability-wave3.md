@@ -1,4 +1,5 @@
 # Capability wave 3 — close-out prep (v26.10.19)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-20
 - **Subject**: smalt @ `322cfc7768fffb8480088a3eac1f5000d2723f82` (main; wave-2

@@ -1,4 +1,5 @@
 # EXP1-B — script hygiene repairs (EXPLORE-1 W2, W7, W9, W10)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all four findings repaired with real-run witnesses; the
 fresh-clone falsifier (`rm -rf tmp/witness`) passes 9/9.

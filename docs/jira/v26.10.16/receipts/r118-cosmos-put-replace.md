@@ -1,4 +1,5 @@
 # Receipt — R118 (cosmos doc PUT = replace, not merge)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

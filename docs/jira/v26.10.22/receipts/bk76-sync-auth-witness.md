@@ -1,4 +1,5 @@
 # BK-76 — Sync batch route enforce-mode auth witness (BK-63 deviation 2 closed)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — `/sync/journal/batch` is enforce-lawful on the real wire: tokenless → 401 + KD-15 challenge, STS-minted bearer → 200 `{lastSeq, receiptToken}`, garbage bearer → 401.
 

@@ -1,4 +1,5 @@
 # Receipt — R39 (copilot verb-gate: read-marker semantics over full URL, 8-case court)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS

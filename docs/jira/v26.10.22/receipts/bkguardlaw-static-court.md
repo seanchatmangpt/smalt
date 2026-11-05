@@ -1,4 +1,5 @@
 # BK-GUARDLAW — Static-Law Court for the Workspace Engine Laws
+Standing: ALIVE
 
 **Standing: ALIVE** (court green, non-vacuity witnessed) · **Context: solo**
 

@@ -1,4 +1,5 @@
 # Receipt: bench-06-lro-sdk (B-6)
+Standing: UNVERIFIED
 
 - **Lane**: B-6 — LRO storm through the real Python mgmt SDK (azure-mgmt-resource, track2)
   at the smalt ARM gateway. BEAM-tier sibling: `scripts/stress/lro_storm.py` (not modified).

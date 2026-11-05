@@ -1,4 +1,5 @@
 # r19-diataxis-guide
+Standing: ALIVE
 
 - window: v26.10.29 · lane: DOCS-DIATAXIS (r19) · date: 2026-10-29
 - standing: **ALIVE** — all four Diátaxis quadrants + index authored;

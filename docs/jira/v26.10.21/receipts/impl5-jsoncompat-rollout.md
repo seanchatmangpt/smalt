@@ -1,4 +1,5 @@
 # IMPL-5 — AR-WIRE-01 JsonCompat rollout: native default flip + 3 hot decode sites
+Standing: PARTIAL_ALIVE
 
 Context: pair(AR-WIRE-02 lane live-editing shared files throughout the window (existing pair line normalized to law form))
 

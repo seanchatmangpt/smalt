@@ -1,4 +1,5 @@
 # KD: composed SMOKE_RECEIPT mid-line truncation — diagnosis + fix
+Standing: ALIVE
 
 **Standing:** ALIVE (root cause identified from real reproduction data; fix landed, verified in-browser 3/3)
 

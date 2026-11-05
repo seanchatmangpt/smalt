@@ -1,4 +1,5 @@
 # Checkpoint 9 — typed-RED close-commit prep (census)
+Standing: PASS
 
 Context: solo(/Users/sac/smalt)
 Date: 2026-10-19

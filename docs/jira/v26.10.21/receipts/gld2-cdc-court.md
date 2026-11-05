@@ -1,4 +1,5 @@
 # GLD-2 — CDC Incremental Ingestion Design Court
+Standing: PASS
 
 **Standing:** PASS · Context: solo · Date: 2026-10-21 ·
 OTP 29 (Elixir via asdf shims) · Lane: GLD-2 · Milestone: v26.10.21

@@ -1,4 +1,5 @@
 # Receipt — R185i / R185k (test harness batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 late docs sweep, lane 267)
 - **Standing:** PASS (R185i); PASS (R185k)

@@ -1,4 +1,5 @@
 # KD legacy pre-window triage — live-substrate probes (kd-registrar, 2026-10-21)
+Standing: UNVERIFIED
 
 Substrate: shared substrate pid 6909 (UP during probes; control plane 9443 is
 PLAIN HTTP, TLS twin 9444, data plane 8443 plain HTTP, AMQP 5672).

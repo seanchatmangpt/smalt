@@ -1,4 +1,5 @@
 # AZB-23 Court Rehearsal (cold-start face, current non-quiet tree)
+Standing: UNVERIFIED
 
 - Date: 2026-10-18
 Context: solo (rehearsal only; machine busy with concurrent lanes)

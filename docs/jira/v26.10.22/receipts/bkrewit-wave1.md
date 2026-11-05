@@ -1,4 +1,5 @@
 # BK-REWIT wave 1 — bench/court-class SUSPECT exit-capture re-witnesses
+Standing: SUSPECT
 
 - **Standing**: PARTIAL_ALIVE — 5 of 11 dispatched rows re-witnessed with real
   exit-captured replays; 6 typed SUSPECT-PERMANENT-with-owner (5 heavy bench

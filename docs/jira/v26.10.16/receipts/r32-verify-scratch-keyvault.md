@@ -1,4 +1,5 @@
 # Receipt — R32 (verify-scratch keyvault versioned + release-policy probes)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS (after freeze-clear re-run; first run collided with a

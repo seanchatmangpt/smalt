@@ -1,4 +1,5 @@
 # PB-1 — FOND contingency-loop latency: native POWL2 vs SDK-over-HTTP under injected CAS contention
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — native leg fully executed (contention 0→100%, 0→10 forced
 strong-cyclic retries/settlement, 0 errors); SDK leg executed but its contention

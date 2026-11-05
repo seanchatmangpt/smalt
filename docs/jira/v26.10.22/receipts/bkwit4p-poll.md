@@ -1,4 +1,5 @@
 # BK-WIT4P — BK-WIT4 witness-all liveness poll
+Standing: ALIVE
 
 - **Standing**: ALIVE (PROGRESSING — no relaunch, no reap)
 - **Context**: solo

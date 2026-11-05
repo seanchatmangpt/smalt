@@ -1,4 +1,5 @@
 # BK-SHIMGATE — checkpoint SHIM-COURT gate: `just checkpoint` durable path
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

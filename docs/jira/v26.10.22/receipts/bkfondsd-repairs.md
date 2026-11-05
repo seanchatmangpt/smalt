@@ -1,4 +1,5 @@
 # BK-FONDSD — FONDSKEP repair lane (F1-A + F6-B)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

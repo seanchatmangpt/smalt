@@ -210,7 +210,8 @@ tls-churn:
 # `just bench` before `just court` on a perf-relevant change — a stale-receipt
 # bench-check failure is remediated by `just bench`, never by touching the gate.
 court: doctor test-offline tf-plan-smoke bench-check \
-        mutation-court census invariant-gates naming-sweep verification-gates
+        mutation-court census invariant-gates naming-sweep verification-gates \
+        bin-opt-court aoq-fence
     @echo "[COURT] Full gate passed."
 
 # Compatibility alias for `court` (legacy name). Same courts, same exits.
@@ -318,3 +319,7 @@ import 'justfile.d/59-posh-ops.just'
 import 'justfile.d/60-dod.just'
 # 62-bin-opt — AoQ bin_opt_info gate + shim court (v26.11.5 lane L12r)
 import 'justfile.d/62-bin-opt.just'
+# 63-aoq — AoQ egress fence + court stage (v26.11.5 lane L29)
+import 'justfile.d/63-aoq.just'
+# 64-receipts — Gate 3 receipt-standing lint (v26.11.5 lane L24)
+import 'justfile.d/64-receipts.just'

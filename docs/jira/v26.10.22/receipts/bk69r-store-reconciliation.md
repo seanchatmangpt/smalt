@@ -1,4 +1,5 @@
 # BK-69r — Store decomposition reconciliation receipt
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · Date: 2026-10-21 · Lane: BK-69 relaunch (BK-69r) · Build root: `_build-bk69r` · Toolchain: asdf elixir 1.20.4-otp-29 / erlang 29.1.2 (repo `.tool-versions`)
 

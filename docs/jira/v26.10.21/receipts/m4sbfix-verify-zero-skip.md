@@ -1,4 +1,5 @@
 # M4/SB-FIX verify + e2e zero-skip re-run receipt
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

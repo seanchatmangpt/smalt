@@ -1,4 +1,5 @@
 # Receipt — R121 (kd_flip covers-map dry run)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

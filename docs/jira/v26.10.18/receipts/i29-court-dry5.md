@@ -1,4 +1,5 @@
 # Court-x2 DRY-RUN leg 5 — full `mix test` at HEAD 4ed7ef5
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `4ed7ef5` (HEAD at leg start, meets ≥ 4ed7ef5)

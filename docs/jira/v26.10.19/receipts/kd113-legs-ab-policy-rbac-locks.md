@@ -1,4 +1,5 @@
 # kd113-legs-ab-policy-rbac-locks.md — evidence receipt (ERRC lane c8, 2026-10-19)
+Standing: PASS
 
 - **KD row**: KD-113 legs a+b (RBAC scope generalization + real management locks)
 - **Standing**: PASS (module tier: compile green + live witness + tier regression)

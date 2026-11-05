@@ -1,4 +1,5 @@
 # BK-BMIR3 — tmp/bench mirror wave 3: historical-citation residue closed
+Standing: ALIVE
 
 - **Standing**: ALIVE (all 25 historical-citation jsonls existed in tmp/bench, snapshotted byte-identical, paired sha256 verified; final census 0 untracked of 59)
 - **Context**: solo

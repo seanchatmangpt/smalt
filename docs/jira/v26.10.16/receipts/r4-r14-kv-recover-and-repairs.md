@@ -1,4 +1,5 @@
 # Receipt — R4 + R14 (Key Vault recover/versioned rows + name-shape repairs)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave)
 - **Standing:** PASS

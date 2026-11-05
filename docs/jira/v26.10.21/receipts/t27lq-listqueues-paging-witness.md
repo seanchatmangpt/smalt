@@ -1,4 +1,5 @@
 # T27LQ — listQueues ATOM feed paging fix (KD-155SDK out-of-scope note chase)
+Standing: UNVERIFIED
 
 Context: pair(live-substrate wire repro + real-node-SDK end-to-end witness (existing pair line normalized to law form))
 

@@ -1,4 +1,5 @@
 # Fresh post-shim witnesses — KD-61 / KD-66 / KD-67 / KD-103 (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

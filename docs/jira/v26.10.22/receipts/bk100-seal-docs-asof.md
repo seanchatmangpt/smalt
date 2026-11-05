@@ -1,4 +1,5 @@
 # BK-100 — Seal-docs as-of annotations (BK-85 propagation)
+Standing: PASS
 
 **Standing:** **PASS** — one stale-current site found and annotated; docs-dod exit 0.
 Context: solo

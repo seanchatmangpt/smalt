@@ -1,4 +1,5 @@
 # i29-plane-sup-flake-fix
+Standing: ALIVE
 
 - **Date**: 2026-10-19
 Context: slice(plane_supervision x10)

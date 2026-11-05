@@ -1,4 +1,5 @@
 # Receipt: ERL-3 Kafka/Wormhole/Proposer reference modules + court
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo

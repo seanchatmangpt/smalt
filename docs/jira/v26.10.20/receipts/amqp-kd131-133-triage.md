@@ -1,4 +1,5 @@
 # Receipt: AMQPT lane — KD-131 / KD-132 / KD-133 triage
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: AMQPT (writer), repo `/Users/sac/smalt`

@@ -1,4 +1,5 @@
 # S18-A — In-browser SCVD deep-ramp Threshold Wall witness
+Standing: PARTIAL_ALIVE
 
 - Date: 2026-10-20/21 (session), repo /Users/sac/smalt
 - Subject: `popcorn_demo/lib/popcorn_demo/live_scvd.ex` (new optional `deep/0`,

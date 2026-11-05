@@ -1,4 +1,5 @@
 # kd111-arm-lro-narrow-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+Standing: UNVERIFIED
 
 - **KD row**: KD-111 (ARM LRO narrow)
 - **Standing**: PASS-EVIDENCED (LRO narrowness witnessed on both sides)

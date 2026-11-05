@@ -1,4 +1,5 @@
 # Receipt: BK-MAASKEP — MAA repair adversarial audit
+Standing: ALIVE
 
 - **Lane**: BK-MAASKEP (read-only skeptic audit; only this receipt written)
 - **Date**: 2026-10-22

@@ -1,4 +1,5 @@
 # r14 — T-01: Azure Container Registry control plane + Tasks (FileTaskRunRequest / EncodedTaskRunRequest)
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T01-acr-control-plane-and-tasks.md` · date: 2026-10-29
 - tier: beam (`test/integration/acr_test.exs`) · status: **CODE-COMPLETE (r14), awaiting integration run**

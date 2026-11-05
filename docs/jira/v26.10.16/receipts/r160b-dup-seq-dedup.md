@@ -1,4 +1,5 @@
 # Receipt — R160b (duplicate sequence-number dedup in deferred batches)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PASS

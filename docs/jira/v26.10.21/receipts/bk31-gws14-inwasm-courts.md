@@ -1,4 +1,5 @@
 # BK-31 — GWS-IN-WASM-COURTS closure: in-wasm graphlaw court set on the real wasmi binary
+Standing: PASS
 
 **Standing**: PASS
 - **Context**: solo

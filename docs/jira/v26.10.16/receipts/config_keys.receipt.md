@@ -1,4 +1,5 @@
 # Receipt — config_keys (W1a ConfigKey projection replay fence)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, HEAD `650a8ff`
 - **Standing:** PASS

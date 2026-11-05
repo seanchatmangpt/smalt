@@ -1,4 +1,5 @@
 # BK-QREAD — drain-or-seal readiness census
+Standing: PARTIAL_ALIVE
 
 - **Date**: 2026-10-22 06:40 PDT
 - **Lane**: BK-QREAD, repo /Users/sac/smalt (canonical checkout), read-only except this receipt

@@ -1,4 +1,5 @@
 # BK-11 — KD legacy-row triage receipt
+Standing: PASS
 
 **Standing**: PASS (gate-shaped audit; register gate-ready)
 **Context**: solo

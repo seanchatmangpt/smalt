@@ -1,4 +1,5 @@
 # W-8 Registration Receipt — Audit GAP consolidation into KNOWN_DIVERGENCES
+Standing: UNVERIFIED
 
 Date: 2026-10-15. Lane W-8. Subject: `/Users/sac/smalt` @ main (uncommitted;
 no commits per task instruction).

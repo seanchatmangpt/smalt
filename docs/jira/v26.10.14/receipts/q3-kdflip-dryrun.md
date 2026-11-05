@@ -1,4 +1,5 @@
 # Q-3: kd_flip.py pre-flight dry run (F-3)
+Standing: UNVERIFIED
 
 Lane: Q-3, 2026-10-15. Tool: `scripts/kd_flip.py` (247 lines). Dry run, no
 `--apply`, no commits.

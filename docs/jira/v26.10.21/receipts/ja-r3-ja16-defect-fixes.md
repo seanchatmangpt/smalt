@@ -1,4 +1,5 @@
 # JA-R3: JA-16 Defect Fixes (D1/D2/D3)
+Standing: PASS
 
 **Standing: PASS** — all three JA-16 defects fixed, compile green, targeted suites green, D1 falsifier re-run flat. `Context: solo`
 

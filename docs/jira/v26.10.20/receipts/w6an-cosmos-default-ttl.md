@@ -1,4 +1,5 @@
 # W6AN Receipt — Cosmos defaultTimeToLive
+Standing: ALIVE
 
 **Standing:** **ALIVE** (module tier)
 

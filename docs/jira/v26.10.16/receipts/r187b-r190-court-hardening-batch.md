@@ -1,4 +1,5 @@
 # Receipt — R187b / R190 / R191 / R192 / R199 / R200 (court + harness hardening batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 late docs sweep, lane 267)
 - **Standing:** PASS (R187b, R190, R191, R192, R199, R200, R201) — amended

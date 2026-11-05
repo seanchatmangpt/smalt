@@ -1,4 +1,5 @@
 # BK-FIN4 — FINAL-RELEASE refresh: census re-run, gate-ledger refresh, seal-inputs freshness
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-FIN4

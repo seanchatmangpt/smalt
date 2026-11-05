@@ -1,4 +1,5 @@
 # Q-1 Shadow Verify Receipt (F-6 pre-flight)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Subject SHA**: `518b31a54ccc0829cafb9e04538714e58c287a30` (main HEAD)

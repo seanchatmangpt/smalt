@@ -1,4 +1,5 @@
 # JA-9 — smalt OTP-29 scaling envelope (Joe Armstrong lane)
+Standing: UNVERIFIED
 
 - **Lane**: JA-9, repo `/Users/sac/smalt`, branch `main` @ 7672fce
 - **Date**: 2026-10-21

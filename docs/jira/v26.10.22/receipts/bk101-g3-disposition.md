@@ -1,4 +1,5 @@
 # Receipt: BK-101 — JA-15b G3 disposition (egress containment seam)
+Standing: ALIVE
 
 **Standing**: ALIVE
 **Context**: solo

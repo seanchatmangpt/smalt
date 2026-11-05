@@ -1,4 +1,5 @@
 # W30-P — CI Differential Matrix Sketch (smalt vs Azurite)
+Standing: UNKNOWN
 
 - **Standing: UNKNOWN** (SKETCH — design artifact for a future lane; nothing landed. No workflow
   file, no git commit. Every untested assumption is marked `[UNTESTED-ASSUMPTION]`.

@@ -1,4 +1,5 @@
 # JA-11 Behaviour Definition-of-Done Census — branch `main`
+Standing: UNVERIFIED
 
 Repo: `/Users/sac/smalt` · Date: 2026-10-21 · Context: solo
 

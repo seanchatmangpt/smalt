@@ -1,4 +1,5 @@
 # Receipt: R13 KIND-E2E — courtroom-platform-az on smalt, kind-cluster proof
+Standing: UNVERIFIED
 
 Lane KIND-E2E · 2026-10-29/30 · harness `scripts/courtroom_kind_court.sh` (owned),
 manifests `k8s/courtroom-smalt.yaml`, `k8s/courtroom-api.yaml`,

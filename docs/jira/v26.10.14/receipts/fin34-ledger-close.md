@@ -1,4 +1,5 @@
 # Receipt: fin34 — session knowledge-ledger close
+Standing: UNVERIFIED
 
 - repo: /Users/sac/smalt @ main (518b31a working tree)
 - lane: fin34

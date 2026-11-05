@@ -1,4 +1,5 @@
 # Receipt — b-js-harness (JS/PY harness teardown + readiness polls)
+Standing: ALIVE
 
 - **Batch**: b-js-harness (master plan B7 slice: js-harness.md + gates-python.md)
 - **Lane**: solo

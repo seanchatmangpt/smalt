@@ -1,4 +1,5 @@
 # BK-NREG — n-family (n1-n8) typed disposition register
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE**
 Context: solo

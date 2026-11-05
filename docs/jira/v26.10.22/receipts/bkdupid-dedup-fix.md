@@ -1,4 +1,5 @@
 # BK-DUPID — dup-id false-refusal repair (closes BK-FONDV-1)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

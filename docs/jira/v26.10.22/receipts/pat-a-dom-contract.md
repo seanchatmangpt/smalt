@@ -1,4 +1,5 @@
 # Receipt — PAT-A: semantic DOM contract (patterns 1-6) + reference wiring (13-16, 19-20)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (all contract selectors driven by real engine state; every pure-logic
 claim executed in a real node court; workspace gates exit 0 on the landed tree).

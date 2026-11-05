@@ -1,4 +1,5 @@
 # BK-64 — `_LANES.md` reconciliation v7.2 (lanes fold)
+Standing: ALIVE
 
 **Standing:** ALIVE · Context: solo · Date: 2026-10-21 · Repo: /Users/sac/smalt
 

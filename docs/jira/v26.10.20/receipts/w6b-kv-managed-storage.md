@@ -1,4 +1,5 @@
 # w6b — Key Vault managed storage account faces
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE (module + witness ALIVE; route mount HELD on the
 egress_router.ex compile-limit freeze — faces are module-direct reachable,

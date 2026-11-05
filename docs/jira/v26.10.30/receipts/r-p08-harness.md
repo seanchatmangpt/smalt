@@ -1,4 +1,5 @@
 # r-p08-harness — v26.10.30 milestone gate (P08)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 ·
   subject: smalt working tree + courtroom-platform-az @ 338caed (read-only,

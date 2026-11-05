@@ -1,4 +1,5 @@
 # KD-27 witness — ARM metadata endpoint authority (stale-row disposition)
+Standing: CLOSED
 
 **Standing:** CLOSED (KD-27 row OBSOLETE — row evidence stale, authority is request-derived)
 

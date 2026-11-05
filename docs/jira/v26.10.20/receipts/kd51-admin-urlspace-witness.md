@@ -1,4 +1,5 @@
 # KD-51 — Python SB admin client URL space served over HTTPS (lane W13-E, 2026-10-21)
+Standing: ALIVE
 
 **Standing:** ALIVE (falsifier run; row flip-eligible)
 Context: solo

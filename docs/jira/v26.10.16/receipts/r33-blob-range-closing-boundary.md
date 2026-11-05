@@ -1,4 +1,5 @@
 # Receipt — R33 (blob range closing-boundary fence)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 repair wave W2)
 - **Standing:** PASS (suite-level; see caveat)

@@ -1,4 +1,5 @@
 # BK-STAND6 — Final standing-line sweep (v26.10.22)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (NO-STANDING residue 0; 396-row typed STALE residue remains, owned by witness-all rerunnable-command coverage, not this lane)
 - **Context**: solo

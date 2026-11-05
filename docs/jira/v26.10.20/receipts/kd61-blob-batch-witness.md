@@ -1,4 +1,5 @@
 # KD-61 witness — blob batch (POST comp=batch)
+Standing: PASS
 
 - **Standing:** PASS (with a registered pinion carry-over)
 - **Context:** solo

@@ -1,4 +1,5 @@
 # IMPL-14 — x25519mlkem768 flip + Go-client interop witness
+Standing: UNVERIFIED
 
 Context: solo
 

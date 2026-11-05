@@ -1,4 +1,5 @@
 # BK-BENCHREG — bench REGISTRY reconciliation with SUSPECT-PERMANENT typing
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

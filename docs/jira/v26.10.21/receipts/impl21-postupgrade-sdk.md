@@ -1,4 +1,5 @@
 # IMPL-21 — post-upgrade real-SDK wire courts on the recycled beam
+Standing: PASS
 
 Context: solo
 **Standing:** PASS

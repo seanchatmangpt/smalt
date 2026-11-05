@@ -1,4 +1,5 @@
 # BK-SKIPTYPE — complete SKIP inventory (terminal gate: zero untyped)
+Standing: ALIVE
 
 **Standing:** ALIVE (every SKIP record on disk is typed permanent or carries a dispatched fix; zero untyped rows in the table)
 Context: solo

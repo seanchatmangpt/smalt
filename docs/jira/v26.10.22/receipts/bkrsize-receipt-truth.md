@@ -1,4 +1,5 @@
 # BK-RSIZE — receipt-size ground truth: both figures are real, of different surfaces — ALIVE
+Standing: ALIVE
 
 **Standing**: ALIVE
 Context: solo

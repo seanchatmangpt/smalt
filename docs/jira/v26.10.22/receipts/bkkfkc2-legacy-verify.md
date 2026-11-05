@@ -1,4 +1,5 @@
 # Receipt: BK-KFKC2 — adversarial re-verify of the BK-KFKC legacy-count repair
+Standing: ALIVE
 
 - **Lane**: BK-KFKC2 (`/Users/sac/smalt`, canonical checkout, `_build-kfkc2`)
 - **Standing**: ALIVE

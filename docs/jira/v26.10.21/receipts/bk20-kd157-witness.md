@@ -1,4 +1,5 @@
 # BK-20 — KD-157 Witness: ARM RG DELETE under transport retry
+Standing: ALIVE
 
 **Standing:** ALIVE (close-condition arm a — HTTP/2 twin session stability at c=128 witnessed; retry rate 0.0%)
 

@@ -1,4 +1,5 @@
 # BK-7b warnings sweep — v26.10.22
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-22
 - **Lane**: BK-7b (follow-on to BK-7 warnings pass)

@@ -1,4 +1,5 @@
 # BK-34 — KD Register Structure Repair
+Standing: ALIVE
 
 **Standing**: ALIVE
 **Context**: solo

@@ -1,4 +1,5 @@
 # BK-GWSP — BK-GWSSKEP liveness poll
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE (BK-STAND6: census receipt — embedded output is complete and typed: freeze age 62 min, 0 build-root writes in 25 min, 2 orphaned `--hang` stub beams, 0 gwsskep receipts; lane verdict FROZEN is a lifecycle disposition, not a capability standing; superseded by the GWSSKEP2 relaunch)
 - **Context**: solo

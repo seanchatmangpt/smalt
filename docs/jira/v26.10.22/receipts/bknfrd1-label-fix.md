@@ -1,4 +1,5 @@
 # BK-NFRD1 — PRD §3 NFR-DUR-002 citation fix (BK-NFRV D1 follow-up)
+Standing: ALIVE
 
 **Standing: ALIVE** — `just docs-dod-check` exit 0 after edit. `Context: solo`
 Lane: BK-NFRD1 · Date: 2026-10-22 · Subject: `docs/jira/v26.10.22/PRD.md` (one cell, line 50) · Parent audit: `receipts/bknfrv-nfr-audit.md` DRIFT row D1.

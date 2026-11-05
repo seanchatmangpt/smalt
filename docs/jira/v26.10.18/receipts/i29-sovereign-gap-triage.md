@@ -1,4 +1,5 @@
 # i29 — Sovereign Midnight :sovereign_gap triage (1.3 / 2.2 / 2.3 / 3.1 / 3.2 / 5.3)
+Standing: UNVERIFIED
 
 Standing: PASS-with-caveat — 5/6 pass deterministically; 3.1 flaked 1 in 4 full-tag runs.
 Subject: /Users/sac/smalt @ main 0009df3 (working tree, no lib/ or test/ edits made).

@@ -1,4 +1,5 @@
 # BK-70r Head Repair (relaunch)
+Standing: PARTIAL_ALIVE
 
 **Standing: PARTIAL_ALIVE** — all five BK-70r defect classes fixed with in-context verification;
 terminal full-green sweep NOT sealed: runs 1–7 each raced concurrent-lane churn landing mid-run

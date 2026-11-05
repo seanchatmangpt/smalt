@@ -1,4 +1,5 @@
 # r8 — amqp connection split (T08, lane L08)
+Standing: PARTIAL_ALIVE
 
 - window: v26.10.29 · date: 2026-10-29 · subject: smalt canonical checkout,
   lane L08 build root `_build-l08`

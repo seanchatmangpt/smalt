@@ -1,4 +1,5 @@
 # BK-102 — BK-92-F1 sync e2e harness fix (idb-shim Tx lifecycle + court determinism)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (sync-e2e-court 5/5 consecutive exit 0, 9/9 legs each; ws-lint + ws-build green)
 Context: solo

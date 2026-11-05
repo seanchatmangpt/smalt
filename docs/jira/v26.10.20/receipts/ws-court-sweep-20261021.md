@@ -1,4 +1,5 @@
 # ws-court-sweep-20261021
+Standing: UNVERIFIED
 
 Context: solo · Date: 2026-10-21 · Lane: bench-runner (census only, no fixes)
 

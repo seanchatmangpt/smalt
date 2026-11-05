@@ -1,4 +1,5 @@
 # JA-4: Isolation Audit (no shared mutable state / no NIF contamination) — RE-WITNESSED
+Standing: PASS
 
 Repo: `/Users/sac/smalt` · Branch: `main` · HEAD: `514431b` · Date: 2026-10-21 · Context: solo.
 

@@ -1,4 +1,5 @@
 # kd103-kv-secrets-backup-restore-tbd.md — KD-103 witness (lane, 2026-10-19)
+Standing: UNSUPPORTED
 
 - **KD row**: KD-103 (KV secrets backup/restore refusals)
 - **Standing**: PASS-EVIDENCED (wire behavior witnessed this session; register row flip is registrar's call)

@@ -1,4 +1,5 @@
 # Receipt — R209 (docs/config accuracy batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (lane 294, W11 docs lane)
 - **Standing:** PASS (all three claims verified against disk 2026-10-16)

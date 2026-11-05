@@ -1,4 +1,5 @@
 # BK-53 — FINAL-RELEASE-26.10.22 draft (Gate-3 seal skeleton)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (draft landed; seal PENDING-GATE on 5 rows)
 Context: solo

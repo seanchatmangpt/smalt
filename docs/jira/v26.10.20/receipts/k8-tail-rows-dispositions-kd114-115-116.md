@@ -1,4 +1,5 @@
 # K8 lane receipt — tail-row dispositions (KD-114 / KD-115 / KD-116)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (KD-65 FIXED + falsifier green; 114/115/116 dispositioned, not fixed)
 

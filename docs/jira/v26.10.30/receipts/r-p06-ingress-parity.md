@@ -1,4 +1,5 @@
 # r-p06 — ACA ingress parity: 308 law + proxy trust (P06, CLM-05)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE (6/6 asserts)**

@@ -1,4 +1,5 @@
 # FIN-13 — Composite courts section in SDK_MATRIX.md
+Standing: UNVERIFIED
 
 Subject: `/Users/sac/smalt` @ main (tree `3fc2543` + in-flight v26.10.14 wave).
 No commits made (DoD-only finish lane).

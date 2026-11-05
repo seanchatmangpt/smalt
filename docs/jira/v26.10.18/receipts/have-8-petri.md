@@ -1,4 +1,5 @@
 # HAVE component 8 — RP-04 Petri conformance over OCEL 2.0
+Standing: ALIVE
 
 **Standing**: ALIVE (all three verdict paths executed on real fixtures with real exits)
 Context: solo(scripts/have/petri_conformance.py 3 verdict paths on real fixtures; no mix test invocation)

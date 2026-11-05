@@ -1,4 +1,5 @@
 # W3-12 — popcorn bench recipes (justfile.d/42-popcorn-bench.just)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all three recipes executed for real against the UP
 substrate (exit codes witnessed below); the two bench lanes PASS with their

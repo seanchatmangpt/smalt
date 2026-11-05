@@ -1,4 +1,5 @@
 # Receipt: errc5-pyjwt — ERRC lane 5 (Reduce)
+Standing: ALIVE
 
 - **Date**: 2026-10-15
 - **Subject**: `/Users/sac/smalt/smalt-cli/smalt_cli/gateway/sts.py` — adopt `pyjwt` for HS256 sign/verify, replacing hand-rolled `hmac/hashlib/base64` JWT.

@@ -1,0 +1,12 @@
+{
+  "entries": {
+    "docs/jira/v26.11.5/receipts/l24-receipt-lint.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    }
+  },
+  "generated_by": "scripts/receipt_standing_lint.py",
+  "standing_map_hash": "7f38336fee60c175"
+}

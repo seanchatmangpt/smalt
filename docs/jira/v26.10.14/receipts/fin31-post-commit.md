@@ -1,4 +1,5 @@
 # fin31 — Post-Commit Gate Re-Verification
+Standing: UNVERIFIED
 
 - Date: 2026-10-15
 - HEAD: `518b31a54ccc0829cafb9e04538714e58c287a30` (main)

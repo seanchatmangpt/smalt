@@ -1,4 +1,5 @@
 # BK-56 — Actual-response `Access-Control-Allow-Origin` (BK-15b single typed lib residual)
+Standing: ALIVE
 
 **Standing:** ALIVE
 `Context: solo`

@@ -1,4 +1,5 @@
 # BK-KFKCW — merged kafka_exp4 census + merged-file verification
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

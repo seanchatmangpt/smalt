@@ -1,4 +1,5 @@
 # AMQP10SK-r — crash-only AMQP 1.0 router skeptic audit (re-dispatch)
+Standing: PARTIAL_ALIVE
 
 Date: 2026-10-21 · Lane: AMQP10SK-r · Repo: /Users/sac/smalt
 **Standing:** **PARTIAL_ALIVE — 2 claim defects typed ALIVE, 1 UNOBSERVABLE, 2 PASS**

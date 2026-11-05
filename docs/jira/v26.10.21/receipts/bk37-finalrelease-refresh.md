@@ -1,4 +1,5 @@
 # BK-37 — FINAL-RELEASE.md open-residual refresh (register-census alignment)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 Context: solo · Date: 2026-10-22 · Repo: /Users/sac/smalt · Lane: BK-37

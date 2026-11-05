@@ -1,4 +1,5 @@
 # I6 — AMQP surface verify-only receipt
+Standing: UNVERIFIED
 
 - Date: 2026-10-17T21:47:03Z
 - Lane: I6 of `docs/jira/v26.10.17/_LANES.md`

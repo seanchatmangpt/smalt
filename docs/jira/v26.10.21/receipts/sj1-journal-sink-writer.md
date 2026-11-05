@@ -1,4 +1,5 @@
 # SJ-1 — Journal Sink Writer (PROD-1)
+Standing: ALIVE
 
 Milestone: v26.10.21 · Lane: SJ-1 · Milestone: v26.10.21
 Toolchain: Elixir 1.20.4-otp-29 / Erlang OTP 29.1.2 (erts 17.1.1), `MIX_BUILD_ROOT=_build-sj1`

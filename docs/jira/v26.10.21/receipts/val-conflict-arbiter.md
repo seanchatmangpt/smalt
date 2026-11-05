@@ -1,4 +1,5 @@
 # VAL Conflict Arbiter — AR-CORE-01 / AR-OBS-01 (v26.10.21)
+Standing: PASS
 
 Context: solo
 

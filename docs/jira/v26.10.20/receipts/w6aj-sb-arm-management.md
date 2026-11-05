@@ -1,4 +1,5 @@
 # w6aj — Service Bus ARM management face (queues/topics)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 

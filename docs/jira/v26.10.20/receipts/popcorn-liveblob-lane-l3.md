@@ -1,4 +1,5 @@
 # Receipt — popcorn_demo LiveBlob (lane L3)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (host-side, real HTTP against the live substrate;
 browser leg gated, see cross-origin verdict)

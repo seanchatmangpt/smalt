@@ -1,4 +1,5 @@
 # i29 AZB-24 Version Bump (26.10.18)
+Standing: UNVERIFIED
 
 Date: 2026-10-19
 Context: solo(/Users/sac/smalt)

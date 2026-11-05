@@ -1,4 +1,5 @@
 # w5k — certificates create-LRO pending face (wf4 fix)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

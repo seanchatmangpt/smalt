@@ -1,4 +1,5 @@
 # IMPL-8 — AR-SEC-01 `config :smalt, :tls_versions` seam + AR-SEC-02 dual-cert court
+Standing: ALIVE
 
 Context: pair(built on CERTS2 in-flight AR-SEC-02 diff on shared lib/smalt/tls.ex (read from disk, built on, disclosed))
 

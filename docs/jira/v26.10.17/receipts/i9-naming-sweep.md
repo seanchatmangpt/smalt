@@ -1,4 +1,5 @@
 # I9 — Naming Sweep Receipt
+Standing: PASS
 
 - Lane: I9 (`docs/jira/v26.10.17/_LANES.md`)
 - Date: 2026-10-17

@@ -1,4 +1,5 @@
 # BK-WIT4F — witness-all scope pinned by name (BK-WIT4-1 repair)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

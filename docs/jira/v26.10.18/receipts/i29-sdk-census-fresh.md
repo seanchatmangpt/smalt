@@ -1,4 +1,5 @@
 # Receipt: i29 SDK census fresh attempt (SUBSTRATE_DOWN → offline tier)
+Standing: SUSPECT
 
 - Date: 2026-10-18
 Context: solo(ports 9443/8443/5672 held by colima ssh mux pid 61023, not a smalt beam; multiple concurrent mix test beams on the machine; offline tier run under load)

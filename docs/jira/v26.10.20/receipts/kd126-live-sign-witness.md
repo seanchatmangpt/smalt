@@ -1,4 +1,5 @@
 # KD-126 live sign witness — W13-C (2026-10-20)
+Standing: PASS
 
 **Standing:** PASS (fix landed, EC sign/verify live-witnessed; ES384/32B now typed 400 InvalidParameter, was 500)
 

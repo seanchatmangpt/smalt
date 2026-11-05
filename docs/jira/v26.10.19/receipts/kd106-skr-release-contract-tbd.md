@@ -1,4 +1,5 @@
 # kd106-skr-release-contract-tbd.md — KD-106 witness (lane, 2026-10-19)
+Standing: OPEN
 
 - **KD row**: KD-106 (SKR release contract)
 - **Standing**: PASS-EVIDENCED (wire behavior witnessed this session; register row flip is registrar's call)

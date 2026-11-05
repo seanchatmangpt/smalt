@@ -1,4 +1,5 @@
 # B-PERF — APEX-2 intake throughput: profile + harness parallelization
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — gap closed 2.2x on the smalt leg
 (1301.76ms → **600.74ms** canonical, min-of-runs 595.33ms); PRD ≤500ms remains

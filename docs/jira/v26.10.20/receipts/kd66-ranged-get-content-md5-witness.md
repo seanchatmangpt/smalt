@@ -1,4 +1,5 @@
 # KD-66 witness — blob ranged-GET Content-MD5
+Standing: PASS
 
 - **Standing:** PASS
 - **Context:** live substrate wire, solo lane

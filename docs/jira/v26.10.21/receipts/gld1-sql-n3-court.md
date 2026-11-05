@@ -1,4 +1,5 @@
 # GLD-1 — SQL-Ingestion + N3 Business-Rule Court (SQLD-2 projection)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo · Date: 2026-10-21 · runtime reports Elixir 1.19.5 / OTP 29 (stack frames: `(elixir 1.19.5)`, `stdlib 7.2`)

@@ -1,4 +1,5 @@
 # BK-BLD — workspace prod build rebuild + n2 re-witness
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE**
 Context: solo

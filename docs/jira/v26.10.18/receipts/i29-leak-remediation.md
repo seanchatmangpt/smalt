@@ -1,4 +1,5 @@
 # i29-leak-remediation — test-isolation leak court remediation (slice)
+Standing: UNVERIFIED
 
 Context: slice(leak-court remediation)
 Date: 2026-10-18

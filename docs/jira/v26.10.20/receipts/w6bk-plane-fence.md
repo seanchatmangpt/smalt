@@ -1,4 +1,5 @@
 # w6bk — plane-fence fix (file/table plane shadowing of reserved namespaces)
+Standing: ALIVE
 
 **Standing:** ALIVE (module + wire tiers)
 Context: solo

@@ -1,4 +1,5 @@
 # SCVD-T23 — Serial latency floor profile (cosmos point-read / blob GET / KV GET)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (measured-only profile; no fence, no pass/fail).
 

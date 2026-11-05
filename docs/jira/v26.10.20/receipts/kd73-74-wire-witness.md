@@ -1,4 +1,5 @@
 # KD-73 / KD-74 wire witness — get-message-sessions + batch-delete-messages
+Standing: PARTIAL_ALIVE
 
 - **Standing: PARTIAL_ALIVE** — both KD ops witnessed PASS on the real wire
   (8/8 probe verdicts), with two named typed partials disclosed (below).

@@ -1,4 +1,5 @@
 # Receipt: BK-DRAIN — drain monitor (post BK-QREAD NOT-READY)
+Standing: ALIVE
 
 - **Lane**: BK-DRAIN (`/Users/sac/smalt`, canonical checkout)
 - **Standing**: ALIVE (monitor observation; census below is disk-read, not inferred)

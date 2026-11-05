@@ -1,4 +1,5 @@
 # EXPL-8 — MCP surface + sync/receipt/attestation ERRC sweep (read-only)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE (explore lane)** — read-only sweep; findings are observations
 against the working tree, no code edits. All probe commands embedded with real output.

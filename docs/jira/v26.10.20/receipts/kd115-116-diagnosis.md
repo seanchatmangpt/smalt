@@ -1,4 +1,5 @@
 # Receipt — KD-115/KD-116 diagnosis + KD-115 surgical fix
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — KD-115 root cause witnessed, surgical fix
 landed, non-vacuity court flipped the fix (post-fix 3/3, revert-shim 0/3,

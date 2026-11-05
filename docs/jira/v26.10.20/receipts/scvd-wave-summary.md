@@ -1,4 +1,5 @@
 # SCVD Wave Summary (SCVD-T15)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — compiled from disk evidence only; every claim
 below is re-read from the named jsonl/receipt at compile time. Lanes

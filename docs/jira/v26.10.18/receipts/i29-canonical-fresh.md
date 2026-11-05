@@ -1,4 +1,5 @@
 # i29 — Canonical projection regen-verify (capabilities.json + THIRD_PARTY.md)
+Standing: PASS
 
 - **Standing**: PASS (byte-fresh)
 Context: solo (residual verify lane; no other lane writes these two files)

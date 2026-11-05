@@ -1,4 +1,5 @@
 # i21 — ETS race fix verification hammer (bench-runner lane)
+Standing: ALIVE
 
 **Standing**: ALIVE — 5/5 pair runs green, trio green, zero failures across all runs.
 

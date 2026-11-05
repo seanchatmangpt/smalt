@@ -1,4 +1,5 @@
 # fin-20-cleanup — lane doctor-dod session-residue cleanup
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Lane: fin-20 · Repo: /Users/sac/smalt (no commits by this lane)
 

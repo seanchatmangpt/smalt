@@ -1,4 +1,5 @@
 # KD-SKEP — adversarial register-integrity audit (canonical + window KD registers)
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** — zero fatal integrity violations on the checked set; 2 MED + 2 LOW-MED typed findings (below).
 Context: solo

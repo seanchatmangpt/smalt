@@ -1,4 +1,5 @@
 # kd106-skr-envelope-raise.md — KD-106 RAISE lane (c14, 2026-10-19)
+Standing: UNVERIFIED
 
 - **KD row**: KD-106 (SKR release contract)
 - **Standing**: PASS-EVIDENCED (envelope raise witnessed live; register flip is registrar's call)

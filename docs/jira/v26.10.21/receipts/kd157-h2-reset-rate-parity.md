@@ -1,4 +1,5 @@
 # KD-157: HTTP/2 twin session instability — root cause + bounded fix
+Standing: UNVERIFIED
 
 **Standing:** **ROOT-CAUSED — fix landed, live-substrate witness pending restart** (lane law: never restart).
 

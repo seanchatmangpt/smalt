@@ -1,4 +1,5 @@
 # BK-STANDALONE — console standalone output (WI-3, BK-TOPO cell 2b)
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

@@ -1,4 +1,5 @@
 # WS-03 — Multi-Mode Resource Inspector
+Standing: LANDED
 
 Lane: WS-3 · Repo: /Users/sac/smalt · Date: 2026-10-15 · Status: LANDED
 

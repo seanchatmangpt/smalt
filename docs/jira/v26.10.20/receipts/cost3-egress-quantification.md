@@ -1,4 +1,5 @@
 # COST-3 receipt — egress displacement quantification
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE · Lane: COST-3 (research/value) · Date: 2026-10-21 · Region: eastus · Currency: USD
 Notes: standing was COMPUTED-FROM-PUBLISHED-RATES — a provenance note, not a standing. Rate-card fetch and meter curation are witnessed real fetches; dollar projections are computed from published Azure rates plus measured rehearsal volumes; the 500 GB fleet legs are labeled SCENARIO assumptions, not repo measurements.

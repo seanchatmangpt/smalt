@@ -1,4 +1,5 @@
 # r11 — T-12: Chaos engineering — AMQP link/credit/session injectors
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T12-amqp-chaos-injectors.md` · date: 2026-10-29
 - tier: beam (`test/integration/chaos_injectors_test.exs`) · status: **CODE-COMPLETE (2026-10-29): r11, awaiting integration run**

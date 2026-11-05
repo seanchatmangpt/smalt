@@ -1,4 +1,5 @@
 # POWL-10 — Five-Gate End-to-End DFLSS Court (POWL2 Wave)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: POWL-10 (writer)

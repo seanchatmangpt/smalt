@@ -1,4 +1,5 @@
 # BK-P20 — Frozen Console static-export disposition
+Standing: UNSUPPORTED
 
 **Standing:** UNSUPPORTED (static export) — the static-export claim is falsified by build failure; the served console (COOP/COEP) is the witnessed, landed truth.
 Context: solo

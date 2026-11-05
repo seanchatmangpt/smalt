@@ -1,4 +1,5 @@
 # CTXFILL — v26.10.21 receipt flag backfill (NO-CONTEXT + SUSPECT)
+Standing: SUSPECT
 
 Context: solo (doc-only backfill lane; fresh replay commands run per SUSPECT receipt)
 **Standing:** PASS

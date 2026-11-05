@@ -1,4 +1,5 @@
 # BK-MON2 — monitor metrics + ocel-tail repair (BK-MON findings closed)
+Standing: ALIVE
 
 **Standing:** ALIVE — BK-MON-2 (substrate 500) and BK-MON-3/4 (CLI ocel-tail
 faces) repaired and witnessed against real collaborators; BK-MON-1 api-version

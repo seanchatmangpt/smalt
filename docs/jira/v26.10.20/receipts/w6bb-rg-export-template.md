@@ -1,4 +1,5 @@
 # Receipt: w6bb — ARM Export Template face
+Standing: ALIVE
 
 **Standing:** ALIVE (module tier; wire mount deferred to the post-split integration window)
 Context: solo

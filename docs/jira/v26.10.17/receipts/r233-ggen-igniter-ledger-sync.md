@@ -1,4 +1,5 @@
 # r233 — ggen_igniter manifest + 2026-10-17 receipt ledger sync (W2b)
+Standing: PARTIAL_ALIVE
 
 - Date: 2026-10-17
 - Lane: I2 (WO-3)

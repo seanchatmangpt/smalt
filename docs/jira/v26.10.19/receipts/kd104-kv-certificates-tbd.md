@@ -1,4 +1,5 @@
 # kd104-kv-certificates-tbd.md — KD-104 witness (lane, 2026-10-19)
+Standing: UNSUPPORTED
 
 - **KD row**: KD-104 (KV certificates absent)
 - **Standing**: PASS-EVIDENCED (wire behavior witnessed this session; register row flip is registrar's call)

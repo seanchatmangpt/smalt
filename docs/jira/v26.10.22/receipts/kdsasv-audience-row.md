@@ -1,4 +1,5 @@
 # Receipt: KD-SASV — SAS verifier `sb:` audience wildcard registered as KD-172
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-22
 - **Lane**: KD-SASV (EXPL-6 F4, registrar-only)

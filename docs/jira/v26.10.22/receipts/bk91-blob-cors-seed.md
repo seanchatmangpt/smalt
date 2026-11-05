@@ -1,4 +1,5 @@
 # BK-91 — blob `<Cors>` seed: repeatable browser blob leg (BK-89 retry)
+Standing: ALIVE
 
 **Standing**: ALIVE
 **Context**: solo

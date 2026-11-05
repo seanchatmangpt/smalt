@@ -1,4 +1,5 @@
 # Receipt: JA-10 — Joe Armstrong transparency court (OTP-29 lane)
+Standing: ALIVE
 
 Context: solo
 

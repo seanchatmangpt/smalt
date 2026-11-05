@@ -1,4 +1,5 @@
 # Receipt: JA-15b — non-egress gap adoption (G1, G4, G5)
+Standing: PASS
 
 Context: solo
 

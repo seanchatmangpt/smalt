@@ -1,4 +1,5 @@
 # Court-x2 wrap runs 8–9 — RED
+Standing: RED
 
 - Standing: **RED — gate FAIL, no two-green** (terminal verdict from run 9, the newest completed invocation)
 - Lane: FINISH court tail (lane 1), 2026-10-16

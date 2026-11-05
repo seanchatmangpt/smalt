@@ -1,4 +1,5 @@
 # KD-MIRROR — window rows KD-169/171/173 mirrored into canonical register
+Standing: ALIVE
 
 **Standing:** ALIVE (rows mirrored, gates green)
 Context: solo

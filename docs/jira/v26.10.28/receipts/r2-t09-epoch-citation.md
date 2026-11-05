@@ -1,4 +1,5 @@
 # r2 — T-09: Event Hub consumer-group epoch enforcement is SHIPPED (citation receipt)
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T09-eventhub-epoch-enforcement.md` · date: 2026-10-28
 

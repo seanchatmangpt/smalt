@@ -1,4 +1,5 @@
 # KD-65 witness — Cosmos script resources + trigger-header fence (lane K8)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (fix landed, falsifier green on real engine+store)
 

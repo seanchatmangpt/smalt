@@ -49,6 +49,10 @@ defmodule Smalt.Aoq.Worker do
       :erlang.spawn_opt(
         fn -> loop(index) end,
         [
+          # :link binds the worker to its pool supervisor at spawn (LANE-11:
+          # without it a killed worker is never restarted — spawn_opt/2 does
+          # not link by default, unlike spawn_link).
+          :link,
           {:message_queue_data, :off_heap},
           {:max_heap_size, %{size: @max_heap_words, kill: true, error_logger: true}}
         ]

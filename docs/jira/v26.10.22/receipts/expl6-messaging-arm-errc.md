@@ -1,4 +1,5 @@
 # EXPL-6 — ERRC read-only sweep: `messaging/amqp/` (v1 front-end), `storage/`, `arm_gateway/` (non-router)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

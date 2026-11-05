@@ -1,4 +1,5 @@
 # Court-x2 wrap runs 29–30 — RED (shifting-failure, terminal)
+Standing: RED
 
 - Standing: **RED — gate FAIL, no two-green** (run 30 `COURT_X2_RC=1`; run 29 no verdict)
 - Lane: Terminal FINAL updater, 2026-10-17 (runs 01:46–02:17)

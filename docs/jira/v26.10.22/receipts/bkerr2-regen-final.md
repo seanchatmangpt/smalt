@@ -1,4 +1,5 @@
 # BK-ERR2 — ERROR_CODES.md projection regen (final)
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22 · Lane BK-ERR2, repo /Users/sac/smalt (canonical checkout, MIX_BUILD_ROOT=_build-bkerr2)
 

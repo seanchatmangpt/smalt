@@ -1,4 +1,5 @@
 # EXPL9-REG — KD-175 mint (egress read_body naked-500 divergence) + KD-174 mis-mint retoken
+Standing: ALIVE
 
 **Standing:** ALIVE
 Context: solo

@@ -1,4 +1,5 @@
 # i29 AMQP wire pre-gate — 2 full legs at current HEAD (build root _build-ft-w8)
+Standing: UNVERIFIED
 
 Command: `MIX_BUILD_ROOT=_build-ft-w8 mix test --include amqp_wire` (run twice, full logs `/tmp/w8_run1.log`, `/tmp/w8_run2.log`)
 Context: slice(amqp_wire ×2)

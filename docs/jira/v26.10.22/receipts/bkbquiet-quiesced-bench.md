@@ -1,4 +1,5 @@
 # BK-BQUIET — quiesced-machine bench re-measure attempt (5 SUSPECT-PERMANENT rows)
+Standing: PARTIAL_ALIVE
 
 - **Standing**: PARTIAL_ALIVE — 4 of 5 rows re-measured PASS (load-typed), 1 FAIL typed louder
 - **Context**: solo

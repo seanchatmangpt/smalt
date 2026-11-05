@@ -1,4 +1,5 @@
 # BK-FMT — standing-line normalization sweep (v26.10.20–22 receipts)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 **Context:** solo

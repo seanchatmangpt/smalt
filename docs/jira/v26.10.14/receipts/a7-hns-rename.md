@@ -1,4 +1,5 @@
 # A-7: HNS Massive Recursive Rename (ADLS Gen2 parity probe)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-15
 - **Lane**: A-7 (adversarial cross-product bench)

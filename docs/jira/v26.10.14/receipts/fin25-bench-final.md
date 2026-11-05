@@ -1,4 +1,5 @@
 # Receipt: fin25-bench-final
+Standing: UNVERIFIED
 
 - **Lane**: FIN-25 (final benchmark consolidation)
 - **Date**: 2026-10-16

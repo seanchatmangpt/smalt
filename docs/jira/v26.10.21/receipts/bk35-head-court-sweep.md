@@ -1,4 +1,5 @@
 # BK-35 HEAD-Court Sweep — v26.10.21
+Standing: SUSPECT
 
 - **Date**: 2026-10-21 19:58–21:30 PDT
 **Standing**: **SUSPECT** — the terminal-gate clause ("last recorded court run PASS on CURRENT HEAD") is **NOT satisfied**. No gate went fully green on a stable subject; the shared tree was under continuous sibling-lane mutation throughout the window.

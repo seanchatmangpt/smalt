@@ -1,4 +1,5 @@
 # Receipt — V261014-12 Gate Closure (lane 12)
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Lane 12 of the v26.10.14 20-lane fan-out · Checkout: /Users/sac/smalt @ db2fe05 (main)
 

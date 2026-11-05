@@ -1,4 +1,5 @@
 # BK-WRAP2 — post-surge receipt-index regen + gate pass (quiet-tree read)
+Standing: ALIVE
 
 - **Standing**: ALIVE — all four steps executed with embedded real output; regen committed.
 - **Context**: solo

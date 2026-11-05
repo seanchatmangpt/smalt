@@ -1,4 +1,5 @@
 # Receipt: i29 shim-court repair (2026-10-18)
+Standing: PASS
 
 - Standing: PASS (12/12 repaired courts flip; 3/3 controls green)
 Context: slice(12 courts + 3 control)

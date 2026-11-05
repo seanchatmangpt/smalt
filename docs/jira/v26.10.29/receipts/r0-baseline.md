@@ -1,4 +1,5 @@
 # r0 — Baseline validation (pre-implementation)
+Standing: PARTIAL_ALIVE
 
 - window: v26.10.29 · date: 2026-10-29 · subject: smalt @ 35bd36d0 (dirty:
   graphlaw admission_gate.ex + namespace_put_test.exs + 2 untracked test

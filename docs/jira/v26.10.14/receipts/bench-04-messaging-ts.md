@@ -1,4 +1,5 @@
 # Bench lane B-4 — Messaging throughput, real TS SDKs over AMQP
+Standing: UNVERIFIED
 
 Date: 2026-10-15/16. Repo `/Users/sac/smalt` (v26.10.14, branch `main`, HEAD
 `518b31a54ccc0829cafb9e04538714e58c287a30` — **dirty tree**: sibling bench/CBD

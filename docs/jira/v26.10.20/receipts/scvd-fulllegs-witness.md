@@ -1,4 +1,5 @@
 # W15-A — scvd-fulllegs-witness (in-browser composed receipt, full leg sync)
+Standing: PASS
 
 Date: 2026-10-21 · Lane: W15-A (writer+witness) · Repo: /Users/sac/smalt
 **Standing:** **PASS** (0 FAIL across 3 consecutive browser runs)

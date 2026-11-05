@@ -1,4 +1,5 @@
 # ATH-2 — Next.js browser client (graphlaw guard + journal + batch sync)
+Standing: ALIVE
 
 **Standing:** **ALIVE (browser surface); sync server leg PARTIAL_ALIVE — endpoint pending ATH-1**
 Context: solo

@@ -1,4 +1,5 @@
 # ECOURT wire fence — ECOURT-F finisher receipt
+Standing: PASS
 
 **Standing: PASS (all four legs) with loud SKIP on `apim:429-401-gateway` (route family default-off — 429/401 sub-leg not wire-witnessable on this substrate boot)**
 

@@ -1,4 +1,5 @@
 # Receipt: s8-wave-telemetry
+Standing: UNVERIFIED
 
 - **lane**: S-8 (v26.10.15 idea lane)
 - **work order**: wave-level wall-clock instrumentation (land idea)

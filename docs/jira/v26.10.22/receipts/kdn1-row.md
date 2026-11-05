@@ -1,4 +1,5 @@
 # KD-N1 — KD-178 register row: WebPubSub broker-restart silent wipe
+Standing: ALIVE
 
 **Standing:** ALIVE
 **Context:** solo

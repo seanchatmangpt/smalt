@@ -1,4 +1,5 @@
 # r200h — KD-76 pk-routing witness REPAIR (lane 297)
+Standing: PASS
 
 **Standing: PASS (witness re-fired green post-fix; register NOT flipped —
 next registrar pass flips on postdate witness per lane contract)**

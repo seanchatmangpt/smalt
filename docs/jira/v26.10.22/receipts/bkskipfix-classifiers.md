@@ -1,4 +1,5 @@
 # BK-SKIPFIX — appconfig/rg leg substrate-down classifiers (BK-TESTBED-F1 close)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (both ways executed on real runs; DOWN via shim-court on a
 pinned dead port, restore byte-exact; substrate never bounced — other lanes

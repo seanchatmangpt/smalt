@@ -1,4 +1,5 @@
 # APEX-4 — "tollbooth vs silicon" rate-limit falsifier
+Standing: ALIVE
 
 **Standing:** **ALIVE** — both arms executed on real BEAM concurrency, zero errors,
 Chicago bucket check PASS, deterministic-seed reproducibility witnessed (2 runs,

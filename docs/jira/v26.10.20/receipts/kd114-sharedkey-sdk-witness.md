@@ -1,4 +1,5 @@
 # KD-114 — real-SDK blob falsifier witness (S17-A)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE — flip-eligible core falsifier witnessed via the real
 official SDK; SharedKey/SAS admit legs refused (typed), so the row cannot flip

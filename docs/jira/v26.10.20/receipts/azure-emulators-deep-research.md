@@ -1,3 +1,4 @@
+Standing: UNVERIFIED
 {
   "summary": "Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.",
   "agentCount": 100,

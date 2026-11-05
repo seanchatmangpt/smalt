@@ -1,4 +1,5 @@
 # JSONSAX — stream/3 discard-style SAX helper on Smalt.JsonCompat
+Standing: UNVERIFIED
 
 Context: solo
 

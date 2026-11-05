@@ -1,4 +1,5 @@
 # KD-69 fresh live witness — idle-eviction delivered (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

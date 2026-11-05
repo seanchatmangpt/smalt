@@ -1,4 +1,5 @@
 # Receipt: KD-173C2 — post-close verification + BK-N7 cleanup-race fix (KD-173)
+Standing: ALIVE
 
 - Standing: ALIVE
 - Context: solo

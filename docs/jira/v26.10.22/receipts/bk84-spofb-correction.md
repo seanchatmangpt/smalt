@@ -1,4 +1,5 @@
 # BK-84 — SPOF-B record-coherence correction (SPOF-3.1 wedge premise)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (correction landed; supersession verified on disk)
 Context: solo

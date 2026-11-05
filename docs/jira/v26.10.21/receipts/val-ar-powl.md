@@ -1,4 +1,5 @@
 # VAL-POWL — AR-POWL-01..03 validator receipt
+Standing: PARTIAL_ALIVE
 
 **Standing:** **PARTIAL_ALIVE** (3/3 cells verdict-command-backed; 2 typed as dispatched, 1 inverts the dispatch's premise on evidence)
 Context: solo

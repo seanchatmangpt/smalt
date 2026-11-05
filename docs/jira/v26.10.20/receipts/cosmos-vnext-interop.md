@@ -1,4 +1,5 @@
 # Receipt: Cosmos DB vNext Linux emulator interop probe (W30-C)
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-21
 - **Lane**: W30-C (bench-runner, interop probe)

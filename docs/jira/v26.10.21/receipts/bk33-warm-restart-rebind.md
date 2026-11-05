@@ -1,4 +1,5 @@
 # BK-33 — warm-restart rebind defect RESOLVED (root cause: heir-to-init ETS table survives System.restart)
+Standing: RESOLVED
 
 Context: solo
 

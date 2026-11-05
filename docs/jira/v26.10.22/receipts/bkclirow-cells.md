@@ -1,4 +1,5 @@
 # BK-CLIROW: smalt-cli cells in VALIDATION.md / PRD.md — audit + close
+Standing: ALIVE
 
 **Standing: ALIVE** · Context: solo · 2026-10-22 · Lane BK-CLIROW (docs lane; only PRD.md, VALIDATION.md and this receipt written)
 

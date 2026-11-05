@@ -1,4 +1,5 @@
 # BK-67 — witness corpus census refresh (dry-run classification, post-growth to ~195 receipts)
+Standing: ALIVE
 
 **Standing: ALIVE** (dry-run census executed for real, exit 0; classification + 5-sample STALE audit + projected cost below. DRY-RUN only — the full gated `witness-all` was NOT run; that is the wrap lane's job.)
 

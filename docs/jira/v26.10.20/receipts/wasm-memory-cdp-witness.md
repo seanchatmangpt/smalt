@@ -1,4 +1,5 @@
 # W14-E — Popcorn wasm worker memory via CDP (S9 close)
+Standing: PARTIAL_ALIVE
 
 Date: 2026-10-20
 Lane: W14-E (substrate-op, measurement)

@@ -1,4 +1,5 @@
 # S-7 Receipt: KD flip mechanism (contract-keyed shims, machine-driven closure)
+Standing: UNVERIFIED
 
 Lane: S-7, v26.10.14, 2026-10-15. Repo: /Users/sac/smalt @ main (518b31a).
 No commits (per dispatch). KNOWN_DIVERGENCES.md NOT modified (no flips — no

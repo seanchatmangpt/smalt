@@ -1,4 +1,5 @@
 # i29 — Integration Checkpoint Prep (pre-coordinator-commit census)
+Standing: UNVERIFIED
 
 Date: 2026-10-18. Subject: /Users/sac/smalt @ main, HEAD `6eec145`.
 Context: solo (git status census; `just receipt-index` at close).

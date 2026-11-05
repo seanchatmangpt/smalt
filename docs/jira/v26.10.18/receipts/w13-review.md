@@ -1,4 +1,5 @@
 # W13 residual review — group 12 (review lane, Context: solo)
+Standing: UNVERIFIED
 
 Context: solo (test/corpus_test.exs loader); standalone corpus-family files cannot compile (receipted)
 

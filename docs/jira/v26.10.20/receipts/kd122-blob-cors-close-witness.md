@@ -1,4 +1,5 @@
 # KD-122 close witness — blob CORS in-browser round trip (coordinator, 2026-10-20)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

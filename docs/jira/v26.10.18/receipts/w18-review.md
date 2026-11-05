@@ -1,4 +1,5 @@
 # W18 residual review — FINAL residual group (review lane, Context: solo)
+Standing: UNVERIFIED
 
 Context: slice(5-file batch, 41 tests 0 failures, x2, exit 0)
 

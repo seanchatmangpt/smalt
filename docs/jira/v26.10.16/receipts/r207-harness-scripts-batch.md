@@ -1,4 +1,5 @@
 # Receipt — R207 (harness + justfile.d unaccounted-diff batch)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (lane 294, W11 docs lane)
 - **Standing:** PASS (all five items re-verified on-disk 2026-10-16)

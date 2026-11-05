@@ -1,4 +1,5 @@
 # Armstrong Idiom Census — lib/smalt (v26.10.21, ARMSTRONG audit)
+Standing: PARTIAL_ALIVE
 
 Context: solo
 **Standing:** PARTIAL_ALIVE

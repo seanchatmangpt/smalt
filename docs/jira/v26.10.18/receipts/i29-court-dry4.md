@@ -1,4 +1,5 @@
 # Court-x2 DRY-RUN leg 4 — full `mix test` at HEAD f4f129f
+Standing: UNVERIFIED
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `f4f129f2a73f0edf5c57f88b11d987ebe21891c9` (≥ f4f129f)

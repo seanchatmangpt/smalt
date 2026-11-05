@@ -1,4 +1,5 @@
 # r12 — T-14: Azure Service Health — availability statuses, events, chaos-coupled incidents
+Standing: UNVERIFIED
 
 - window: v26.10.28 · ticket: `tickets/T14-service-health.md` · date: 2026-10-29
 - tier: beam (`test/integration/service_health_test.exs`) · status: **CODE-COMPLETE (r12), awaiting integration run**

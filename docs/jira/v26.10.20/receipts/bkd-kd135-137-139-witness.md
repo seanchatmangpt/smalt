@@ -1,4 +1,5 @@
 # Witness: B-KD wire evidence for KD-135 / KD-137 / KD-139 (post-shim)
+Standing: ALIVE
 
 - **Date**: 2026-10-21 (lane B-KD)
 - **Standing**: ALIVE

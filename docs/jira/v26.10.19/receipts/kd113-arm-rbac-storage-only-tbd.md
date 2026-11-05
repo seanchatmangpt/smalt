@@ -1,4 +1,5 @@
 # kd113-arm-rbac-storage-only-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+Standing: UNVERIFIED
 
 - **KD row**: KD-113 (RBAC storage-only / locks stubs / no tag-at-scope)
 - **Standing**: PASS-EVIDENCED (all three legs witnessed; one leg diverges from the predicted stub-envelope shape)

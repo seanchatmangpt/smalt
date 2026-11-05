@@ -1,4 +1,5 @@
 # KD-12 — KV rotation policy PUT: raw-PUT body-parse exemption ate every valid SDK body (FIX + witness)
+Standing: ALIVE
 
 **Standing:** **ALIVE** (fix landed + wire-verified on a private seat, 2026-10-20, lane K3)
 

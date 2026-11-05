@@ -1,4 +1,5 @@
 # IMPL-16: native `:json` long-string decode bench — OTP 28.3.1 vs 29.1.2
+Standing: UNVERIFIED
 
 Context: solo
 

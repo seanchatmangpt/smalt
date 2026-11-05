@@ -1,4 +1,5 @@
 # BK-78 queue-capacity gate fix — v26.10.21
+Standing: ALIVE
 
 **Standing**: **ALIVE** — gate verdict PASS, exit 0, reproduced 2x; all 4 negative fixtures refused (non-vacuous); adjacent AMQP internal tests 5/5 pass.
 - **Context: solo**

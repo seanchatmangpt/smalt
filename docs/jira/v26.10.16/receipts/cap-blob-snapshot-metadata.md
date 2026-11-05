@@ -1,4 +1,5 @@
 # Receipt: cap-blob-snapshot-metadata (KD-60 witness material)
+Standing: PASS
 
 **Standing**: PASS (witness material only — KD-60 register flip stays kd_flip-gated)
 **Window**: v26.10.16, lane 524 (blob snapshot surface)

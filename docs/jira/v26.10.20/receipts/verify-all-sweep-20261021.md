@@ -1,4 +1,5 @@
 # verify-all post-checkpoint regression sweep — 2026-10-21
+Standing: FAIL
 
 - **Subject**: smalt @ /Users/sac/smalt, HEAD `4e1efe35adb03b3c31c5dfaaedf7b75fedc663eb` (branch main), dirty tree
 - **Command**: `just verify-all` (recipe `justfile.d/09-verify-all.just` → `scripts/verify_all.sh`); full log `/tmp/verify_all_sweep.log`

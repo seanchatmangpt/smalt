@@ -1,4 +1,5 @@
 # w3e — KV purge bare-DELETE route on the TLS twin (TS wf6 finding)
+Standing: PASS
 
 - **Lane**: w3e (ERRC wave-3)
 - **Standing**: PASS

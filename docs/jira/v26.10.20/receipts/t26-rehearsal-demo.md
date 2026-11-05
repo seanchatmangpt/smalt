@@ -1,4 +1,5 @@
 # T26 — One-Command Migration Rehearsal Demo
+Standing: ALIVE
 
 **Standing: ALIVE** — real end-to-end run against the live substrate, exit 0.
 

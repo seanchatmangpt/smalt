@@ -1,4 +1,5 @@
 # KD-109 close witness — typed appconfig feature flags on the wire (lane K7, 2026-10-9... 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

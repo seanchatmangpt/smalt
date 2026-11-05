@@ -1,4 +1,5 @@
 # Receipt — R130, R140 (trace result: no landed artifact found — NOT RECEIPTED)
+Standing: PARTIAL_ALIVE
 
 - **Subject:** `/Users/sac/smalt` @ main, working tree (v26.10.16 wave)
 - **Standing:** PARTIAL_ALIVE

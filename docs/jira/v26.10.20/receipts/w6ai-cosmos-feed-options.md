@@ -1,4 +1,5 @@
 # w6ai — Cosmos read-feed options (x-ms-max-item-count / x-ms-continuation / If-Modified-Since)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Date: 2026-10-20

@@ -1,4 +1,5 @@
 # i29 — Full-Suite Pre-Gate Leg E (full soak, lane build root)
+Standing: UNVERIFIED
 
 - Date: 2026-10-19
 - Repo: /Users/sac/smalt (canonical checkout, no worktrees)

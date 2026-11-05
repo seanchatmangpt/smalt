@@ -1,4 +1,5 @@
 # Receipt: BK-DRAIN2 — drain monitor follow-up
+Standing: ALIVE
 
 - **Lane**: BK-DRAIN2 (`/Users/sac/smalt`, canonical checkout, read-only except this receipt)
 - **Standing**: ALIVE (monitor observation; all census values are disk/ps reads, not inferred)

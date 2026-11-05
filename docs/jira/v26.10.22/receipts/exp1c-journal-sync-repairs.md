@@ -1,4 +1,5 @@
 # EXP1C — journal-sync / useSovereignTerminal repairs (W3, W4, W5, W8)
+Standing: ALIVE
 
 **Standing:** **ALIVE** — all four findings repaired, court green 13/13 x2, ws-lint 0 errors.
 Context: solo

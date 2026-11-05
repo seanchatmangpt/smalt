@@ -1,4 +1,5 @@
 # Receipt — V261014-20 lane 20 (ARM Gateway Hygiene)
+Standing: UNVERIFIED
 
 Date: 2026-10-15 · Checkout: /Users/sac/smalt (main, no commits made) · Owner: lane 20
 

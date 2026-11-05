@@ -1,4 +1,5 @@
 # BK-65 — Cross-plane interop witness: ARM queue → AMQP (rhea) → crash-only amqp10
+Standing: ALIVE
 
 **Standing: ALIVE (5/6 probe legs PASS; the 1 FAIL is the namespace-PUT 202 face, below)**
 **Context: solo**

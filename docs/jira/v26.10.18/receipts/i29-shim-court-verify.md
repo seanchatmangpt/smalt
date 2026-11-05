@@ -1,4 +1,5 @@
 # i29 shim-court verify receipt (repair lane IN-FLIGHT check)
+Standing: PASS
 
 - Standing: PASS (9/12) / FAIL (3/12) — repair lane NOT landed, per-court verdicts below
 Context: solo (single lane, no concurrent workflows on the tree)

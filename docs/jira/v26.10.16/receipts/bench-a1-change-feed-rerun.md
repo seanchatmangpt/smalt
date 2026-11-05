@@ -1,4 +1,5 @@
 # Receipt — a1 change-feed lane re-run (v26.10.16 refresh in place)
+Standing: PASS
 
 - **Subject:** `/Users/sac/smalt` @ main working tree, lane a1 (`scripts/bench/a1_change_feed.exs`)
 - **Standing:** PASS (baseline + stall rows, errors:0; stderr teardown-race noise noted below)

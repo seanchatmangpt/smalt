@@ -1,4 +1,5 @@
 # r-p05 — Cross-tenant fence through the browser path (P05, CLM-06)
+Standing: ALIVE
 
 - window: v26.10.30 · date: 2026-10-30 · tier: in-cluster (kind `smalt`)
 - standing: **ALIVE (3/3 asserts)**

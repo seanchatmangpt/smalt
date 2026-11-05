@@ -1,4 +1,5 @@
 # Receipt: cap-eventgrid-topics — ARM Event Grid topics + systemTopics, inputSchema-gated EG1 admission
+Standing: PARTIAL_ALIVE
 
 - **Lane**: EventGrid-topics (cap lane)
 - **Standing**: PARTIAL_ALIVE

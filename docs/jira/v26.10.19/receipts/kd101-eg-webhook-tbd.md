@@ -1,4 +1,5 @@
 # kd101-eg-webhook-tbd.md — evidence receipt (witness lane, 2026-10-20)
+Standing: ALIVE
 
 - **KD row**: KD-101 (Event Grid no-HTTP-webhook)
 - **Standing**: ALIVE — evidence-executed (typed absence witnessed over the wire;

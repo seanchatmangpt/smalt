@@ -1,4 +1,5 @@
 # w6l — App Config /kv query faces (filters, fields, tags, continuation)
+Standing: PARTIAL_ALIVE
 **Standing:** PARTIAL_ALIVE — raise landed + lane-file syntax verified clean;
 full-tree compile gate and live-wire witness are TYPED-BLOCKED under
 concurrent wave-6 lane churn (compile-freeze SLA exhausted, 20/20 attempts,

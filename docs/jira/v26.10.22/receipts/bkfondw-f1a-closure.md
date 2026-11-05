@@ -1,4 +1,5 @@
 # BK-FONDW — F1-A closure verification (independent, dup-id fix confirmed)
+Standing: ALIVE
 
 - **Standing**: ALIVE
 - **Context**: solo

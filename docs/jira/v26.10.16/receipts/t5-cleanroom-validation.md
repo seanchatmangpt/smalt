@@ -1,4 +1,5 @@
 # T5 Clean-Room Validation Receipt (lane 392)
+Standing: SUSPECT
 
 - date: 2026-10-16
 - lane: 392 (validation; ladder hardcodes lane 391 build root `_build-lane391`, ports 39390-39395)

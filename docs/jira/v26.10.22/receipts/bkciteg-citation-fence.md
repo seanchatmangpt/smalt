@@ -1,4 +1,5 @@
 # BK-CITEG — milestone-doc citation fence (dual-base + typed-gap skip)
+Standing: ALIVE
 
 **Standing:** **ALIVE**
 

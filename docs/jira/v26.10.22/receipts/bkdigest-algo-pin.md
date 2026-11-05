@@ -1,4 +1,5 @@
 # Receipt: BK-DIGEST — digest-algorithm pin census (BK-MCPSHA lesson class)
+Standing: ALIVE
 
 - **Date**: 2026-10-22
 - **Lane**: BK-DIGEST

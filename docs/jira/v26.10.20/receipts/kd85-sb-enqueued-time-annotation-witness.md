@@ -1,4 +1,5 @@
 # KD-85 witness — x-opt-enqueued-time dual stamp (lane K7, 2026-10-21)
+Standing: PARTIAL_ALIVE
 
 **Standing:** PARTIAL_ALIVE
 Context: solo

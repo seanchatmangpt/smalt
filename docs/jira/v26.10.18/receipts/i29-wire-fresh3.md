@@ -1,4 +1,5 @@
 # i29 — Wire tier 2x fresh at HEAD (fresh3)
+Standing: UNVERIFIED
 
 Context: slice(amqp_wire x2)
 

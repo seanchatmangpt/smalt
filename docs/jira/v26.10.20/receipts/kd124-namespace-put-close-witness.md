@@ -1,4 +1,5 @@
 # KD-124 close witness — first namespace PUT with sku (coordinator, 2026-10-21)
+Standing: PASS
 
 **Standing:** PASS
 Context: solo

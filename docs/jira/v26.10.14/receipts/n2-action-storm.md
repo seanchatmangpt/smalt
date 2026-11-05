@@ -1,4 +1,5 @@
 # N-2 Action Storm Receipt
+Standing: UNVERIFIED
 
 Lane: N-2 lifecycle stress · subject: `workspace` (Next.js 16.4.2 / React 19)
 production server (`next start`, port 4620, single node process, node v26.10.0).

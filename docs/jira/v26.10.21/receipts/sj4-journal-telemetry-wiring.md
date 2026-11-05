@@ -1,4 +1,5 @@
 # SJ-4: journal sink wired into the real telemetry path (config-gated, default OFF)
+Standing: UNVERIFIED
 
 Date: 2026-10-21
 Lane: SJ-4 (writer, OTP-29), MIX_BUILD_ROOT=_build-sj4

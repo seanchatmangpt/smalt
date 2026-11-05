@@ -1,4 +1,5 @@
 # KD-SYNC — pointer sync + fresh census (KD-166 flip / KD-167, KD-172, KD-173 mint drift)
+Standing: PASS
 
 **Standing**: PASS
 **Context**: solo
