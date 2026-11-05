@@ -14,19 +14,16 @@ defmodule Smalt.Aoq.TransportTest do
 
   defp start_echo_server do
     {:ok, srv} = :socket.open(:inet, :dgram, :udp)
-    :ok = :socket.bind(srv, {:socket.sockaddr_in, {127, 0, 0, 1}, 0})
+    :ok = :socket.bind(srv, %{family: :inet, addr: {127, 0, 0, 1}, port: 0})
 
-    {:ok, port} =
-      case :socket.sockname(srv) do
-        {:ok, {:socket.sockaddr_in, _addr, port}} -> {:ok, port}
-      end
+    {:ok, %{port: port}} = :socket.sockname(srv)
 
     parent = self()
 
     pid =
-      spawn_link(fn ->
+      Process.spawn(fn ->
         echo_loop(srv, parent)
-      end)
+      end, [])
 
     {pid, srv, port}
   end
@@ -35,10 +32,10 @@ defmodule Smalt.Aoq.TransportTest do
   # the datagram back over the same socket.
   defp echo_loop(srv, parent) do
     case :socket.recvmsg(srv, 2048, 0, 5_000) do
-      {:ok, %{iovec: iovec} = _msg} ->
+      {:ok, %{iov: iovec} = msg} ->
         payload = :erlang.iolist_to_binary(iovec)
 
-        case :socket.sendmsg(srv, %{iovec: payload}) do
+        case :socket.sendmsg(srv, %{iov: [:erlang.iolist_to_binary(payload)], addr: msg.addr}) do
           {:ok, _sent} -> :ok
           _ -> :ok
         end
@@ -103,8 +100,8 @@ defmodule Smalt.Aoq.TransportTest do
     # An unbound-to-anything peer: open a connected socket to a port with no
     # echoer, then recv — the deadline bounds the poll.
     {:ok, sink} = :socket.open(:inet, :dgram, :udp)
-    :ok = :socket.bind(sink, {:socket.sockaddr_in, {127, 0, 0, 1}, 0})
-    {:ok, {:socket.sockaddr_in, _addr, port}} = :socket.sockname(sink)
+    :ok = :socket.bind(sink, %{family: :inet, addr: {127, 0, 0, 1}, port: 0})
+    {:ok, %{port: port}} = :socket.sockname(sink)
 
     {:ok, sock} = Transport.open(@loopback, port)
     assert {:error, {:transport_refusal, :recv_timeout}} =

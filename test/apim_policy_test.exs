@@ -95,4 +95,53 @@ defmodule Smalt.ApimTest do
       assert err["message"] == "MissingBearerToken"
     end
   end
+
+  describe "parse_policy document order (C9 cons+reverse at success exit)" do
+    @policy_xml """
+    <policies>
+      <inbound>
+        <base />
+        <rate-limit calls="10" renewal-period="60" />
+        <set-header name="x-a" exists-action="overwrite">1</set-header>
+        <validate-jwt header-name="authorization">
+          <required-claims>
+            <claim name="aud" match="any">
+              <value>a</value>
+              <value>b</value>
+              <value>c</value>
+            </claim>
+            <claim name="tid">
+              <value>t</value>
+            </claim>
+          </required-claims>
+        </validate-jwt>
+        <set-header name="x-b" exists-action="overwrite">2</set-header>
+        <set-header name="x-c" exists-action="overwrite">3</set-header>
+      </inbound>
+    </policies>
+    """
+
+    test "inbound policies keep document order (5 policies, base skipped)" do
+      assert {:ok, parsed} = Smalt.DataPlane.Apim.parse_policy(@policy_xml)
+      inbound = parsed["inbound"]
+
+      assert length(inbound) >= 3
+
+      types = Enum.map(inbound, & &1["type"])
+      assert types == ["rate-limit", "set-header", "validate-jwt", "set-header", "set-header"]
+    end
+
+    test "claim rules keep document order (>= 3 header rules)" do
+      assert {:ok, parsed} = Smalt.DataPlane.Apim.parse_policy(@policy_xml)
+
+      jwt = Enum.find(parsed["inbound"], &(&1["type"] == "validate-jwt"))
+      claims = jwt["required-claims"]
+      assert length(claims) >= 2
+      assert Enum.map(claims, & &1["name"]) == ["aud", "tid"]
+
+      # per-claim values keep document order too
+      aud = Enum.find(claims, &(&1["name"] == "aud"))
+      assert aud["values"] == ["a", "b", "c"]
+    end
+  end
 end

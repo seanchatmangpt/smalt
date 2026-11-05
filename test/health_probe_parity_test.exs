@@ -72,7 +72,9 @@ defmodule Smalt.HealthProbeParityTest do
 
   test "readiness verdict shape is unchanged structurally (no boolean overall collapse)" do
     {:ready, checks} = Smalt.Health.readiness()
-    assert is_map(checks) and map_size(checks) == 4
-    assert [:cluster, :memory, :scheduler, :store] == checks |> Map.keys() |> Enum.sort()
+    # v26.10.31 LANE-11: the AoQ plane status joined as a fifth METRIC-only
+    # check (adaptive-probe law: not a verdict input).
+    assert is_map(checks) and map_size(checks) == 5
+    assert [:aoq, :cluster, :memory, :scheduler, :store] == checks |> Map.keys() |> Enum.sort()
   end
 end

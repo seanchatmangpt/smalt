@@ -151,7 +151,9 @@ defmodule Smalt.POWL2.LawCompiler do
 
   @doc false
   def build_guard(shape_name, shape) when is_binary(shape_name) and is_map(shape) do
-    constraints = shape.constraints
+    # C9 alloc fix: constraints were cons-accumulated at parse time; the
+    # single reverse here restores document order at shape finalization.
+    constraints = Enum.reverse(shape.constraints)
 
     fn ctx ->
       if is_map(ctx) do
@@ -603,7 +605,9 @@ defmodule Smalt.POWL2.LawCompiler do
           description: "sh:not block declares no supported constraint (inner pattern would be vacuous)"
 
       inner ->
-        %{shape | constraints: shape.constraints ++ [{:not, inner}]}
+        # C9 alloc fix: inner constraints were cons-accumulated; reverse once
+        # at materialization so the negated pattern keeps document order.
+        %{shape | constraints: [{:not, Enum.reverse(inner)} | shape.constraints]}
     end
   end
 
@@ -663,7 +667,8 @@ defmodule Smalt.POWL2.LawCompiler do
 
           value, %{__kw: "sh:in"} = prop ->
             # RDF-list member: `(` `)` arrive as punct; bare words are members.
-            %{prop | in_values: prop.in_values ++ [local_name(term_value(value))]}
+            # C9 alloc fix: cons; reversed once at the {:in, ...} materialization.
+            %{prop | in_values: [local_name(term_value(value)) | prop.in_values]}
 
           value, %{__kw: "sh:datatype"} = prop ->
             prop |> Map.put(:datatype, local_name(term_value(value))) |> Map.put(:__kw, nil)
@@ -698,27 +703,27 @@ defmodule Smalt.POWL2.LawCompiler do
 
       %{min_count: n, max_inclusive: nil, peer: nil, in_values: [], datatype: nil, qvs: nil}
       when is_integer(n) ->
-        %{shape | constraints: shape.constraints ++ [{:min_count, prop.path, n, prop.message}]}
+        %{shape | constraints: [{:min_count, prop.path, n, prop.message} | shape.constraints]}
 
       %{min_count: nil, max_inclusive: v, peer: nil, in_values: [], datatype: nil, qvs: nil}
       when is_number(v) ->
-        %{shape | constraints: shape.constraints ++ [{:max_inclusive, prop.path, v, prop.message}]}
+        %{shape | constraints: [{:max_inclusive, prop.path, v, prop.message} | shape.constraints]}
 
       %{min_count: nil, max_inclusive: nil, peer: peer, in_values: [], datatype: nil, qvs: nil}
       when is_binary(peer) ->
-        %{shape | constraints: shape.constraints ++ [{:not_equals, prop.path, peer, prop.message}]}
+        %{shape | constraints: [{:not_equals, prop.path, peer, prop.message} | shape.constraints]}
 
       %{min_count: nil, max_inclusive: nil, peer: nil, in_values: vals, datatype: nil, qvs: nil}
       when is_list(vals) and vals != [] ->
-        %{shape | constraints: shape.constraints ++ [{:in, prop.path, vals, prop.message}]}
+        %{shape | constraints: [{:in, prop.path, Enum.reverse(vals), prop.message} | shape.constraints]}
 
       %{min_count: nil, max_inclusive: nil, peer: nil, in_values: [], datatype: dt, qvs: nil}
       when is_binary(dt) ->
-        %{shape | constraints: shape.constraints ++ [{:datatype, prop.path, dt, prop.message}]}
+        %{shape | constraints: [{:datatype, prop.path, dt, prop.message} | shape.constraints]}
 
       %{min_count: nil, max_inclusive: nil, peer: nil, in_values: [], datatype: nil, qvs: inner}
       when is_list(inner) and inner != [] ->
-        %{shape | constraints: shape.constraints ++ [{:qvs, prop.path, inner, prop.message}]}
+        %{shape | constraints: [{:qvs, prop.path, inner, prop.message} | shape.constraints]}
 
       _overconstrained ->
         raise CompileError,
@@ -744,7 +749,9 @@ defmodule Smalt.POWL2.LawCompiler do
             "sh:qualifiedValueShape block declares no supported constraint (inner pattern would be vacuous)"
 
       inner ->
-        inner
+        # C9 alloc fix: cons-accumulated inner constraints; reverse once at
+        # materialization to keep document order.
+        Enum.reverse(inner)
     end
   end
 

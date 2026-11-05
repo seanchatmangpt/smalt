@@ -33,6 +33,9 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
+      - name: AoQ bin_opt_info gate
+        run: bash scripts/bin_opt_gate.sh
+
       - name: Unit tests (residual tier)
         run: mix test
 

@@ -66,8 +66,11 @@ defmodule Smalt.Aoq.Transport do
   """
   @spec send(socket(), iodata()) :: {:ok, non_neg_integer()} | refusal()
   def send(sock, frames) do
-    case :socket.sendmsg(sock, %{iovec: [frames]}) do
-      {:ok, bytes} -> {:ok, bytes}
+    bytes = :erlang.iolist_size(frames)
+
+    case :socket.sendmsg(sock, %{iov: [:erlang.iolist_to_binary(frames)]}) do
+      :ok -> {:ok, bytes}
+      {:ok, n} when is_integer(n) -> {:ok, n}
       {:error, reason} -> refuse(reason)
       other -> refuse(other)
     end
@@ -87,8 +90,11 @@ defmodule Smalt.Aoq.Transport do
           {:ok, non_neg_integer()} | refusal()
   def send_batch(sock, frames) when is_list(frames) do
     with {:ok, iovec} <- encode_frames(frames) do
-      case :socket.sendmsg(sock, %{iovec: iovec}) do
-        {:ok, bytes} -> {:ok, bytes}
+      bytes = Enum.sum(Enum.map(iovec, &:erlang.iolist_size/1))
+
+      case :socket.sendmsg(sock, %{iov: iovec}) do
+        :ok -> {:ok, bytes}
+        {:ok, n} when is_integer(n) -> {:ok, n}
         {:error, reason} -> refuse(reason)
         other -> refuse(other)
       end
@@ -171,11 +177,14 @@ defmodule Smalt.Aoq.Transport do
     end)
     |> case do
       {:error, reason} -> refuse(reason)
-      iovec -> {:ok, Enum.reverse(iovec)}
+      # OTP 29 :socket iov entries are binaries-only; materialize each
+      # per-frame iolist with iolist_to_binary (egress fence law: zero <>
+      # — this is iolist consumption, never a concatenation site).
+      iovec -> {:ok, Enum.reverse(iovec) |> Enum.map(&:erlang.iolist_to_binary/1)}
     end
   end
 
-  defp extract_payload(%{iovec: iovec}) do
+  defp extract_payload(%{iov: iovec}) do
     iovec
     |> List.wrap()
     |> :erlang.iolist_to_binary()

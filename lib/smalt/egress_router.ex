@@ -2790,9 +2790,14 @@ defmodule Smalt.EgressRouter do
   # Re-landed from the pre-undock source (95d4243d) — shared <Error> envelope
   # renderer needed by handle_errors/2 above.
   def error_xml(code, msg) do
-    ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>) <>
-      Smalt.DataPlane.BlobService.xml_escape(code) <>
-      "</Code><Message>" <> Smalt.DataPlane.BlobService.xml_escape(msg) <> "</Message></Error>"
+    # C9 alloc fix: iolist envelope, materialized once (byte-identical).
+    IO.iodata_to_binary([
+      ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>),
+      Smalt.DataPlane.BlobService.xml_escape(code),
+      "</Code><Message>",
+      Smalt.DataPlane.BlobService.xml_escape(msg),
+      "</Message></Error>"
+    ])
   end
 
   # Lane 06 (v26.10.14) defect 3, part 2: blob error responses now carry the
@@ -2823,10 +2828,16 @@ defmodule Smalt.EgressRouter do
       message = blob_error_message(body)
       message = if is_binary(message) and message != "", do: message, else: code
 
+      # C9 alloc fix: iolist envelope, materialized once (byte-identical).
       xml =
-        "<?xml version=\"1.0\" encoding=\"utf-8\"?>" <>
-          "<Error><Code>#{code}</Code>" <>
-          "<Message>#{xml_escape_error(message)}</Message></Error>"
+        IO.iodata_to_binary([
+          "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+          "<Error><Code>",
+          code,
+          "</Code><Message>",
+          xml_escape_error(message),
+          "</Message></Error>"
+        ])
 
       conn
       |> put_resp_header("x-ms-request-id", generate_request_id())

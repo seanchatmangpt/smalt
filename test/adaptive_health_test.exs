@@ -3,9 +3,12 @@ defmodule Smalt.AdaptiveHealthTest do
 
   @describetag :health
 
-  test "readiness is ready on a healthy substrate with all four checks" do
+  test "readiness is ready on a healthy substrate with all five checks" do
     {:ready, checks} = Smalt.Health.readiness()
-    assert [:cluster, :memory, :scheduler, :store] == checks |> Map.keys() |> Enum.sort()
+
+    # v26.10.31 LANE-11: the AoQ plane status joined as a fifth METRIC-only
+    # check (adaptive-probe law: not a verdict input).
+    assert [:aoq, :cluster, :memory, :scheduler, :store] == checks |> Map.keys() |> Enum.sort()
     assert checks.store == :ok
     assert checks.memory == :ok
     assert is_map(checks.scheduler)

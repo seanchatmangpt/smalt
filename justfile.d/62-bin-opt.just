@@ -1,20 +1,19 @@
-# 62-bin-opt.just — AoQ bin_opt_info match-context reuse gate + non-vacuity court
-# (aq-architecture-spec §4, commit 25dd40df; lane L12r, v26.11.5)
+# 62-bin-opt.just — AoQ bin_opt_info gate + non-vacuity shim court (lane C1)
+#
+# Gate: scripts/bin_opt_gate.sh — compiles the AoQ surface with
+# ERL_COMPILER_OPTIONS=bin_opt_info and fails closed on scoped binary-match
+# optimization warnings. Court: scripts/shim_court/bin_opt_gate_court.sh —
+# BEFORE/SHIM/AFTER/RESTORE over lib/smalt/aoq/frame.ex proving the gate
+# flips 0 -> 1 on an injected non-reusable binary construction.
+# Exit 0 pass / 1 violations / 2 loud refuse; court 0/1/3 (skip is loud).
+#
+# Root resolution matches the 31-have.just convention: recipes run under
+# root-import, where justfile_directory() IS the repo root.
 
-BINOPT_ROOT := justfile_directory()
+BIN_OPT_ROOT := justfile_directory()
 
-# Compile the AoQ surface with bin_opt_info; exit 0 only on zero scoped
-# FAIL-class warnings (fail closed; exit 2 = loud refuse, never a fake pass).
 @bin-opt:
-    #!/bin/bash
-    set -euo pipefail
-    ROOT="{{BINOPT_ROOT}}"
-    bash "$ROOT"/scripts/bin_opt_gate.sh
+    cd {{BIN_OPT_ROOT}} && bash scripts/bin_opt_gate.sh
 
-# Non-vacuity shim court: clean fixture PASSES the gate, an injected
-# non-reusable binary match (SHIM-COURT) must flip it to exit 1.
 @bin-opt-court:
-    #!/bin/bash
-    set -euo pipefail
-    ROOT="{{BINOPT_ROOT}}"
-    bash "$ROOT"/scripts/shim_court/bin_opt_court.sh
+    cd {{BIN_OPT_ROOT}} && bash scripts/shim_court/bin_opt_gate_court.sh

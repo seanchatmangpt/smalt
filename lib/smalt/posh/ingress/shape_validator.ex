@@ -261,7 +261,9 @@ defmodule Smalt.Posh.Ingress.ShapeValidator.TTL do
           message: "sh:property block without sh:path (#{source})"
 
       prop ->
-        %{shape | props: shape.props ++ [prop]}
+        # C9 alloc fix: cons; document order restored by the single reverse
+        # in shape_spec/1 (the props-index build).
+        %{shape | props: [prop | shape.props]}
     end
   end
 
@@ -485,7 +487,7 @@ defmodule Smalt.Posh.Ingress.ShapeValidator do
   required: [atom], types: %{atom => :string}, class_checks: %{atom => MapSet<binary>}}`.
   """
   def shape_spec(shape) when is_map(shape) do
-    props = Map.get(shape, :props, [])
+    props = Enum.reverse(Map.get(shape, :props, []))
 
     %{
       closed: Map.get(shape, :closed, false),

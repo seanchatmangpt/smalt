@@ -445,10 +445,16 @@ defmodule Smalt.DataPlane.Apim do
         |> Enum.reduce_while({:ok, []}, fn el, {:ok, acc} ->
           case parse_inbound_policy(el) do
             {:ok, nil} -> {:cont, {:ok, acc}}
-            {:ok, policy} -> {:cont, {:ok, acc ++ [policy]}}
+            # C9 alloc fix: cons; document order restored by the single
+            # reverse at the success exit.
+            {:ok, policy} -> {:cont, {:ok, [policy | acc]}}
             {:error, _, _, _} = refusal -> {:halt, refusal}
           end
         end)
+        |> case do
+          {:ok, acc} -> {:ok, Enum.reverse(acc)}
+          refusal -> refusal
+        end
     end
   end
 
@@ -545,9 +551,13 @@ defmodule Smalt.DataPlane.Apim do
               |> String.trim()
             end)
 
-          {:cont, {:ok, acc ++ [%{"name" => name, "match" => match, "values" => values}]}}
+          {:cont, {:ok, [%{"name" => name, "match" => match, "values" => values} | acc]}}
       end
     end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      refusal -> refusal
+    end
   end
 
   defp parse_backend(doc) do

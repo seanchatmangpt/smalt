@@ -39,6 +39,13 @@ defmodule Smalt.Posh.Ingress.ShapeValidatorTest do
     assert Enum.any?(no_bypass.props, fn p -> p.key == "emits" and p.max == 0 end)
   end
 
+  test "shape_spec keeps TTL document order (C9 cons+reverse at props-index build)" do
+    # ingress.ttl declares IngressRouteShape props in order: admittedBy,
+    # shape, membraneOp, sink — required (minCount >= 1) must preserve it.
+    spec = ShapeValidator.shape_spec(ShapeValidator.shapes()["IngressRouteShape"])
+    assert spec.required == [:admittedBy, :shape, :membraneOp]
+  end
+
   test "compiles Turnstile/Sink individuals from the real A-box" do
     ind = ShapeValidator.individuals()
     assert MapSet.size(ind["Turnstile"]) >= 3

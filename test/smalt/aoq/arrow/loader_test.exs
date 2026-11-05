@@ -21,7 +21,7 @@ defmodule Smalt.Aoq.Arrow.LoaderTest do
   end
 
   test "empty bundle is lawful: %{}, byte-identical with the empty registry" do
-    path = write_bundle!([{aoq_arrow_bundle, @format_version}])
+    path = write_bundle!([{:aoq_arrow_bundle, @format_version}])
     assert {:ok, %{}} = Loader.load(path)
   end
 
@@ -34,9 +34,9 @@ defmodule Smalt.Aoq.Arrow.LoaderTest do
 
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
-        {schema, id, fields},
-        {digest, id, digest}
+        {:aoq_arrow_bundle, @format_version},
+        {:schema, id, fields},
+        {:digest, id, digest}
       ])
 
     assert {:ok, %{^id => %{schema: ^schema, digest: ^digest}}} = Loader.load(path)
@@ -53,9 +53,9 @@ defmodule Smalt.Aoq.Arrow.LoaderTest do
 
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
-        {schema, id, mutated_fields},
-        {digest, id, honest_digest}
+        {:aoq_arrow_bundle, @format_version},
+        {:schema, id, mutated_fields},
+        {:digest, id, honest_digest}
       ])
 
     assert {:error, {:digest_mismatch, ^id, bundled: ^honest_digest, computed: computed}} =
@@ -71,9 +71,9 @@ defmodule Smalt.Aoq.Arrow.LoaderTest do
 
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
-        {schema, id, fields},
-        {digest, id, digest}
+        {:aoq_arrow_bundle, @format_version},
+        {:schema, id, fields},
+        {:digest, id, digest}
       ])
 
     assert {:error, {:semantic, {:scale_exceeds_precision, 5, 9}}} = Loader.load(path)
@@ -84,10 +84,10 @@ defmodule Smalt.Aoq.Arrow.LoaderTest do
 
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
-        {schema, :a, fields},
-        {schema, :a, fields},
-        {digest, :a, <<0::256>>}
+        {:aoq_arrow_bundle, @format_version},
+        {:schema, :a, fields},
+        {:schema, :a, fields},
+        {:digest, :a, <<0::256>>}
       ])
 
     assert {:error, {:bundle_duplicate_schema, :a}} = Loader.load(path)

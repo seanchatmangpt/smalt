@@ -109,6 +109,31 @@ defmodule Smalt.Integration.BlobXmlErrorTest do
     end
   end
 
+  describe "C9 iolist envelope — exact-body byte pin" do
+    @tag :bxml
+    test "blob-face error body is the exact Azure envelope bytes" do
+      assert put_container("c9x").status == 201
+
+      conn = call(:get, "/#{@account}/c9x/no-such-blob")
+      assert conn.status == 404
+
+      body = IO.iodata_to_binary(conn.resp_body)
+
+      assert body ==
+               ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>BlobNotFound</Code><Message>BlobNotFound</Message></Error>)
+
+      assert Plug.Conn.get_resp_header(conn, "x-ms-error-code") == ["BlobNotFound"]
+    end
+
+    @tag :bxml
+    test "handle_errors fallback envelope keeps exact bytes (error_xml/2)" do
+      body = Smalt.EgressRouter.error_xml("InternalServerError", "Internal server error.")
+
+      assert body ==
+               ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>InternalServerError</Code><Message>Internal server error.</Message></Error>)
+    end
+  end
+
   describe "scope regression — non-blob faces stay JSON" do
     @tag :bxml
     test "blob_error WITHOUT the blob-face stamp renders JSON (byte-identical legacy)" do

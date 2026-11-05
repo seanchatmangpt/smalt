@@ -127,24 +127,38 @@ defmodule Smalt.Test.Integration.SignInsLogTest do
     assert ctx =~ "$metadata#signIns"
   end
 
-  test "257 mints -> exactly 256 events, newest first (ring cap)" do
+  # C9 ring-cap courts: these drive the REAL recording site
+  # (Smalt.Egress.SignIns.record_mint/3 — the exact hook ArmGateway's mint
+  # invokes) rather than the cordoned wire mint (WO-32: the BEAM no longer
+  # binds 9443; the wire legs above predate the cordon and are premised on
+  # the pre-WO-32 STS endpoint).
+  defp record(appid \\ "c9-ring-court") do
+    Smalt.Egress.SignIns.record_mint("00000000-0000-0000-0000-000000000000", appid, conn())
+  end
+
+  defp conn do
+    Plug.Test.conn(:get, "/c9", nil) |> Map.put(:remote_ip, {127, 0, 0, 1})
+  end
+
+  test "257 records -> exactly 256 events, newest first (ring cap)" do
     Smalt.Egress.SignIns.clear()
 
-    for _ <- 1..257, do: mint()
+    for _ <- 1..257, do: record()
 
     events = Smalt.Egress.SignIns.events()
     assert length(events) == 256
 
-    # hd is the most recently minted event (newest first) — mint one more
-    # and it must land at the head.
-    last_seen = Smalt.Egress.SignIns.events() |> hd()
-    mint()
-    assert hd(Smalt.Egress.SignIns.events()).id != last_seen.id
-    assert hd(Smalt.Egress.SignIns.events()).appid == last_seen.appid
+    # head is the most recently recorded event (newest first) — record one
+    # more and it must land at the head.
+    last_seen = hd(Smalt.Egress.SignIns.events())
+    record("c9-after-cap")
+    new_head = hd(Smalt.Egress.SignIns.events())
+    assert new_head.id != last_seen.id
+    assert new_head.appid == "c9-after-cap"
   end
 
   test "clear -> zero events" do
-    mint()
+    record()
     assert Smalt.Egress.SignIns.events() != []
     assert Smalt.Egress.SignIns.clear() == :ok
     assert Smalt.Egress.SignIns.events() == []

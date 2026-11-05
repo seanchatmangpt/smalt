@@ -22,20 +22,28 @@ defmodule Smalt.Hw.FrameTest do
     |> IO.iodata_to_binary()
   end
 
-  defp feed(encoded, split) do
-    encoded
-    |> :binary.binsplit(split)
-    |> Enum.reduce(Frame.decoder(), &Frame.push(&2, &1))
+  defp push_all(decoder, chunks) do
+    Enum.reduce(chunks, decoder, &Frame.push(&2, &1))
   end
 
-  defp drain(decoder), do: {payloads, _} = Frame.take(decoder)
+  # Split `encoded` at byte offset `split` into two chunks.
+  defp feed(encoded, split) do
+    push_all(Frame.decoder(), [
+      :binary.part(encoded, 0, split),
+      :binary.part(encoded, split, byte_size(encoded) - split)
+    ])
+  end
+
+  defp feed_bytes(encoded) do
+    push_all(Frame.decoder(), for(i <- 0..(byte_size(encoded) - 1), do: :binary.part(encoded, i, 1)))
+  end
 
   describe "roundtrip" do
     test "saturated payloads at sizes 1 / 255 / 4096" do
       for n <- [1, 255, 4096] do
         payload = saturated_payload(n)
         encoded = Frame.encode(payload)
-        {payloads, _} = feed(encoded, byte_size(encoded)) |> Frame.take()
+        {payloads, _} = feed(encoded, byte_size(encoded) - 1) |> Frame.take()
         assert payloads == [payload]
       end
     end
@@ -47,31 +55,25 @@ defmodule Smalt.Hw.FrameTest do
       encoded = Frame.encode(payload)
 
       for split <- 1..(byte_size(encoded) - 1) do
-        assert feed(encoded, split) |> Frame.take() |> elem(0) == [payload],
-               "split at #{split}"
+        {payloads, _} = feed(encoded, split) |> Frame.take()
+        assert payloads == [payload], "split at #{split}"
       end
     end
 
     test "byte-at-a-time feeding yields identical frames" do
       payload = saturated_payload(64)
       encoded = Frame.encode(payload)
-
-      d =
-        encoded
-        |> :binary.binsplit(1)
-        |> Enum.reduce(Frame.decoder(), &Frame.push(&2, &1))
-
-      assert Frame.take(d) |> elem(0) == [payload]
+      {payloads, _} = feed_bytes(encoded) |> Frame.take()
+      assert payloads == [payload]
     end
 
     test "multiple frames in one stream, byte-at-a-time" do
       payloads = [saturated_payload(5), saturated_payload(1), <<1, 2, 3>>]
       stream = Enum.map_join(payloads, "", &Frame.encode/1)
 
-      d = Enum.reduce(:binary.binsplit(stream, 1), Frame.decoder(), &Frame.push(&2, &1))
-      {got, d2} = Frame.take(d)
+      {got, d2} = feed_bytes(stream) |> Frame.take()
       assert got == payloads
-      # drained decoder is clean: an empty frame still roundtrips after
+      # drained decoder is clean: a later frame still roundtrips
       {p2, _} = Frame.push(d2, Frame.encode("next")) |> Frame.take()
       assert p2 == ["next"]
     end
@@ -85,8 +87,7 @@ defmodule Smalt.Hw.FrameTest do
       body = <<4::little-integer-size(16), "doomed">>
       bad = <<0x7E, body::binary, 0xDE, 0xAD, 0x7E>>
 
-      stream = bad <> good
-      {payloads, _} = Frame.push(Frame.decoder(), stream) |> Frame.take()
+      {payloads, _} = Frame.push(Frame.decoder(), bad <> good) |> Frame.take()
       assert payloads == ["after-corruption"]
     end
 

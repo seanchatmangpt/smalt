@@ -29,7 +29,7 @@ defmodule Smalt.Aoq.Arrow.BundleTest do
   end
 
   defp schema_term(id) do
-    {id, [{"x", {:timestamp, :millisecond, "UTC"}, false, %{"origin" => "test"}}]}
+    {:schema, id, [{"x", {:timestamp, :millisecond, "UTC"}, false, %{"origin" => "test"}}]}
   end
 
   defp expected_digest(id, fields) do
@@ -51,29 +51,29 @@ defmodule Smalt.Aoq.Arrow.BundleTest do
   end
 
   test "wrong or missing magic is refused" do
-    path = write_bundle!([{aoq_arrow_bundle, 999}])
+    path = write_bundle!([{:aoq_arrow_bundle, 999}])
     assert {:error, {:bundle_magic, _}} = Bundle.decode(path)
 
-    path2 = write_bundle!([{schema, :s1, []}])
+    path2 = write_bundle!([{:schema, :s1, []}])
     assert {:error, {:bundle_magic, _}} = Bundle.decode(path2)
   end
 
   test "unknown record tag is refused" do
-    path = write_bundle!([{aoq_arrow_bundle, @format_version}, {widget, :s1}])
-    assert {:error, {:bundle_record, {widget, :s1}}} = Bundle.decode(path)
+    path = write_bundle!([{:aoq_arrow_bundle, @format_version}, {:widget, :s1}])
+    assert {:error, {:bundle_record, {:widget, :s1}}} = Bundle.decode(path)
   end
 
   test "schema record without a digest record is refused" do
-    path = write_bundle!([{aoq_arrow_bundle, @format_version}, schema_term(:s1)])
+    path = write_bundle!([{:aoq_arrow_bundle, @format_version}, schema_term(:s1)])
     assert {:error, {:bundle_digest_missing, :s1}} = Bundle.decode(path)
   end
 
   test "non-32-byte digest record is refused" do
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
+        {:aoq_arrow_bundle, @format_version},
         schema_term(:s1),
-        {digest, :s1, <<1, 2, 3>>}
+        {:digest, :s1, <<1, 2, 3>>}
       ])
 
     assert {:error, {:bundle_bad_digest, :s1, <<1, 2, 3>>}} = Bundle.decode(path)
@@ -82,10 +82,10 @@ defmodule Smalt.Aoq.Arrow.BundleTest do
   test "duplicate schema id inside one bundle is refused" do
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
+        {:aoq_arrow_bundle, @format_version},
         schema_term(:s1),
         schema_term(:s1),
-        {digest, :s1, <<0::256>>}
+        {:digest, :s1, <<0::256>>}
       ])
 
     assert {:error, {:bundle_duplicate_schema, :s1}} = Bundle.decode(path)
@@ -94,14 +94,14 @@ defmodule Smalt.Aoq.Arrow.BundleTest do
   # -- roundtrip ---------------------------------------------------------------
 
   test "roundtrip: schema + digest records decode to entry map" do
-    {id, fields} = schema_term(:s1)
+    {:schema, id, fields} = schema_term(:s1)
     digest = expected_digest(id, fields)
 
     path =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
+        {:aoq_arrow_bundle, @format_version},
         schema_term(:s1),
-        {digest, :s1, digest}
+        {:digest, :s1, digest}
       ])
 
     assert {:ok, %{^id => %{schema: %Schema{} = schema, digest: ^digest}}} = Bundle.decode(path)
@@ -113,8 +113,8 @@ defmodule Smalt.Aoq.Arrow.BundleTest do
     # record order within the file does not matter
     path2 =
       write_bundle!([
-        {aoq_arrow_bundle, @format_version},
-        {digest, :s1, digest},
+        {:aoq_arrow_bundle, @format_version},
+        {:digest, :s1, digest},
         schema_term(:s1)
       ])
 

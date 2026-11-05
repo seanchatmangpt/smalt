@@ -43,7 +43,7 @@ defmodule Smalt.Ocel.RevOps do
     |> Enum.with_index()
     |> Enum.map(fn {event, i} -> {trace_key(event, i), event} end)
     |> Enum.reduce(%{}, fn {key, event}, acc ->
-      Map.update(acc, key, [event], &(&1 ++ [event]))
+      Map.update(acc, key, [event], &[event | &1])
     end)
     |> then(fn grouped ->
       order =
@@ -52,7 +52,9 @@ defmodule Smalt.Ocel.RevOps do
         |> Enum.map(fn {e, i} -> trace_key(e, i) end)
         |> Enum.uniq()
 
-      Enum.map(order, &{&1, Map.fetch!(grouped, &1)})
+      # Cons accumulation is reversed at materialization, preserving source
+      # event order within each trace.
+      Enum.map(order, &{&1, Enum.reverse(Map.fetch!(grouped, &1))})
     end)
   end
 

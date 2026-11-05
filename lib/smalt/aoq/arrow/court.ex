@@ -50,9 +50,9 @@ defmodule Smalt.Aoq.Arrow.Court do
     do: grammar_unit(unit)
 
   def grammar_check({:timestamp, unit, tz}, _) do
-    case grammar_unit(unit) do
-      :ok -> if is_binary(tz) or is_nil(tz), do: :ok, else: {:error, {:grammar, {:bad_tz, tz}}}
-      err -> err
+    with :ok <- grammar_unit(unit),
+         :ok <- if(is_binary(tz) or is_nil(tz), do: :ok, else: {:error, {:grammar, {:bad_tz, tz}}}) do
+      :ok
     end
   end
 
@@ -118,7 +118,12 @@ defmodule Smalt.Aoq.Arrow.Court do
   defp grammar(%Schema{fields: fields}) do
     Enum.reduce_while(fields, :ok, fn
       %Schema.Field{name: name, type: type}, :ok when is_binary(name) ->
-        case grammar_check(type) do
+        try do
+          grammar_check(type)
+        rescue
+          FunctionClauseError -> {:error, {:grammar, {:unknown_type, type}}}
+        end
+        |> case do
           :ok -> {:cont, :ok}
           err -> {:halt, err}
         end
@@ -151,7 +156,7 @@ defmodule Smalt.Aoq.Arrow.Court do
     {:error, {:semantic, {:empty_field_name, name}}}
   end
 
-  defp semantic_field(%Schema.Field{type: type} = field) do
+  defp semantic_field(%Schema.Field{type: type}) do
     case type do
       {:decimal128, precision, scale} ->
         if precision in 1..38 do
@@ -189,7 +194,7 @@ defmodule Smalt.Aoq.Arrow.Court do
         end
 
       _other ->
-        semantic_nested(field)
+        semantic_nested(type)
     end
   end
 

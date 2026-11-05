@@ -14,7 +14,9 @@ defmodule Smalt.Aoq.Listener do
   refusal recorded via `refusal/0`; the process then exits `:shutdown` so
   the supervisor restarts it.
 
-  Readiness: `local_port/0` is the bound port (nil before bind).
+  Readiness: `local_port/0` is the bound port (nil before bind); cfg
+  `:report_to` (pid) additionally receives `{:aoq_listener_bound, port}`
+  directly from the listener process — the race-free per-listener witness.
 
   Optional scheduler pinning (cfg `:pin`): `nil` → skip, `true` →
   `Smalt.Aoq.Scheduler.next_core()`, integer → `Scheduler.pin(n)`.
@@ -74,6 +76,10 @@ defmodule Smalt.Aoq.Listener do
         :persistent_term.put({__MODULE__, :local_port}, port)
         :persistent_term.put({__MODULE__, :refusal}, nil)
         pin(Keyword.get(cfg, :pin))
+        case Keyword.get(cfg, :report_to) do
+          nil -> :ok
+          rpid -> send(rpid, {:aoq_listener_bound, port})
+        end
         loop(sock, sink, idle_ms, deadline(idle_ms))
 
       {:error, reason} ->
@@ -102,7 +108,7 @@ defmodule Smalt.Aoq.Listener do
   # then refuses typed (SLEEP-CLASS: POLL-STEP — the runtime owns the wait).
   defp loop(sock, sink, idle_ms, deadline) do
     case :socket.recvmsg(sock, @buf_size, 0, @poll_interval) do
-      {:ok, %{iovec: iovec}} ->
+      {:ok, %{iov: iovec}} ->
         payload = iovec |> List.wrap() |> :erlang.iolist_to_binary()
         handoff(sink, payload)
         loop(sock, sink, idle_ms, deadline(idle_ms))

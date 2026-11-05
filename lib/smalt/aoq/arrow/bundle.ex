@@ -52,21 +52,24 @@ defmodule Smalt.Aoq.Arrow.Bundle do
   # schemas: id => fields ; digests: id => digest. Merge at the end so
   # record order within the file never matters.
   defp records([], schemas, digests) do
-    entries =
-      Map.new(schemas, fn {id, fields} ->
-        case Map.fetch(digests, id) do
-          {:ok, digest} -> {id, %{schema: build_schema(id, fields), digest: digest}}
-          :error -> {:error, {:bundle_digest_missing, id}}
-        end
-      end)
+    missing =
+      Enum.find(Map.keys(schemas), fn id -> not is_map_key(digests, id) end)
 
-    case Enum.find(entries, fn {_id, v} -> match?({:error, _}, v) end) do
-      nil -> {:ok, entries}
-      {_id, err} -> err
+    case missing do
+      nil ->
+        entries =
+          Map.new(schemas, fn {id, fields} ->
+            {id, %{schema: build_schema(id, fields), digest: Map.fetch!(digests, id)}}
+          end)
+
+        {:ok, entries}
+
+      id ->
+        {:error, {:bundle_digest_missing, id}}
     end
   end
 
-  defp records([{tag, id, fields} = rec | rest], schemas, digests) when tag == :schema do
+  defp records([{tag, id, fields} | rest], schemas, digests) when tag == :schema do
     if is_map_key(schemas, id) do
       {:error, {:bundle_duplicate_schema, id}}
     else

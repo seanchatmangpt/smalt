@@ -73,10 +73,6 @@ defmodule Smalt.Aoq.Arrow.Schema do
   @typedoc "Dictionary index types: the integer-width family."
   @type index_type :: :i8 | :i16 | :i32 | :i64 | :u8 | :u16 | :u32 | :u64
 
-  @typedoc """
-  Nesting depth cap for the type grammar. A type nested deeper than
-  #{@depth_cap} levels is a grammar refusal (`:depth_exceeded`).
-  """
   @depth_cap 32
   def depth_cap, do: @depth_cap
 
