@@ -80,4 +80,8 @@ config :smalt,
   # supervision-tree boot. Same ephemeral-probe contract as mcp_port above
   # (fixed default collided across concurrent test runs — cited verbatim).
   saml_idp_port: test_port.("SAML_IDP", 9445),
-  oidc_port: test_port.("OIDC", 9446)
+  oidc_port: test_port.("OIDC", 9446),
+  # LANE-11: AoQ plane listener — ephemeral under test. NOTE: NOT enabled
+  # here (default-off posture holds under test; the AoQ tests opt in via
+  # Application.put_env on :smalt, :aoq with their own probed-free port).
+  aoq_port: test_port.("AOQ", 9093)

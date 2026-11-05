@@ -58,6 +58,7 @@ cli/target/
 
 # Local agent & tooling runtime state
 .claude/
+.gemini/
 .clap-noun-verb/
 
 # Logs & ephemeral test runs

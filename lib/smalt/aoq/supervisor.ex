@@ -1,0 +1,59 @@
+defmodule Smalt.Aoq.Supervisor do
+  @moduledoc """
+  Root of the AoQ plane subtree (aq-architecture-spec.md §1.2, LANE-11).
+
+  one_for_one: Listener crash restarts the wire face; WorkerPool crash
+  restarts the pool (workers are stateless — restart, never data loss);
+  NifHolder crash restarts resource-lifetime ownership only.
+
+  Boot order: NifHolder FIRST — it publishes the persistent_term parse/encode
+  impl that pool workers read on their first call, so a worker never races
+  the holder on boot. Then WorkerPool, then Listener (the wire face comes up
+  only once workers can actually ingest frames).
+
+  one_for_one: Listener crash restarts the wire face; WorkerPool crash
+  restarts the pool (workers are stateless — restart, never data loss);
+  NifHolder crash restarts resource-lifetime ownership only.
+
+  Boot: config-gated, default OFF (byte-identical boot for every existing
+  surface). Enable with `config :smalt, :aoq, enabled: true, port: 9093`.
+  9093 (not 9092) — 9092 is the Kafka wire face's default in the same data
+  plane, and a fixed-port collision would fail both binds. Under test the
+  port is ephemeral (the config/test.exs test_port precedent).
+  """
+
+  use Supervisor
+
+  def start_link(init_arg) do
+    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_init_arg) do
+    cfg = config()
+
+    children = [
+      {Smalt.Aoq.NifHolder, cfg},
+      {Smalt.Aoq.WorkerPool, cfg},
+      {Smalt.Aoq.Listener, cfg}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @doc "AoQ plane config (`config :smalt, :aoq, [...]`), defaults baked in."
+  @spec config() :: keyword
+  def config do
+    cfg = Application.get_env(:smalt, :aoq, [])
+
+    # Port resolution: an explicit `:port` inside `config :smalt, :aoq` wins;
+    # otherwise the flat `config :smalt, :aoq_port` (the config/test.exs
+    # ephemeral-probe contract) otherwise the 9093 default.
+    port =
+      cfg[:port] || Application.get_env(:smalt, :aoq_port, 9093)
+
+    cfg
+    |> Keyword.put(:port, port)
+    |> Keyword.put_new(:workers, System.schedulers_online())
+  end
+end

@@ -95,6 +95,12 @@ config :smalt, :planes, :all
 config :smalt, :throttle, rate: nil, burst: nil
 config :smalt, :throttle_clock, nil
 
+# AoQ plane (LANE-11, aq-architecture-spec.md §1): DEFAULT OFF — byte-identical
+# boot for every existing surface. The subtree is mounted by the data plane
+# (Smalt.Plane.DataSupervisor) when enabled: true. Default port 9093 — 9092
+# is the Kafka wire face's default in the same plane.
+config :smalt, :aoq, enabled: false, port: 9093
+
 # AZURE-FIDELITY lane 8 + G2 gap-closure: Marketplace SaaS fulfillment face
 # (/saas/*) on the egress router. DEFAULT-ON as of 2026-10-25 (config flip) —
 # an explicit `enabled: false` still leaves every conn falling through to the

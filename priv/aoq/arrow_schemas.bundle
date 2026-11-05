@@ -1,0 +1,6 @@
+%% AOQ Arrow schema bundle, v1 (NIF-free).
+%% Format: {aoq_arrow_bundle, 1}. {schema, id, [fields]}. {digest, id, <<32 bytes>>}.
+%% fields: {name :: binary, type :: term, nullable :: boolean, metadata :: map}.
+%% digests are BLAKE3 over :erlang.term_to_binary({aoq_arrow_schema_v1, id, fields-structs})
+%% as computed by Smalt.Aoq.Arrow.Court.digest/1. Empty registry is lawful (v1).
+{aoq_arrow_bundle, 1}.

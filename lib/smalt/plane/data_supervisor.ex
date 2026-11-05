@@ -67,7 +67,7 @@ defmodule Smalt.Plane.DataSupervisor do
         {Smalt.ConfidentialLedger.Supervisor, []},
         shutdown: 10_000
       )
-    ] ++ egress_tls_child()
+    ] ++ egress_tls_child() ++ aoq_child()
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
   end
@@ -85,6 +85,25 @@ defmodule Smalt.Plane.DataSupervisor do
           {Bandit,
            Smalt.TLS.bandit_opts(Smalt.Application.TlsTwinDispatch, Smalt.TLS.egress_tls_port()) ++
              [ip: bind_ip()]},
+          shutdown: 10_000
+        )
+      ]
+    else
+      []
+    end
+  end
+
+  # AoQ plane (LANE-11, aq-architecture-spec.md §1): the AoQ subtree's single
+  # lawful start site, mirroring the egress_tls_child pattern — config-gated
+  # (default OFF, byte-identical boot), appended to the data-plane children,
+  # 10s bounded shutdown like every other listener-family child here. The
+  # former app-level aoq_child/0 is retired (Smalt.Application.aoq_child/0
+  # returns [] — posh precedent) so this cannot double-start.
+  defp aoq_child do
+    if Application.get_env(:smalt, :aoq, []) |> Keyword.get(:enabled, false) do
+      [
+        Supervisor.child_spec(
+          {Smalt.Aoq.Supervisor, []},
           shutdown: 10_000
         )
       ]

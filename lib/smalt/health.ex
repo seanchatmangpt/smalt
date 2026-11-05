@@ -31,11 +31,14 @@ defmodule Smalt.Health do
       scheduler: scheduler_capacity(),
       store: store_integrity(),
       memory: memory_high_water(),
-      cluster: cluster_status()
+      cluster: cluster_status(),
+      aoq: aoq_status()
     }
 
-    # Structural failures only: store/tables/memory bounds. Scheduler load and
-    # cluster-disabled are metrics, not verdicts (adaptive-probe law).
+    # Structural failures only: store/tables/memory bounds. Scheduler load,
+    # cluster-disabled and AoQ status are metrics, not verdict inputs
+    # (adaptive-probe law) — an optional AoQ subtree being off/down must not
+    # degrade readiness for the rest of the emulator.
     degraded? =
       checks.store != :ok or checks.memory != :ok or
         match?(%{verdict: :degraded}, checks.cluster)
@@ -177,6 +180,27 @@ defmodule Smalt.Health do
   def cluster_status do
     if Code.ensure_loaded?(Smalt.Cluster) do
       Smalt.Cluster.cluster_status()
+    else
+      %{enabled: false}
+    end
+  end
+
+  @doc """
+  AoQ plane status — metric-only (adaptive-probe law): a disabled or down AoQ
+  subtree is reported, never a readiness verdict input. Shape mirrors
+  cluster_status/0.
+  """
+  @spec aoq_status() :: map()
+  def aoq_status do
+    enabled? =
+      Application.get_env(:smalt, :aoq, [])
+      |> Keyword.get(:enabled, false)
+
+    if enabled? do
+      case Process.whereis(Smalt.Aoq.Supervisor) do
+        nil -> %{enabled: true, up: false}
+        pid -> %{enabled: true, up: Process.alive?(pid)}
+      end
     else
       %{enabled: false}
     end

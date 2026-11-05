@@ -34,6 +34,12 @@ defmodule Smalt.Application do
     # deterministic dev_env-derived key.
     :ok = Smalt.Amqp.SasVerifier.validate_boot_key!()
 
+    # LANE-09 (AoQ brief §4): opt-in fail-closed court — under SMALT_AOQ_FLAGS=1
+    # the VM args must still carry +sbt db / +sbwt none or boot refuses.
+    if System.get_env("SMALT_AOQ_FLAGS") == "1" do
+      :ok = Smalt.Aoq.Flags.verify!()
+    end
+
     Smalt.Telemetry.attach()
 
     # NOTE (lane 2 compile-unblock, disclosed): EventHubs.Listener is already a
@@ -72,6 +78,15 @@ defmodule Smalt.Application do
       []
     end
   end
+
+  # AoQ plane (LANE-11, aq-architecture-spec.md §1): the AoQ subtree's start
+  # site moved to the DATA PLANE (Smalt.Plane.DataSupervisor mounts
+  # Smalt.Aoq.Supervisor, plane-namespaced gating) so the engine has exactly
+  # one start site — posh_child/0 precedent. The former config-gated
+  # app-level aoq_child/0 is retired: a config :smalt, :aoq value is no
+  # longer read here and cannot double-start the AoQ subtree.
+  @doc false
+  def aoq_child, do: []
 
   # POSH-002 wiring, v26.10.31 WO-32: the POSH standards admission engine is
   # now OWNED BY THE CONTROL PLANE (Smalt.Plane.ControlSupervisor mounts

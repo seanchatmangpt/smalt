@@ -1,0 +1,18 @@
+## Smalt release VM args (LANE-09, AoQ program brief §4).
+##
+## +sbt db — scheduler bind type "db": schedulers bind to logical CPU cores
+##   in a distribution that keeps AoQ handler processes on fixed cores.
+## +sbwt none — no scheduler busy-wait: a scheduler that runs out of work
+##   sleeps immediately instead of spinning. Rationale: AoQ handlers are
+##   pinned (Smalt.Aoq.Scheduler.pin/1), so busy-wait polling only burns
+##   cores the handlers need; latency is dominated by message arrival, not
+##   scheduler wakeup.
+## +hms 2097152 — default max_heap_size (2_097_152 words = 16 MiB on 64-bit):
+##   any process whose heap exceeds the budget is killed (logged). Rationale:
+##   AoQ workers additionally carry the same budget via spawn opts
+##   (Smalt.Aoq.Worker); the VM-wide default backstops every other process
+##   (parsers, listeners, SDK handlers) so a runaway allocation dies instead
+##   of degrading the whole node.
++sbt db
++sbwt none
++hms 2097152
