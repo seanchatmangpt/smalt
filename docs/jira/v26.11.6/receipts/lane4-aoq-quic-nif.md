@@ -2,6 +2,31 @@
 
 Standing: PARTIAL_ALIVE
 
+## RESUME update (2026-11-05, post-SGV-FIX)
+
+- Dylib RE-STAGED with the SIGSEGV fix + #[no_mangle] exports + L3
+  server role: scripts/build_aoq_nif.sh run 2026-11-05 03:00, staged
+  priv/aoq/aq_beam_nif.so (2,671,248 bytes, exit 0). Blocker (2) from
+  the 2026-11-04 arm (missing NIF exports) is CLOSED by the #[no_mangle]
+  exports.
+- Wrapper extended with the full server/stream face: serve/4,
+  accept/2, accept_bi/2, stream_open/1, stream_send/2 (iolist DIRECT
+  into enif_inspect_iolist_as_binary - the dispatch's zero-concat
+  egress premise now holds on the stream path), stream_recv/2,
+  stream_close/1. UNSUPPORTED stubs removed; wrapper tests updated.
+- Court rewritten with the REAL legs: serve -> connect -> bi-stream
+  echo loopback with Frame byte-identity (320B), ALPN-drop mutation
+  (AQ_MUTATE_ALPN_DROP=1 must refuse, baseline must connect),
+  wrong-CA refusal + right-CA baseline.
+- COURT RUN: PARKED-ENVIRONMENTAL. `mix compile` in the shared tree
+  has been wedged >25 min at ~0% CPU (beam 27582, syspolicyd-class
+  exec wedge / fleet contention as coordinator-forecast); two earlier
+  compile attempts killed at the 30-min background cap. The court file
+  compiles standalone-checked only (grammar) - NOT run green yet.
+  CLOSE CONDITION: wedge-cleared rerun of
+  `mix test test/courts/aoq_quic_roundtrip_court.exs` must go green
+  (or fail-honest) before this receipt reads ALIVE.
+
 ## Subject
 
 smalt's first NIF: the AoQ QUIC transport face over the cgap-beam

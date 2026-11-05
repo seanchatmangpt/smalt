@@ -26,11 +26,22 @@ receipt-pending / UNVERIFIED, never rounded up.
 | L73 | kafka-wire-pack | ggen-marketplace `packs/kafka-wire-pack/` | pack qualification (marketplace gates) | pack renders a face smalt's `wire.ex` does not serve | receipt-pending | UNVERIFIED |
 | L74 | RDF projector | `lib/smalt/aoq/schema_bindings.ex`, `lib/smalt/aoq/rdf_projector.ex` (new); `test/smalt/aoq/rdf_projector_court_test.exs`, `test/integration/graphlaw_canonical_shapes_court_test.exs` | 10-court projector file green + sh:closed shim court flips court 10 RED, restore sha-exact | remove `sh:closed` → court 10 RED (executed) | `receipts/lane16-aoq-rdf-projector.md` | ALIVE |
 | K-IN | Kinesis REST face | `lib/smalt/egress/KinesisRoutes.ex` (new); `mix.exs` (+aws_signature), `verification/py/{pyproject.toml,test_wf10_kinesis.py}` (additive), `test/integration/kinesis_rest_roundtrip_test.exs` (new) | Elixir integration court 8/8 + real-boto3 court 3/3 over real TCP | real boto3 PutRecord/GetRecords against the face diverges or vanishes | `receipts/kin-kinesis-rest-lane.md` | ALIVE |
-| K-SQ | SQS face hardening | `lib/smalt/egress/sqs/{sqs_actions,sqs_query,sqs_routes,sqs_xml}.ex` (mod), `test/integration/sqs_roundtrip_test.exs` (mod) | SQS roundtrip integration court | real SQS client action roundtrip breaks | receipt-pending (lane closing at poll time) | UNVERIFIED |
+| K-SQ | SQS query/JSON face + E1 claim_wait | `lib/smalt/egress/sqs/{sqs_actions,sqs_query,sqs_routes,sqs_xml}.ex` (mod/new), `test/integration/sqs_roundtrip_test.exs` (mod), `verification/py/test_wf9_sqs.py` (new) | SQS integration court 14/14 + real-boto3 court 10/10 (real SigV4, boto3 1.43.124) | real SQS client action roundtrip breaks | `receipts/lane-ksq-sqs-face.md` | PARTIAL_ALIVE |
 | K-GC | Pub/Sub gRPC wire codec | `lib/smalt/data_plane/pubsub_grpc/wire.ex` (new), `test/smalt/data_plane/pubsub_grpc/wire_test.exs` (new) | 13/13 wire codec court | truncated/overlong varint admits, or PublishResponse unpack diverges | `receipts/lane-kgc-pubsub-deferred.md` | PARTIAL_ALIVE |
 | HC | real Kafka clients vs AZ-1 face | `verification/ts/{harness/substrate.ts,wf9-kafka.probe.mjs}` (new/additive), `verification/py/test_wf9_kafka.py` (new), `verification/ts/package.json`, `verification/py/pyproject.toml` (additive) | real confluent-kafka 2.16.1 + kafkajs 2.2.4 legs (rc 0/1/2/3) | real-client produce/group leg vanishes without a typed rc | `receipts/lane-hc-kafka-real-clients.md` | PARTIAL_ALIVE |
 
-### Repair lanes (R-lanes)
+### Repair lanes (R-lanes, disclosure)
+
+Minimal-unblock disclosures for this landing (L17-R, 2026-11-04 ~21:50–23:25):
+- `lib/smalt/aoq/{admission,schema_bindings,rdf_projector}.ex`, `lib/smalt/aoq/arrow/boot.ex`:
+  16 `# AOQ-FENCE-OK:` annotation-only markers added (error/log-prose and Turtle-text build
+  sites, not frame egress); fence 16 violations → 0. Landed at HEAD by the concurrent peer
+  sweep commit a08eedb1. Owning lanes: L67 (admission), L74 (rdf_projector/schema_bindings),
+  L65/L70 (arrow/boot). Disclosed here per the same-checkout disclosure law.
+- `lib/smalt/aoq/frame.ex`: two landing-lane probes, both RESTORED byte-exact (sha256
+  4870257…d22c verified): (1) trivial `<<_::binary>> = bin` head removed → bin-opt 4→2
+  warnings (probe receipt: /tmp/g_binopt2.log); (2) reverted before final gate capture.
+  Owning face: L13 framing law / 74f7d086 rewrite.
 
 R-class lanes (SIGSEGV hunt, peer fixes) hold no receipt files of their own;
 their findings are folded into the owning lanes' receipts and the KD register.

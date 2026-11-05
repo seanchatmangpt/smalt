@@ -30,7 +30,7 @@ admitted only after its falsifier runs on an exact subject.
 | S4 | Wasm arena stratum | greenfield | define subject first: which runtime (wasmex is in-tree), which arena ops, falsifier = alloc delta vs Elixir baseline |
 | S5 | arcus UDS soak 55,411 trips/sec | number unpinned | re-run the l30 probe with JSONL receipt emission (bench lanes write only their own result file) |
 | S6 | ML-KEM-768 handshakes | greenfield | stdlib/rust CryptoPadding-free KEM leg + interop vector court |
-| S7 | Statutory docket surface (ASC 450/SOX 404/EU AI Act/FRE 902) | greenfield | scope check first: is this an ontology/vocabulary lane (public-cloud-ontology precedent) or a feature claim? Decide before building |
+| S7 | Statutory docket surface (ASC 450/SOX 404/EU AI Act/FRE 902) | greenfield | SCOPE-CHECK VERDICT 2026-11-05: vocabulary lane, doc-first, option (ii) NO-BUILD (public-cloud-ontology precedent). Statutory citations map to LANDED controls with receipt pins — `docs/jira/v26.11.6/receipts/s22-controls-mapping.md`; the graph cites statutes, it does not implement them |
 | S8 | QUIC-as-system-bus | phase 2 per landed decision record | unchanged — quinn ≥0.11.15 in NIF boundary; not started |
 
 ## Multi-hyperscaler expansion (1/1/27 target — registered 2026-11-05)
@@ -55,11 +55,11 @@ smalt Kafka face; the net-new surfaces are:
 | S15 | GCP Pub/Sub gRPC face | gRPC ingress dialect | zero code anywhere (no gRPC server in fleet; Pub/Sub = zero hits) | real google-cloud-pubsub client roundtrip vs emulated face, byte/semantic parity court |
 | S16 | Kinesis REST face | Kinesis REST ingress | zero code (Azure EH REST exists as the template) | real boto3 Kinesis client roundtrip + RecordBatch transmute fidelity court |
 | S17 | SQS face | SQS REST ingress | zero code | real boto3 SQS client + queue-semantics divergence rows |
-| S18 | Unified multi-dialect listener | one Arcus adapter surface → AoQ | arcus ingress/egress are empty scaffolds; adapters are admission tables | per-dialect roundtrip through ONE membrane boundary to the AoQ kernel |
-| S19 | frozen-duckdb live SQL over raw logs | sub-15ms p99 vector scans | duckdb exists ONLY as popcorn_demo spike with frozen compression benches; no SQL-over-log path | latency court: sealed segment → SQL → result, p99 fence vs measured baseline (no invented 15ms) |
-| S20 | io_uring/O_DIRECT NVMe log | direct columnar appends | ZERO code, PROPOSED-only, structurally impossible on darwin/APFS — Linux-only lane with a platform gate | Linux runner + append-throughput court; darwin keeps datasync (honest scoping, never claimed) |
-| S21 | Cross-cloud replication fabric | MirrorMaker-class over AoQ/QUIC | no replication code; QUIC server role not built (see S8/QUIC phase-2) | two-node AoQ replication roundtrip with BLAKE3 chain continuity across nodes |
-| S22 | AHDCLT statutory defense | fail-closed SHACL + self-executing receipt ledger on protocol drift | SHACL engine dev/test-only (WO-10), ledger chains sha256 (retarget planned), S7 scope-check still open | seeded schema-drift injection → typed refusal + chained receipt, mutation flips |
+| S18 | Unified multi-dialect listener | one Arcus adapter surface → AoQ | REFRESHED 2026-11-05: aws/gcp ingress servers EXIST (internal/ingress/{aws,gcp}, courts green); stale 'empty scaffolds' line retired. Falsifier = per-dialect roundtrip through ONE Boundary seam — NOT one port. DEFER ruled (plan 2026-11-05): premature until aws/gcp handlers route through flight.RequireBoundary (R6-II shapes it) + R5-I depth lands + S3/S8 posture resolved. Trigger conditions in plan output; Stage-3 unified addr optional-only | per-dialect through-Boundary roundtrip courts (boto3/pubsub/kafka), each KD-row-pinned |
+| S19 | frozen-duckdb live SQL over raw logs | sub-15ms p99 vector scans | VERDICT LADDER COMPLETE 2026-11-05: v0 REFUTED-honest (`v26.11.6/receipts/s19-v0-census-court.md`), v1a ALIVE (`s19-v1-native-court.md`), v1b BLOCKED — env exec gate, wedge (INC-3), typed refusal, v2 court ALIVE / REFUTED-honest on the ratio fence with fidelity+population fences PASS (`s19-v2-wasm-court.md`). Honest verdict: census aggregation stays scalar at small volume; duckdb is the volume tier | volume-tier latency court re-runs post-wedge — court script staged: `scripts/s19/s19_v1b_court.sh` (run when wedge clears; p99 fence vs v1a baseline) |
+| S20 | io_uring/O_DIRECT NVMe log | direct columnar appends | UPDATE 2026-11-05: plan LANDED; impl lane dispatched (wave-receipt-overnight-1.md). Still ZERO code, PROPOSED-only, structurally impossible on darwin/APFS — Linux-only lane with a platform gate | Linux runner + append-throughput court; darwin keeps datasync (honest scoping, never claimed) |
+| S21 | Cross-cloud replication fabric | MirrorMaker-class over AoQ/QUIC | UPDATE 2026-11-05: plan LANDED; impl lane dispatched (wave-receipt-overnight-1.md). Still no replication code; QUIC server role not built (see S8/QUIC phase-2) | two-node AoQ replication roundtrip with BLAKE3 chain continuity across nodes |
+| S22 | AHDCLT statutory defense | fail-closed SHACL + self-executing receipt ledger on protocol drift | REFRESHED 2026-11-05: gen-2 BLAKE3 link law LANDED (L11 — `docs/jira/v26.11.6/receipts/lane11-blake3-chain-retarget.md`, ALIVE: 9/9 exs + Go cross-check + 14/14 fixtures refused + non-vacuous shim court); SHACL admission dev/test-only (WO-10, lane9-aoq-admission.md). REMAINDER un-landed: schema/shape-drift injection court — REGISTERED, NOT BUILT (admits nothing until its receipt lands); S7 scope-check CLOSED (see S7 row). S22/S7 scope verdict LANDED 2026-11-05: vocabulary lane, doc-first, option (ii) NO-BUILD; step-1 mapping doc `v26.11.6/receipts/s22-controls-mapping.md` (PARTIAL_ALIVE) — statutory citations map to LANDED controls with receipt pins; vocabulary slice is the next seed | seeded schema-drift injection → typed refusal + chained receipt, mutation flips |
 
 Cross-refs: S13 (translation tax, measured-only) applies to every new face;
 S3 (membrane NIF) and S8 (QUIC phase-2) are prerequisites for S18/S21.
@@ -104,6 +104,22 @@ transactions, exactly-once, compaction, KIP-482, replication fabric.
 - Gate law: calendar ("1/1/27") does not admit; measured KD-row burn-down
   does. Risk concentration: shared substrate (durable offsets, SHACL-in-prod)
   over per-face protocol surface.
+
+## Wave N+1 seeds (drift census, 2026-11-05)
+
+Registered by DR-1 (doc lane) from the drift census. Additive rows only;
+each carries surface, divergence (file:line), falsifier.
+
+| Seed | Surface | Divergence | Falsifier |
+|---|---|---|---|
+| N1-1 | frame codec (smalt vs cgap) | frame-v3 refusal-precedence divergence: smalt digest-gates FIRST (`lib/smalt/aoq/frame.ex:241-250`, stage-2 digest precedes stage-3 field validation) vs cgap magic→version→epoch first, digest LAST (`crates/cgap-aoq/src/codec.rs:75-102`); doubly-corrupt headers classify differently at the seam | dual-corrupt classification court |
+| N1-2 | epoch rotate (smalt vs cgap) | `handle_epoch_rotate` (`lib/smalt/aoq/frame.ex:351-361`) parses the new-epoch field big-endian (`new_epoch::unsigned-integer-size(16)`, no `little` specifier) inside an all-LE wire; cgap has no rotate counterpart | cross-repo rotate court |
+| N1-3 | cursor seq width (doc-only) | cursor seq is u64 (`lib/smalt/aoq/cursor.ex:14`) vs header seq u32 (`lib/smalt/aoq/frame.ex:199-200` overflow guard); the width seam is undocumented — `cursor.ex` moduledoc latent trap | doc-only: moduledoc amendment stating the width law |
+| N1-4 | Kinesis error envelope (smalt vs arcus) | error-envelope prefix drift: smalt `com.amazonaws.kinesis#`-prefixed vs arcus bare `__type`; key-casing `Message` vs `message`; shard-count law 2-shard vs single-shard | boto3-classification parity court across both faces |
+| N1-5 | KD registers (smalt wave vs canonical) | KD-203/204/205 ≡ KD-206/207/208 duplicate ids across wave/canonical registers; KD-198..205 absent from canonical; KD-195 untracked on the cgap/arcus side | one unified register with cross-repo resolution (XF-1's fence proves the mechanism) |
+
+Recorded done, not a seed: both-receipt disclosure gaps were closed by
+CD-1 (L1/HR-I/R4-I receipts).
 
 ## Chatman Equation rendering note
 
