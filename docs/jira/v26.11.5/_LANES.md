@@ -8,7 +8,7 @@ Ownership is single-owner-per-file.
 
 | Lane | Face | Files (disjoint) | Standing |
 |---|---|---|---|
-| LANE-01 | architecture spec | `aq-architecture-spec.md` | LANDED (`6034afac`, fixes `48a4faf8`/`25dd40df`) |
+| LANE-01 | architecture spec | `aq-architecture-spec.md` | LANDED (`6034afac`; +2 len fixes) |
 | LANE-02 | NIF boundary spec | `aq-nif-boundary-spec.md` | LANDED (`fa2e15f1`) |
 | LANE-03 | QUIC decision record | `aq-quic-transport-decision.md` | LANDED (`e8019de2`) |
 | L17 | milestone docs index | `README.md`, `_LANES.md` | LANDED (this commit) |
