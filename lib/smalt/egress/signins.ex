@@ -19,12 +19,15 @@ defmodule Smalt.Egress.SignIns do
   `createdDateTime` ge/le conjunctive form; any other property is a documented
   Graph 400 BadRequest.
 
-  The ring is a :persistent_term (cap #{@cap}, newest first) — global,
-  race-free, and process-tree free: the identity plane mints and the egress
-  plane serves the log on the same VM.
+  The ring is a lazy public named :ets table (cap #{@cap}, newest first)
+  keyed by a wrapping slot with a monotone :atomics sequence — global,
+  process-tree free, and O(1) per mint with no persistent_term write on
+  the hot path: the identity plane mints and the egress plane serves the
+  log on the same VM.
   """
 
   @ring_key :smalt_signins_ring
+  @seq_key {:smalt_signins_ring, :seq}
 
   # Minimal unblock fix (compile-freeze SLA disclosure, G1 what-if lane):
   # band/bor below are Bitwise macros; without this import the module fails
@@ -56,8 +59,11 @@ defmodule Smalt.Egress.SignIns do
       status_error_code: 0
     }
 
-    ring = :persistent_term.get(@ring_key, [])
-    :persistent_term.put(@ring_key, [event | ring] |> Enum.take(@cap))
+    ensure_ring()
+    seq = :atomics.add_get(seq_ref(), 1, 1)
+    # Fixed 256-slot set: seq-snapshot at read time reconstructs the
+    # newest-first ring; a mint into an occupied slot evicts the oldest.
+    :ets.insert(@ring_key, {rem(seq, @cap), seq, event})
     :ok
   rescue
     _ -> :ok
@@ -65,11 +71,53 @@ defmodule Smalt.Egress.SignIns do
 
   @doc "Recorded mint events, newest first."
   @spec events() :: [mint_event(), ...]
-  def events, do: :persistent_term.get(@ring_key, [])
+  def events do
+    ensure_ring()
+
+    @ring_key
+    |> :ets.tab2list()
+    |> Enum.sort_by(&elem(&1, 1), :desc)
+    |> Enum.take(@cap)
+    |> Enum.map(&elem(&1, 2))
+  rescue
+    _ -> []
+  end
 
   @doc "Clear the ring (courts use this to pin an exact row count)."
   @spec clear() :: :ok
-  def clear, do: :persistent_term.put(@ring_key, [])
+  def clear do
+    ensure_ring()
+    :ets.delete_all_objects(@ring_key)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  # Lazy init — no application.ex edit (C9 lane law). A lost init race is
+  # benign: the winner's named table is the ring either way.
+  defp ensure_ring do
+    if :ets.whereis(@ring_key) == :undefined do
+      try do
+        :ets.new(@ring_key, [:named_table, :public, :set, read_concurrency: true])
+        :persistent_term.put(@seq_key, :atomics.new(1, signed: false))
+      rescue
+        # Lost the :ets.new race — the winner's table is the ring.
+        _ -> :ok
+      end
+    end
+  end
+
+  defp seq_ref do
+    case :persistent_term.get(@seq_key, :undefined) do
+      :undefined ->
+        ref = :atomics.new(1, signed: false)
+        :persistent_term.put(@seq_key, ref)
+        ref
+
+      ref ->
+        ref
+    end
+  end
 
   @doc """
   Render one event into the documented Graph signIn row shape.

@@ -44,9 +44,12 @@ apply_shim() {
 
 defmodule Smalt.Aoq.FrameShimCourt do
   # SHIM-COURT: deliberate non-reusable binary construction to force a
-  # bin_opt_info FAIL-class warning ("doesn't support context reuse").
-  @spec probe(binary(), binary()) :: binary()
-  def probe(h, t) when is_binary(h) and is_binary(t) do
+  # bin_opt_info FAIL-class warning ("doesn't support context reuse"):
+  # match a bitstring, then reconstruct — measured trigger on
+  # elixir 1.20.4-otp-29.
+  @spec probe(binary()) :: bitstring()
+  def probe(bin) do
+    <<h::size(8)-binary, t::bits>> = bin
     <<h::binary, t::binary>>
   end
 end
