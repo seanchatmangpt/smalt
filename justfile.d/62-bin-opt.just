@@ -1,7 +1,7 @@
 # 62-bin-opt.just — AoQ bin_opt_info match-context reuse gate + non-vacuity court
 # (aq-architecture-spec §4, commit 25dd40df; lane L12r, v26.11.5)
 
-BINOPT_ROOT := parent_directory(justfile_directory())
+BINOPT_ROOT := justfile_directory()
 
 # Compile the AoQ surface with bin_opt_info; exit 0 only on zero scoped
 # FAIL-class warnings (fail closed; exit 2 = loud refuse, never a fake pass).
