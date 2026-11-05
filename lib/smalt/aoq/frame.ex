@@ -137,9 +137,10 @@ defmodule Smalt.Aoq.Frame do
 
   Stage 1 matches wire shape with fixed sizes and literal reserved
   regions; stage 2 verifies the header CRC against the ORIGINAL binary
-  (no `<>`-constructed re-match); stage 3 does the full field match in a
-  function head with the wire binary LAST, then admits type/epoch via
-  the booted tables.
+  (no `<>`-constructed re-match); stage 3 validates the header fields as
+  integers extracted by stage 1's single context-reused match (no
+  re-match of the wire — bin_opt_info context-reuse law), then admits
+  type/epoch via the booted tables.
   """
   @spec decode(binary()) :: {:ok, {t(), body()}} | {:error, decode_error()}
   def decode(bin) when is_binary(bin) do
@@ -150,19 +151,35 @@ defmodule Smalt.Aoq.Frame do
     end
   end
 
-  # Stage 1: wire shape. Fixed sizes before any variable segment;
-  # bytes 36..63 matched literally as 0::224 (a flip there is :bad_header,
-  # never a silent skip).
+  # Stage 1: wire shape. Fixed sizes before any variable segment; all
+  # header fields extracted as integer segments (no field literals — a
+  # flip in bytes 0..31 must reach the stage 2 CRC gate as :bad_crc);
+  # bytes 36..63 matched literally as 0::224 (a flip there is
+  # :bad_header, never a silent skip).
   defp stage1_wire_shape(bin) when byte_size(bin) < 65, do: {:error, :short_frame}
 
   defp stage1_wire_shape(bin) do
     case bin do
-      <<prefix::binary-size(32), crc::unsigned-integer-size(32), 0::unsigned-integer-size(224),
-        payload::binary>> when byte_size(payload) >= 1 ->
-        # Stage 2: CRC over bytes 0..31 of the ORIGINAL binary — prefix is a
-        # binary_part-backed slice of `bin`, never a <>-constructed re-match.
-        if :erlang.crc32(prefix) == crc do
-          stage3_fields(payload, bin)
+      <<magic::binary-size(4), version::unsigned-integer-size(8),
+        epoch::unsigned-integer-size(16), seq::unsigned-integer-size(64), type::unsigned-integer-size(8),
+        flags::unsigned-integer-size(16), reserved::unsigned-integer-size(48),
+        payload_len::unsigned-integer-size(64), crc::unsigned-integer-size(32),
+        0::unsigned-integer-size(224), payload::binary>>
+      when byte_size(payload) >= 1 ->
+        # Stage 2: CRC over bytes 0..31 of the ORIGINAL binary —
+        # binary_part slice, never a <>-constructed re-match.
+        if :erlang.crc32(:erlang.binary_part(bin, 0, 32)) == crc do
+          stage3_fields(
+            payload,
+            magic,
+            version,
+            epoch,
+            seq,
+            type,
+            flags,
+            reserved,
+            payload_len
+          )
         else
           {:error, :bad_crc}
         end
@@ -172,23 +189,50 @@ defmodule Smalt.Aoq.Frame do
     end
   end
 
-  # Stage 3: full field match in a function head, wire binary LAST,
-  # payload_len pinned against the actual body size, unknown flag bits
-  # refused against @known_flags.
+  # Stage 3: field validation on segments extracted by stage 1's single
+  # context-reused match — no field literals in that match (a flip in
+  # bytes 0..31 must reach the stage 2 CRC gate as :bad_crc) and no
+  # re-slicing of the wire (bin_opt_info context-reuse defeat). Field
+  # checks run AFTER the stage 2 CRC gate, so a flip in bytes 0..31 is
+  # always :bad_crc; valid-CRC field violations are :bad_header. The head
+  # begins with a binary match on `payload` (bin_opt law: a callee
+  # receiving a sub-binary must begin with a suitable binary match or the
+  # caller materializes the binary — no context reuse). payload_len
+  # pinned against the actual body size, unknown flag bits refused
+  # against @known_flags.
   defp stage3_fields(
-         payload,
-         <<@magic, @version::8, epoch::unsigned-integer-size(16), seq::unsigned-integer-size(64),
-           type::8, flags::unsigned-integer-size(16), 0::unsigned-integer-size(48),
-           payload_len::unsigned-integer-size(64), _rest::binary>> = _wire
+         <<_::binary>> = payload,
+         magic,
+         version,
+         epoch,
+         seq,
+         type,
+         flags,
+         reserved,
+         payload_len
        )
-       when payload_len == byte_size(payload) and band(flags, ~~~@known_flags) == 0 do
+       when magic == @magic and version == @version and reserved == 0 and
+             payload_len == byte_size(payload) and band(flags, ~~~@known_flags) == 0 do
     admit_tables(payload, epoch, seq, type, flags, payload_len)
   end
 
-  defp stage3_fields(_payload, _wire), do: {:error, :bad_header}
+  defp stage3_fields(
+         _payload,
+         _magic,
+         _version,
+         _epoch,
+         _seq,
+         _type,
+         _flags,
+         _reserved,
+         _payload_len
+       ),
+       do: {:error, :bad_header}
 
   # Table admission: type and epoch must be present in the booted tables.
-  defp admit_tables(payload, epoch, seq, type, flags, payload_len) do
+  # Head begins with a binary match on `payload` (bin_opt context-reuse
+  # law — see stage3_fields above).
+  defp admit_tables(<<_::binary>> = payload, epoch, seq, type, flags, payload_len) do
     frame_types = Smalt.Aoq.Tables.frame_types()
     epochs = Smalt.Aoq.Tables.epochs()
 
