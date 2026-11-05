@@ -18,7 +18,9 @@ PID_FILE=/tmp/smalt-substrate-state/substrate.pid
 LOG=/tmp/smalt-substrate-state/substrate.log
 PORTS="9443 9444 5672 5673"
 HEALTH=http://127.0.0.1:9443/metadata/endpoints
-UP_TIMEOUT=${SMALT_UP_TIMEOUT:-90}
+# L53: cold boot (full compile) exceeds 90s — the deadline is the BUDGET,
+# the readiness poll is the mechanism. Default raised to 300s for cold boot.
+UP_TIMEOUT=${SMALT_UP_TIMEOUT:-300}
 LOCK_WAIT=${SMALT_LOCK_WAIT:-300}
 
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || dirname "$(cd "$(dirname "$0")" && pwd)")" || exit 1
@@ -66,6 +68,27 @@ live_lock_holders() {
   for o in $(lock_holders); do
     kill -0 "$o" 2>/dev/null && echo "$o"
   done
+}
+
+# Readiness poll (L53): the deadline is the budget, the poll is the mechanism.
+# Polls the real observables — all PORTS LISTENing + HEALTH URL serving — on a
+# bounded deadline; never a fixed sleep. Returns:
+#   0 = ready within budget (boot success)
+#   1 = budget exhausted, still not serving (slow/failed boot)
+#   2 = spawn pid died mid-boot (boot refusal — distinct from slow boot)
+# PORTS/HEALTH are plain vars read at call time, so a court can override them
+# to test this against a real temp listener without touching the substrate.
+await_ready() {
+  local spawn_pid="$1" budget="$2"
+  SECONDS=0
+  while [ "$SECONDS" -lt "$budget" ]; do
+    if all_listeners_present && curl -fsS -o /dev/null "$HEALTH" 2>/dev/null; then
+      return 0
+    fi
+    kill -0 "$spawn_pid" 2>/dev/null || return 2
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded readiness poll, budget deadline)
+  done
+  return 1
 }
 
 # True if pid or any of its descendants (2 levels: flock -> mix -> beam)
@@ -226,17 +249,13 @@ cmd_up() {
   set +m
   echo "$spawn_pid" >"$PID_FILE"
   echo "[UP] spawned pid $spawn_pid (lock fd NOT inherited); verifying listeners..."
-  local up=0
-  for _ in $(seq 1 "$UP_TIMEOUT"); do
-    if all_listeners_present && curl -fsS -o /dev/null "$HEALTH" 2>/dev/null; then
-      up=1
-      break
-    fi
-    kill -0 "$spawn_pid" 2>/dev/null || break
-    sleep 1 # SLEEP-CLASS: POLL-STEP (bounded health poll, UP_TIMEOUT deadline)
-  done
-  if [ "$up" -ne 1 ]; then
-    echo "[UP] FAIL: substrate not serving within ${UP_TIMEOUT}s; log tail ($LOG):" >&2
+  await_ready "$spawn_pid" "$UP_TIMEOUT"
+  local arc=$?
+  if [ "$arc" -ne 0 ]; then
+    case "$arc" in
+      1) echo "[UP] FAIL: substrate not serving within ${UP_TIMEOUT}s; log tail ($LOG):" >&2 ;;
+      2) echo "[UP] FAIL: substrate process died during boot (refused); log tail ($LOG):" >&2 ;;
+    esac
     tail -30 "$LOG" >&2
     kill -TERM "$spawn_pid" 2>/dev/null || true
     return 2
@@ -246,12 +265,16 @@ cmd_up() {
   return 0
 }
 
-case "${1:-}" in
-  up) cmd_up ;;
-  down) cmd_down ;;
-  status) cmd_status ;;
-  *)
-    echo "usage: $0 {up|down|status}" >&2
-    exit 64
-    ;;
-esac
+# Source-guard (L53): only dispatch when executed, so a court can
+# `source scripts/substrate.sh` and call await_ready against a temp listener.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  case "${1:-}" in
+    up) cmd_up ;;
+    down) cmd_down ;;
+    status) cmd_status ;;
+    *)
+      echo "usage: $0 {up|down|status}" >&2
+      exit 64
+      ;;
+  esac
+fi
