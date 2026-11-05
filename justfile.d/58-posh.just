@@ -105,7 +105,7 @@ posh-generate: _check_posh_tools
       echo "[POSH-GENERATE-FAIL] invariant gate over {{SMALT_POSH_PACK}} failed (exit $?)" >&2
       exit 1
     fi
-    echo "[POSH-GENERATE] running ggen sync run (cwd=pack dir; to: paths resolve from cwd - FM-WRITE-002 forbids .. traversal, so renders land in the pack's generated/ tree)"
+    echo "[POSH-GENERATE] running ggen sync run (cwd=pack dir; to: paths resolve from cwd - FM-WRITE-002 forbids .. traversal, so renders land in the pack's projections/ tree)"
     sync_out=$(cd "{{SMALT_POSH_PACK}}" && ggen sync run --format json 2>/dev/null) \
       || { echo "[POSH-GENERATE-FAIL] ggen sync run exited nonzero over {{SMALT_POSH_PACK}}" >&2; exit 1; }
     # Non-vacuity: the sync must actually render rows. written + skipped
@@ -122,10 +122,10 @@ posh-generate: _check_posh_tools
     # integrate into the repo: pipeline modules to lib/, the Go adapter to
     # posh/internal/adapter/.
     mkdir -p lib/smalt/posh/pipeline posh/internal/adapter
-    cp "{{SMALT_POSH_PACK}}/generated/lib/smalt/posh/pipeline/"*.ex lib/smalt/posh/pipeline/ \
+    cp "{{SMALT_POSH_PACK}}/projections/lib/smalt/posh/pipeline/"*.ex lib/smalt/posh/pipeline/ \
       || { echo "[POSH-GENERATE-FAIL] copy-out of pipeline modules failed" >&2; exit 1; }
     rm -f posh/internal/adapter/generated_adapters.go
-    cp "{{SMALT_POSH_PACK}}/generated/posh/internal/adapter/"*.go posh/internal/adapter/ \
+    cp "{{SMALT_POSH_PACK}}/projections/posh/internal/adapter/"*.go posh/internal/adapter/ \
       || { echo "[POSH-GENERATE-FAIL] copy-out of generated Go adapters failed" >&2; exit 1; }
     echo "[POSH-GENERATE] copy-out complete: lib/smalt/posh/pipeline/*.ex + posh/internal/adapter/*.go"
     # Compile gate: the rendered modules must compile (fix the TEMPLATE,

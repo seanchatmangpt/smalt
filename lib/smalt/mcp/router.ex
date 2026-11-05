@@ -365,7 +365,7 @@ defmodule Smalt.Mcp.Router do
   # in the Smalt.Mcp.Tool.<Family> modules under lib/smalt/mcp/tool/. Each
   # family returns the standard tool envelope ({:ok, result} |
   # {:refusal, code, message}) and nil for ids outside the family (the router
-  # falls through to the next family). The generated mcp_descriptor.ex
+  # falls through to the next family). The descriptor in descriptor.ex
   # surface is generator-owned - never hand-edited; families reference the
   # TTL surface, they never redefine it (drift fence:
   # test/internal/mcpt1_dispatch_court_test.exs).

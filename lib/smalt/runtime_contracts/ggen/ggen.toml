@@ -9,7 +9,7 @@ source = "ontology.ttl"
 dir = "templates"
 
 [generation]
-output_dir = "generated"
+output_dir = "catalog"
 
 [[generation.rules]]
 name = "contract-catalog"

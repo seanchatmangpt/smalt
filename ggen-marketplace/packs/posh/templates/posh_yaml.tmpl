@@ -11,7 +11,7 @@
 # scripts/posh_merge_allowlist.sh enforces the subset law at integration
 # (just posh-regen-check). FM-WRITE-002 forbids .. traversal, so this
 # renders a fragment in the pack tree, never posh.yaml directly.
-to: "generated/posh/config/egress_allowlist.generated.yaml"
+to: "projections/posh/config/egress_allowlist.generated.yaml"
 force: true
 for_each: egress  # single aggregate row: GROUP_CONCAT -> one render, never per-row concatenation
 sparql:

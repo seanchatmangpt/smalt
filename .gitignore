@@ -164,7 +164,6 @@ posh/bin/
 posh/run/
 posh/tmp/
 *.test
-generated/
 adapters/terraform-provider-smalt/terraform-provider-azurerm
 adapters/terraform-provider-smalt/*.tfrc
 adapters/terraform-provider-smalt/.terraform/
@@ -177,3 +176,10 @@ thesis/
 
 # TypeScript incremental build artifacts
 *.tsbuildinfo
+
+# AoQ QUIC NIF dylib (LANE-4 v26.11.6): build artifact staged by scripts/build_aoq_nif.sh, never committed
+priv/aoq/aq_beam_nif
+priv/aoq/aq_beam_nif.*
+
+# Runtime offset-journal artifacts (L60 v26.11.6): substrate state, never committed
+priv/data/

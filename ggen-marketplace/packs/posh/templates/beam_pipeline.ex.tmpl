@@ -9,7 +9,7 @@
 # GenStage: smalt carries no gen_stage dep; the hand-written runtime
 # (lib/smalt/posh) owns the event loop. THIS TEMPLATE IS THE PRODUCT:
 # never hand-edit rendered output; regeneration must be byte-identical.
-to: "generated/lib/smalt/posh/pipeline/{{ op }}.ex"
+to: "projections/lib/smalt/posh/pipeline/{{ op }}.ex"
 force: true
 for_each: pipeline
 sparql:
