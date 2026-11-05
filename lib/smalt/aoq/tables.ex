@@ -54,6 +54,16 @@ defmodule Smalt.Aoq.Tables do
     :ok
   end
 
+  @doc """
+  Compile-time Arrow registry fallback (LANE-52, additive): what
+  `{:aoq, :arrow_schemas}` holds when the bundle refuses at boot or
+  `boot/1` runs with no `:arrow_schemas` opt. Exposed so
+  `Smalt.Aoq.Arrow.Boot` can return the SAME map on a loud fallback
+  instead of re-deriving its own empty map (one source of truth).
+  """
+  @spec fallback_arrow_schemas() :: %{term() => term()}
+  def fallback_arrow_schemas, do: @arrow_schemas
+
   @doc "True when the tables have been booted (seal key present)."
   @spec sealed?() :: boolean()
   def sealed? do

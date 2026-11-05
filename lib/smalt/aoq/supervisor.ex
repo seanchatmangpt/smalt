@@ -32,6 +32,15 @@ defmodule Smalt.Aoq.Supervisor do
   def init(_init_arg) do
     cfg = config()
 
+    # Arrow schema boot source (lanes C3 + L52): the bundle is the
+    # registry of truth, and `Smalt.Aoq.Tables.boot/1` is the only
+    # lawful write path (writes frame_types/epochs/arrow_schemas and
+    # seals). A refused bundle is a loud log + compile-time fallback
+    # (`Smalt.Aoq.Arrow.Boot.registry/2`); the plane still boots. The
+    # default bundle is the shipped empty one, so this is byte-identical
+    # with the compile-time empty registry.
+    Smalt.Aoq.Tables.boot(arrow_schemas: Smalt.Aoq.Arrow.Boot.registry())
+
     children = [
       {Smalt.Aoq.NifHolder, cfg},
       {Smalt.Aoq.WorkerPool, cfg},
