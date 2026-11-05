@@ -49,8 +49,8 @@ __pycache__/
 *$py.class
 .venv/
 venv/
-ENV/
-env/
+/ENV/
+/env/
 
 # Rust / Cargo build artifacts
 target/
