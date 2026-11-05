@@ -197,6 +197,39 @@ defmodule InternalTier.CensusTest do
     # P14 TLS-everywhere court: real additive https listener + real
     # bandit_opts resolution over real sockets — :wire, no exemption tokens.
     "tls_all_planes_court_test.exs" => :wire,
+    # -- v26.11.5 registrations (L47 census reconcile): substrate gained the
+    # KV-polarity / KV7-oracle / api-version-fence / diagnostic-envelope /
+    # AOQ / WO32 capability; files landed unregistered (premise rot — the
+    # fence's manifest moved under it). Each row names the tier class and
+    # the observed behavior it lifts.
+    # kd03 (KD-03 KV polarity lane): in-process KvRoutes dispatch over the
+    # Plug test conn — client-token on the conn helper + JSON decode,
+    # status-literal on the conn.status assertions.
+    "kd03_kv_polarity_test.exs" => :internal,
+    # kv7 beam oracle: in-process posh_translate court over the KV7
+    # sub-dialect oracle — status-literal fires on the typed
+    # {:ok, 200, posh} tuple checks. No wire traffic, no client tokens.
+    "kv7_beam_oracle_court_test.exs" => :internal,
+    # api-version admission fence: in-process ArmGateway.Router dispatch
+    # over the Plug test conn — client-token on the conn helper + JSON
+    # decode, status-literal on the conn.status checks, arm_literal on the
+    # subscription-scoped provider admission-res path the court builds.
+    "api_version_admission_fence_test.exs" => :internal,
+    # diagnostic envelope court: in-process ArmGateway.Plug.Common /
+    # ReceiptTurnstile dispatch over the Plug test conn — client-token on
+    # the conn helper + JSON decode, status-literal on the conn.status
+    # checks, arm_literal on the subscription-scoped diagnostic-target
+    # literals the error envelope carries.
+    "diagnostic_envelope_court_test.exs" => :internal,
+    # AOQ lanes: in-process VM-flag / process-isolation courts over
+    # Smalt.Aoq.Worker/Flags/Scheduler — real processes, no wire traffic,
+    # no token lifts required.
+    "aoq_process_isolation_test.exs" => :observer,
+    "aoq_vm_flags_test.exs" => :observer,
+    # wo32 (WO-32 lane): control-only boot court over real
+    # Smalt.Planes.resolve/0 + ControlSupervisor children + a typed
+    # econnrefused probe on the arm port — no token lifts required.
+    "wo32_control_boot_court_test.exs" => :observer,
     @helper => :observer
   }
 
@@ -301,7 +334,12 @@ defmodule InternalTier.CensusTest do
     # fires on the platform metric-face REST path the court builds
     # (subscriptions/_smalt_monitor/... literal). Status checks ride the
     # wire (:wire class skips the status-literal rule).
-    "bkplat_platform_route_court_test.exs" => [:client_token, :arm_literal]
+    "bkplat_platform_route_court_test.exs" => [:client_token, :arm_literal],
+    # -- v26.11.5 (L47 census reconcile): observed behavior each lift covers.
+    "kd03_kv_polarity_test.exs" => [:client_token, :status_literal],
+    "kv7_beam_oracle_court_test.exs" => [:status_literal],
+    "api_version_admission_fence_test.exs" => [:client_token, :status_literal, :arm_literal],
+    "diagnostic_envelope_court_test.exs" => [:client_token, :status_literal, :arm_literal]
   }
 
   # ath1 (wire), w3cb (wire), rg404 (wire) status assertions ride the :wire
@@ -503,7 +541,17 @@ defmodule InternalTier.CensusTest do
                  "Smalt.Internal.KdLithW2VersionsListTest",
                  "Smalt.StsKeyClusterPurityTest",
                  "Smalt.Auth.StsKey",
-                 "Smalt.Test.Internal.TlsAllPlanesCourtTest"
+                 "Smalt.Test.Internal.TlsAllPlanesCourtTest",
+                 # -- v26.11.5 (L47 census reconcile): new-tier module surfaces.
+                 "Smalt.Internal.Kd03KvPolarityTest",
+                 "Smalt.Internal.Kv7BeamOracleCourtTest",
+                 "Smalt.Internal.ApiVersionAdmissionFenceTest",
+                 "Smalt.Internal.DiagnosticEnvelopeCourtTest",
+                 "Smalt.Registry",
+                 "Smalt.ArmGateway.Plug",
+                 "Smalt.Posh.Pipeline",
+                 "Smalt.Posh.Egress",
+                 "Smalt.Aoq"
                ])
 
   # -- v26.10.31 inversion (WO-06): dialect-tier classification ------------------
