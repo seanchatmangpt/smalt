@@ -237,16 +237,18 @@ defmodule Smalt.DataPlane.Blob.Worm do
            cas_policy_row(container_key, fn policy ->
              {:ok, policy |> Map.put("legal_hold", flag) |> put_in_worm_defaults()}
            end) do
-      # Real-Azure wire face (storage/legalhold@family-mismatch close): the
-      # set/clear arm answers 200 with the x-ms-legal-hold response HEADER and
-      # no JSON body; the boolean lives in the policy row (GET comp=legalhold
-      # surfaces it as x-ms-legal-hold: true|false).
+      # Real-Azure wire face (storage/legalhold@family-mismatch close).
+      # KD-COVERS: KD-189
+      # Set Container Legal Hold answers 200 with the x-ms-legal-hold response
+      # HEADER and NO body — the boolean lives in the policy row (GET
+      # comp=legalhold surfaces it as x-ms-legal-hold: true|false). The
+      # body-carrying record was a divergence against the pinned Azure shape.
       {:ok, 200,
        %{
          "x-ms-request-id" => BlobStorage.request_id(),
          "x-ms-version" => "2021-12-02",
          "x-ms-legal-hold" => to_string(flag)
-       }, %{"has_legal_hold" => flag}}
+       }, nil}
     else
       # Store.get/2 returns a bare :error on a missing row — without this
       # clause the with raises WithClauseError (a 500), never a typed 404.

@@ -1014,7 +1014,15 @@ defmodule Smalt.Egress.StorageCatchAll do
           else
             flag = header_map(conn)["x-ms-legal-hold"] == "true"
 
+            # KD-189: Set Container Legal Hold is header-only on real Azure —
+            # a nil body (the header-only close in Blob.Worm.set_legal_hold)
+            # answers an empty body, never a JSON projection.
             case BlobStorage.set_legal_hold(account, container, flag, header_map(conn)) do
+              {:ok, status, headers, nil} ->
+                conn
+                |> put_resp_headers(headers)
+                |> send_resp(status, "")
+
               {:ok, status, headers, record} ->
                 conn
                 |> put_resp_headers(headers)
