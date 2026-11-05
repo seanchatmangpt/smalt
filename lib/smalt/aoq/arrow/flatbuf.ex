@@ -493,6 +493,8 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
         sz = byte_size(bytes)
         {{fid, u + sz, bytes, 0}, u + sz}
       end)
+    vt_bytes = 4 + 2 * n
+    pad_vt = 0
     region_len = 8 + vt_bytes - 4 + pad_vt + Enum.sum(Enum.map(slot_rows, fn {_, _, bytes, pad} -> pad + byte_size(bytes) end))
     # Forward geometry rels: rel = (region end off - block offset) - elem off.
     slot_region =
@@ -518,8 +520,6 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
           {:i64, x} -> [zeros(pad), <<x::64-little>>]
         end
       end)
-    vt_bytes = 4 + 2 * n
-    pad_vt = 0
     # Forward geometry: voff(id) = prefix + sum of block sizes of the slots
     # placed BEFORE id in the forward region (desc-id order) + its pad.
     prefix = 8 + vt_bytes - 4 + pad_vt
