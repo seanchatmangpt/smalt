@@ -183,3 +183,11 @@ priv/aoq/aq_beam_nif.*
 
 # Runtime offset-journal artifacts (L60 v26.11.6): substrate state, never committed
 priv/data/
+
+# Lane-artifact hygiene (gitignore-hygiene lane): crash dumps beyond BEAM,
+# coverage exports, ETS/DETS temp tables. Receipts under docs/jira/, testdata/,
+# and verification/ JSON remain tracked evidence.
+*.dump
+coverage/
+*.dets
+*.ets
