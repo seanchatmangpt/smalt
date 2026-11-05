@@ -8,6 +8,12 @@ module and the real AWS SDK. No `Process.sleep` in the lane's lib or court
 files. Scratch artifacts (`tmp/kin_py_harness.exs`, harness BEAM) deleted /
 confirmed down.
 
+**Disposition (operator ruling, 2026-11-04):** the Kinesis face stays as
+the BEAM emulator-parity twin (EH-REST precedent); the STRATEGIC AWS face
+is arcus ingress/aws (server.go + sigv4) — the membrane owns external
+protocol interception, smalt stays standards-native. No rework; mounted
+router line stays.
+
 ## Subject (files owned and landed by this lane)
 
 - `lib/smalt/egress/KinesisRoutes.ex` (NEW) — AWS Kinesis JSON protocol face
@@ -81,14 +87,12 @@ wins, the register is authoritative over this receipt).
    of bounded polling; another lane created the v26.11.6 KD register and
    test_wf9_kafka.py mid-lane — both collisions resolved first-minted-wins.
 
-## Disclosed coordinator one-liner (NOT landed — outside lane lease)
+## Coordinator mount (LANDED this session — confirmed on disk)
 
-In `lib/smalt/egress_router.ex`, mount the delegator ahead of the existing
-face plugs:
-
-```elixir
-plug Smalt.Egress.KinesisRoutes
-```
-
-Until it lands, the boto3 court loud-skips rc=3 against a substrate boot
-(`_face_mounted` detection — a typed skip, never a fake pass).
+The disclosed one-liner landed as the coordinator's runtime-atom idiom in
+`lib/smalt/egress_router.ex` (`:kinesis_rest_face` delegator at line 181,
+`defp kinesis_rest_face` at 214 — after `:apim_gateway_plane`, before
+`:w6r_fallthrough`, same sent/halted end-of-chain law, parse-checked). The
+lane-outstanding item is CLOSED; the boto3 court's `_face_mounted`
+detection now serves as the mounted-face probe against any substrate boot
+with this tree.

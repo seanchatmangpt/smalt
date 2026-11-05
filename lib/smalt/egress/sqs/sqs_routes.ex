@@ -49,21 +49,47 @@ defmodule Smalt.Egress.Sqs.SqsRoutes do
   defp sigv4?(["AWS4-HMAC-SHA256" <> _ | _]), do: true
   defp sigv4?(_), do: false
 
+  # Two wire faces (KD-SQ2 note): legacy query protocol (form-urlencoded,
+  # Version gate) and MODERN boto3 JSON protocol (Content-Type
+  # application/x-amz-json-1.0, X-Amz-Target: AmazonSQS.<Action>). Modern
+  # botocore (>=1.34) speaks JSON-with-query-mode for SQS — witnessed on the
+  # wire in the wf9 court boot; the form face stays for AWS CLI/older SDKs.
   defp handle(conn) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
 
-    case SqsQuery.parse(body) do
-      {:ok, params} ->
+    cond do
+      x_amz_target?(conn) ->
+        params = SqsQuery.json_params(body, action_from_target(conn))
+
         dispatch(conn, params)
 
-      {:error, :version} ->
-        error(conn, 400, "InvalidAction", "Unsupported Version — expected 2012-11-05.")
+      true ->
+        case SqsQuery.parse(body) do
+          {:ok, params} ->
+            dispatch(conn, params)
+
+          {:error, :version} ->
+            error(conn, 400, "InvalidAction", "Unsupported Version — expected 2012-11-05.")
+        end
+    end
+  end
+
+  defp x_amz_target?(conn) do
+    Plug.Conn.get_req_header(conn, "x-amz-target") != []
+  end
+
+  defp action_from_target(conn) do
+    case Plug.Conn.get_req_header(conn, "x-amz-target") do
+      ["AmazonSQS." <> action | _] -> action
+      [other | _] -> String.replace_prefix(other, "AmazonSQS.", "")
+      [] -> nil
     end
   end
 
   defp dispatch(conn, params) do
     action = params["Action"]
     host = host_header(conn)
+    json_face? = x_amz_target?(conn)
 
     result =
       try do
@@ -76,15 +102,70 @@ defmodule Smalt.Egress.Sqs.SqsRoutes do
       end
 
     case result do
-      {:ok, xml} ->
-        respond(conn, 200, xml)
+      {:ok, payload} ->
+        if json_face? do
+          json_respond(conn, 200, payload)
+        else
+          respond(conn, 200, SqsXml.response_from_payload(action, payload))
+        end
 
       {:error, code, msg} ->
-        error(conn, status_for(code), code, msg)
+        if json_face? do
+          json_error(conn, status_for(code), code, msg)
+        else
+          error(conn, status_for(code), code, msg)
+        end
 
       _ ->
-        error(conn, 400, "InvalidAction", "The action #{inspect(action)} is not supported.")
+        if json_face? do
+          json_error(conn, 400, "InvalidAction", "The action #{inspect(action)} is not supported.")
+        else
+          error(conn, 400, "InvalidAction", "The action #{inspect(action)} is not supported.")
+        end
     end
+  end
+
+  # Modern-boto3 JSON face: json protocol parser expects JSON bodies; error
+  # shape {"__type": code, "Message": msg}.
+  defp json_respond(conn, status, payload) do
+    payload = json_shape(payload)
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, Jason.encode!(payload))
+    |> Plug.Conn.halt()
+  end
+
+  # JSON-face shaping: message attributes ride botocore's expected shape
+  # ({name => {StringValue, DataType}}) and the canonical MD5 is recomputed.
+  defp json_shape(%{"Messages" => msgs} = payload) do
+    msgs =
+      Enum.map(msgs, fn m ->
+        case m["MessageAttributesRaw"] do
+          nil ->
+            Map.delete(m, "MessageAttributesRaw")
+
+          props when props == %{} ->
+            Map.delete(m, "MessageAttributesRaw")
+
+          props ->
+            m
+            |> Map.delete("MessageAttributesRaw")
+            |> Map.put(
+              "MessageAttributes",
+              Map.new(props, fn {n, v} -> {n, %{"StringValue" => v, "DataType" => "String"}} end)
+            )
+            |> Map.put("MD5OfMessageAttributes", Smalt.Egress.Sqs.SqsMd5.attributes_md5(props))
+        end
+      end)
+
+    Map.put(payload, "Messages", msgs)
+  end
+
+  defp json_shape(payload), do: payload
+
+  defp json_error(conn, status, code, message) do
+    json_respond(conn, status, %{"__type" => code, "Message" => message})
   end
 
   defp run("CreateQueue", h, p), do: SqsActions.create_queue(h, p)

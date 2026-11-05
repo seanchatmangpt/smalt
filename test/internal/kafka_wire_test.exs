@@ -337,4 +337,108 @@ defmodule SmaltTest.KafkaWireTest do
     do: do_expl4_uvarint(div(n, 128), [acc | [0x80 + rem(n, 128)]])
 
   defp do_expl4_uvarint(n, acc), do: IO.iodata_to_binary([acc | [n]])
+
+  # -- KD-HC court legs (WP lane, v26.11.6) --------------------------------------
+
+  # KD-HC-3: ApiVersions answered with version-correct payloads. v0 is the
+  # bare {error_code, entries} shape; v1/v2 prepend the throttle_time_ms i32
+  # head (KIP-511/183 posture; kafkajs misparsed the v0-shaped echo).
+  test "KD-HC-3: ApiVersions v0/v1/v2 payload shapes are version-correct" do
+    alias Smalt.Messaging.Kafka.Listener
+
+    port = Listener.port()
+
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
+    entries = Smalt.Messaging.Kafka.Wire.version_matrix() |> map_size()
+
+    # v0: corr | error_code i16 | array_len i32 | entries.
+    :ok = :gen_tcp.send(sock, expl4_req(18, 0, <<>>))
+    assert {:ok, <<_corr::signed-32, 0::signed-16, n0::signed-32, body0::binary>>} = recv_resp(sock)
+    assert n0 == entries
+    assert byte_size(body0) == n0 * 6
+
+    # v1: corr | throttle_time_ms i32 | error_code i16 | array_len i32 | entries.
+    :ok = :gen_tcp.send(sock, expl4_req(18, 1, <<>>))
+
+    assert {:ok,
+            <<_c1::signed-32, throttle1::signed-32, 0::signed-16, n1::signed-32,
+              body1::binary>>} = recv_resp(sock)
+
+    assert throttle1 == 0
+    assert n1 == entries
+    assert byte_size(body1) == n1 * 6
+
+    # v2: wire-identical to v1 (flexible from v3, never served).
+    :ok = :gen_tcp.send(sock, expl4_req(18, 2, <<>>))
+
+    assert {:ok,
+            <<_c2::signed-32, throttle2::signed-32, 0::signed-16, n2::signed-32,
+              body2::binary>>} = recv_resp(sock)
+
+    assert throttle2 == 0
+    assert n2 == entries
+    assert body2 == body1
+    :gen_tcp.close(sock)
+  end
+
+  # KD-HC-1: Metadata v3 named-topic request answered with the v3 shape —
+  # throttle head, then {brokers, cluster_id, controller_id, topics[] with
+  # err/name/is_internal/partitions} — and the requested topic name echoed.
+  test "KD-HC-1: Metadata v3 named-topic response shape and byte order" do
+    alias Smalt.Messaging.Kafka.Listener
+
+    port = Listener.port()
+
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
+    parts = Smalt.Messaging.Kafka.Log.partition_count()
+    topic_req = lo_topics(1, @topic, [])
+
+    :ok = :gen_tcp.send(sock, expl4_req(3, 3, topic_req <> <<1::signed-8>>))
+
+    assert {:ok,
+            <<
+              _corr::signed-32, throttle::signed-32, 1::signed-32, 9::16, "127.0.0.1",
+              bport::signed-32, -1::signed-16, _cluster::signed-32, -1::signed-16,
+              1::signed-32, 0::signed-16, 5::16, "kafka", internal::8, nparts::signed-32,
+              tail::binary
+            >>} = recv_resp(sock)
+
+    assert throttle == 0
+    assert internal == 0
+    assert nparts == parts
+    # Per-partition block: err i16 | partition i32 | leader i32 |
+    # replicas[1] | isr[1] = 22 bytes each.
+    assert byte_size(tail) == parts * 22
+    assert bport == port
+    :gen_tcp.close(sock)
+  end
+
+  # KD-HC-1 flip side: the matrix no longer advertises Metadata v4, so a v4
+  # request is the crash-only face — typed kill telemetry, never a parse guess.
+  test "KD-HC-1: Metadata v4 (unadvertised) is crash-only killed with telemetry" do
+    alias Smalt.Messaging.Kafka.Listener
+
+    parent = self()
+
+    ref =
+      :telemetry.attach(:kdhc1_meta_v4, [:smalt, :kafka, :conn_killed],
+        fn _e, _m, meta, _ -> send(parent, {:killed, meta}) end,
+        %{}
+      )
+
+    port = Listener.port()
+
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
+    :ok = :gen_tcp.send(sock, expl4_req(3, 4, lo_topics(1, @topic, []) <> <<1::signed-8>>))
+
+    assert recv_resp(sock) == {:error, :closed}
+    assert_receive {:killed, %{reason: {:unsupported_version, 3, 4}}}, 10_000
+    :telemetry.detach(ref)
+  end
 end

@@ -68,11 +68,23 @@ defmodule Smalt.Messaging.Kafka.GroupManager do
   def handle_find_coordinator(ver, corr, body, sock, port) do
     case parse_string(body) do
       {:ok, _key, _rest} ->
-        tail = if ver >= 1, do: [<<-1::signed-16>>], else: []
+        # KD-COVERS: KD-HC-2 — v1 field order is
+        # {throttle_time_ms, error_code, error_message, coordinator_id, host,
+        # port} per KIP-113 / the Apache protocol guide (FindCoordinator v1
+        # adds a throttle_time_ms i32 head). Premise-rot disclosure: the
+        # vendored tmp/kafkalib commit.py GroupCoordinatorResponse_v1 omits
+        # the throttle head (kafka-python fork divergence); librdkafka
+        # (witnessed _UNDERFLOW on the 23-byte response) and kafkajs follow
+        # the guide, so the guide is law here — 27 bytes total. v0 keeps the
+        # bare shape (no throttle, no error_message).
+        throttle = if ver >= 1, do: [<<0::signed-integer-size(32)>>], else: []
+        err_message = if ver >= 1, do: [<<-1::signed-16>>], else: []
 
         Conn.send_response(sock, corr, [
-          <<0::signed-16, 0::signed-32, 9::unsigned-16, "127.0.0.1", port::signed-32>>,
-          tail
+          throttle,
+          <<0::signed-16>>,
+          err_message,
+          <<0::signed-32, 9::unsigned-16, "127.0.0.1", port::signed-32>>
         ])
 
         :ok

@@ -54,13 +54,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       attrs = stored_attrs(params)
       Smalt.Store.put(:smalt_sb_queues, name, Map.put(info, :sqs_attrs, attrs))
 
-      xml =
-        SqsXml.response(
-          "CreateQueue",
-          "<QueueUrl>" <> SqsXml.escape(queue_url(host, name)) <> "</QueueUrl>"
-        )
-
-      {:ok, xml}
+      {:ok, %{"QueueUrl" => queue_url(host, name)}}
     else
       {:error, "MissingParameter", "The request must contain the parameter QueueName."}
     end
@@ -94,10 +88,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       |> Enum.sort()
       |> Enum.map(&queue_url(host, &1))
 
-    children =
-      Enum.map(urls, fn u -> "<QueueUrl>" <> SqsXml.escape(u) <> "</QueueUrl>" end)
-
-    {:ok, SqsXml.response("ListQueues", children)}
+    {:ok, %{"QueueUrls" => urls}}
   end
 
   # -- GetQueueAttributes --------------------------------------------------------
@@ -157,12 +148,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
           )
         ])
 
-      children =
-        Enum.map(attrs, fn {n, v} ->
-          "<Attribute><Name>" <> SqsXml.escape(n) <> "</Name><Value>" <> SqsXml.escape(v) <> "</Value></Attribute>"
-        end)
-
-      {:ok, SqsXml.response("GetQueueAttributes", children)}
+      {:ok, %{"Attributes" => Map.new(attrs)}}
     end
   end
 
@@ -215,23 +201,17 @@ defmodule Smalt.Egress.Sqs.SqsActions do
 
       case QueueStore.enqueue(name, body, opts) do
         {:ok, _seq} ->
-          attr_md5_xml =
+          payload = %{
+            "MD5OfMessageBody" => SqsMd5.body_md5(body),
+            "MessageId" => message_id
+          }
+
+          payload =
             if attrs == %{},
-              do: "",
-              else:
-                "<MD5OfMessageAttributes>" <> SqsMd5.attributes_md5(attrs) <> "</MD5OfMessageAttributes>"
+              do: payload,
+              else: Map.put(payload, "MD5OfMessageAttributes", SqsMd5.attributes_md5(attrs))
 
-          xml =
-            SqsXml.response(
-              "SendMessage",
-              "<MD5OfMessageBody>" <>
-                SqsMd5.body_md5(body) <>
-                "</MD5OfMessageBody>" <>
-                attr_md5_xml <>
-                "<MessageId>" <> message_id <> "</MessageId>"
-            )
-
-          {:ok, xml}
+          {:ok, payload}
 
         {:error, :too_large} ->
           {:error, "InvalidParameterValue", "MessageBody exceeds the maximum message size."}
@@ -246,6 +226,26 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       {:error, _, _} = err -> err
       _ -> {:error, "MissingParameter", "The request must contain the parameter MessageBody."}
     end
+  end
+
+  # real SQS: empty MessageBody is a SenderFault (MissingParameter)
+  defp body_ok?(b), do: is_binary(b) and b != ""
+
+  # Batch entries carry nested message attributes at
+  # SendMessageBatchRequestEntry.N.MessageAttribute.M.Name/Value — a deeper
+  # dotted-index level; use entries_all over the flat map via a synthetic
+  # prefix remap of the flat keys.
+  defp message_attributes_from_entry(e) do
+    e
+    |> Enum.flat_map(fn {k, v} ->
+      case String.split(k, ".") do
+        ["MessageAttribute", i, field] -> [{"MessageAttribute." <> i <> "." <> field, v}]
+        _ -> []
+      end
+    end)
+    |> Map.new()
+    |> SqsQuery.entries_all("MessageAttribute")
+    |> Map.new(fn a -> {a["Name"], a["Value"]} end)
   end
 
   # SQS message attributes ride app_props (String-typed face); emitted back on
@@ -275,7 +275,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
 
   defp message_attributes(params) do
     params
-    |> SqsQuery.entries("MessageAttribute")
+    |> SqsQuery.entries_all("MessageAttribute")
     |> Map.new(fn e -> {e["Name"], e["Value"]} end)
   end
 
@@ -294,22 +294,34 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       {oks, fails} =
         Enum.reduce(entries, {[], []}, fn e, {oks, fails} ->
           case batch_send_one(name, e) do
-            {:ok, id, xml} -> {[xml | oks], fails}
-            {:error, id, code, msg, fault?} -> {oks, [error_entry(id, code, msg, fault?) | fails]}
+            {:ok, id, entry} -> {[entry | oks], fails}
+            {:error, id, code, msg, fault?} -> {oks, [%{"Id" => id, "SenderFault" => fault?, "Code" => code, "Message" => msg} | fails]}
           end
         end)
 
-      {:ok, SqsXml.response("SendMessageBatch", Enum.reverse(oks) ++ Enum.reverse(fails))}
+      {:ok, %{"Successful" => Enum.reverse(oks), "Failed" => Enum.reverse(fails)}}
     end
   end
+
+  defp message_attributes_from_entry(e) when is_map(e) do
+    case e["MessageAttribute"] do
+      attrs when is_list(attrs) ->
+        Map.new(attrs, fn a -> {a["Name"], a["Value"]} end)
+      attrs when is_map(attrs) ->
+        attrs
+      _ ->
+        %{}
+    end
+  end
+  defp message_attributes_from_entry(_), do: %{}
 
   defp batch_send_one(name, e) do
     body = e["MessageBody"]
 
-    if is_binary(body) do
+    if body_ok?(body) do
       now = System.system_time(:millisecond)
       delay_s = parse_int(e["DelaySeconds"]) || 0
-      attrs = e |> Map.take(["MessageAttribute"]) |> message_attributes_from_entry()
+      attrs = message_attributes_from_entry(e)
       mid = uuid()
 
       opts =
@@ -319,16 +331,15 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       case QueueStore.enqueue(name, body, opts) do
         {:ok, _} ->
           attr_md5 =
-            if attrs == %{}, do: "", else: "<MD5OfMessageAttributes>" <> SqsMd5.attributes_md5(attrs) <> "</MD5OfMessageAttributes>"
+            if attrs == %{},
+              do: nil,
+              else: SqsMd5.attributes_md5(attrs)
 
-          xml =
-            "<SendMessageBatchResultEntry><Id>" <>
-              SqsXml.escape(e["Id"]) <>
-              "</Id><MessageId>" <> mid <> "</MessageId><MD5OfMessageBody>" <>
-              SqsMd5.body_md5(body) <>
-              "</MD5OfMessageBody>" <> attr_md5 <> "</SendMessageBatchResultEntry>"
+          entry =
+            %{"Id" => e["Id"], "MessageId" => mid, "MD5OfMessageBody" => SqsMd5.body_md5(body)}
+            |> then(fn m -> if attr_md5, do: Map.put(m, "MD5OfMessageAttributes", attr_md5), else: m end)
 
-          {:ok, e["Id"], xml}
+          {:ok, e["Id"], entry}
 
         {:error, :too_large} ->
           {:error, e["Id"], "InvalidParameterValue", "MessageBody exceeds the size cap.", false}
@@ -341,11 +352,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
     end
   end
 
-  # Batch entry nested attributes
-  # (SendMessageBatchRequestEntry.N.MessageAttribute.M.Name/Value/DataType) are
-  # a deeper dotted-index level than `entries/2` supports; the batch face emits
-  # MD5OfMessageBody only (divergence row in the KD register).
-  defp message_attributes_from_entry(_e), do: %{}
+
 
   # -- ReceiveMessage -------------------------------------------------------------
 
@@ -365,11 +372,11 @@ defmodule Smalt.Egress.Sqs.SqsActions do
 
       msgs = collect(name, max_msgs, base_opts)
 
-      children =
+      messages =
         msgs
-        |> Enum.map(&message_element(&1, name, sys_names, msg_names))
+        |> Enum.map(&message_payload(&1, name, sys_names, msg_names))
 
-      {:ok, SqsXml.response("ReceiveMessage", children)}
+      {:ok, %{"Messages" => messages}}
     end
   end
 
@@ -394,33 +401,27 @@ defmodule Smalt.Egress.Sqs.SqsActions do
     end
   end
 
-  defp message_element({msg, lock}, queue, sys_names, msg_attr_names) do
+  defp message_payload({msg, lock}, queue, sys_names, msg_attr_names) do
     receipt = SqsReceipt.mint(queue, msg.seq, lock.lock_token, lock.locked_until)
     raw = raw_body(msg.body)
-    md5 = SqsMd5.body_md5(raw)
 
     sys_attrs = system_attrs(sys_names, msg, msg.enqueued)
 
-    body_xml =
-      if message_attributes_requested?(msg_attr_names, msg) do
-        props = msg[:app_props] || %{}
+    payload =
+      %{
+        "MessageId" => msg.message_id || lock.lock_token,
+        "ReceiptHandle" => SqsReceipt.mint(queue, msg.seq, lock.lock_token, lock.locked_until),
+        "MD5OfBody" => SqsMd5.body_md5(raw),
+        "Body" => raw,
+        "Attributes" => Map.new(sys_attrs)
+      }
 
-        md5_xml =
-          if props == %{}, do: "", else: "<MD5OfMessageAttributes>" <> SqsMd5.attributes_md5(props) <> "</MD5OfMessageAttributes>"
-
-        md5_xml <> message_attributes_xml(msg)
-      else
-        ""
-      end
-
-    SqsXml.message(%{
-      message_id: msg.message_id || lock.lock_token,
-      receipt_handle: receipt,
-      md5_of_body: md5,
-      body: raw,
-      attributes: sys_attrs,
-      extra: body_xml
-    })
+    if message_attributes_requested?(msg_attr_names, msg) do
+      props = msg[:app_props] || %{}
+      Map.put(payload, "MessageAttributesRaw", props)
+    else
+      payload
+    end
   end
 
   defp system_attrs(names, msg, _enqueued) do
@@ -470,8 +471,8 @@ defmodule Smalt.Egress.Sqs.SqsActions do
           # Idempotent face (KD-SQ1): real SQS DeleteMessage with a stale
           # (already-consumed) handle answers success and deletes nothing.
           case QueueStore.complete(q, seq, lock_token: token) do
-            res when res in [:ok, {:error, :lock_lost}] -> {:ok, SqsXml.response("DeleteMessage", "")}
-            _ -> {:ok, SqsXml.response("DeleteMessage", "")}
+            _ -> {:ok, %{}}
+
           end
 
         {:error, :receipt_handle_is_invalid} ->
@@ -498,15 +499,18 @@ defmodule Smalt.Egress.Sqs.SqsActions do
             {:ok, {q, seq, token, _until}} ->
               _ = QueueStore.complete(q, seq, lock_token: token)
 
-              {[ "<DeleteMessageBatchResultEntry><Id>" <> SqsXml.escape(e["Id"]) <> "</Id></DeleteMessageBatchResultEntry>" | oks],
-               fails}
+              {[%{"Id" => e["Id"]} | oks], fails}
 
             {:error, :receipt_handle_is_invalid} ->
               {oks, [error_entry(e["Id"], "ReceiptHandleIsInvalid", "The input receipt handle is invalid.", false) | fails]}
           end
         end)
 
-      {:ok, SqsXml.response("DeleteMessageBatch", Enum.reverse(oks) ++ Enum.reverse(fails))}
+      {:ok,
+       %{
+         "Successful" => Enum.reverse(oks),
+         "Failed" => Enum.reverse(fails)
+       }}
     end
   end
 
@@ -522,14 +526,14 @@ defmodule Smalt.Egress.Sqs.SqsActions do
         {:ok, {q, seq, token, _until}} ->
           if vt == 0 do
             case QueueStore.release(q, seq, lock_token: token) do
-              :ok -> {:ok, SqsXml.response("ChangeMessageVisibility", "")}
-              {:error, :lock_lost} -> {:ok, SqsXml.response("ChangeMessageVisibility", "")}
+              :ok -> {:ok, %{}}
+              {:error, :lock_lost} -> {:ok, %{}}
               :error -> {:error, "ReceiptHandleIsInvalid", "The input receipt handle is invalid."}
             end
           else
             case LockManager.renew(token, System.system_time(:millisecond), duration_ms: vt * 1000) do
               {:ok, _} ->
-                {:ok, SqsXml.response("ChangeMessageVisibility", "")}
+                {:ok, %{}}
 
               {:error, :not_found} ->
                 {:error, "ReceiptHandleIsInvalid", "The input receipt handle is invalid."}
@@ -557,7 +561,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
          {:ok, _} <- queue_exists(name) do
       {:ok, _} = QueueStore.purge_queue(name)
       Smalt.Store.delete(:smalt_sb_queues, name)
-      {:ok, SqsXml.response("DeleteQueue", "")}
+      {:ok, %{}}
     end
   end
 

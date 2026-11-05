@@ -14,7 +14,14 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
+| final-per-re | [final-per-repo.md](receipts/final-per-repo.md) | PARTIAL_ALIVE | v26.11.6 — Final per-repo receipts (wave finale, lane 17) **NO-CONTEXT** |
 | kd191-kafka- | [kd191-kafka-sasl-lane10.md](receipts/kd191-kafka-sasl-lane10.md) | PARTIAL_ALIVE | KD-191 — Kafka SASL face (lane 10, v26.11.6 wave) **NO-CONTEXT** |
+| kin-kinesis- | [kin-kinesis-rest-lane.md](receipts/kin-kinesis-rest-lane.md) | ALIVE | K-IN — Kinesis REST face (lane K-IN, v26.11.6+) **NO-CONTEXT** |
+| l17-landing- | [l17-landing-blocked.md](receipts/l17-landing-blocked.md) | UNKNOWN | L17 — Landing receipt (v26.11.6 wave finale, lane 17) **NO-CONTEXT** |
+| l59-kafka-vs | [l59-kafka-vs-aoq.md](receipts/l59-kafka-vs-aoq.md) | PARTIAL_ALIVE | L59 — paired Kafka-vs-AoQ throughput court + AoQ boundary alloc repair |
+| lane-bc-benc | [lane-bc-bench-conversion.md](receipts/lane-bc-bench-conversion.md) | PARTIAL_ALIVE | BC receipt — bench-conversion (v26.11.6 wave+1, seeded early) **NO-CONTEXT** |
+| lane-hc-kafk | [lane-hc-kafka-real-clients.md](receipts/lane-hc-kafka-real-clients.md) | PARTIAL_ALIVE | HC — real Kafka clients (confluent-kafka 2.16.1 / kafkajs 2.2.4) vs AZ-1 face |
+| lane-kgc-pub | [lane-kgc-pubsub-deferred.md](receipts/lane-kgc-pubsub-deferred.md) | PARTIAL_ALIVE | K-GC — Pub/Sub gRPC face, deferred by operator architecture ruling (v26.11.6+) **NO-CONTEXT** |
 | lane11-blake | [lane11-blake3-chain-retarget.md](receipts/lane11-blake3-chain-retarget.md) | ALIVE | 11 — BLAKE3 chain-link retarget (v26.11.6) **NO-CONTEXT** |
 | lane16-aoq-r | [lane16-aoq-rdf-projector.md](receipts/lane16-aoq-rdf-projector.md) | ALIVE | 16 — AoQ SchemaBindings + RdfProjector (v26.11.6) **NO-CONTEXT** |
 | lane4-aoq-qu | [lane4-aoq-quic-nif.md](receipts/lane4-aoq-quic-nif.md) | PARTIAL_ALIVE | 4 receipt — AoQ QUIC NIF face (v26.11.6) **NO-CONTEXT** |

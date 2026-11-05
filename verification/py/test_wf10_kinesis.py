@@ -2,9 +2,8 @@
 
 K-IN lane (v26.11.6+). The Kinesis face (Smalt.Egress.KinesisRoutes) is a
 delegator in the w6r_fallthrough chain: POST / with an X-Amz-Target answered
-by the Kinesis delegator ahead of the main EgressRouter (coordinator mount:
-`plug Smalt.Egress.KinesisRoutes` ahead of the existing face plugs in
-lib/smalt/egress_router.ex — DISCLOSED mount line, outside the lane lease).
+by the Kinesis delegator ahead of the main EgressRouter (coordinator mount: LANDED — `:kinesis_rest_face` delegator in
+lib/smalt/egress_router.ex ahead of :w6r_fallthrough).
 
 Environment (pure client of a RUNNING substrate, wf8 pattern):
 

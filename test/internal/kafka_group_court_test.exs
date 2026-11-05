@@ -128,6 +128,46 @@ defmodule SmaltTest.KafkaGroupCourtTest do
 
   # -- layer 1 tests ------------------------------------------------------------
 
+  # KD-HC-2 falsifier: FindCoordinator v1 carries the KIP-113
+  # throttle_time_ms i32 head (27-byte body) — librdkafka _UNDERFLOWs on the
+  # short form. v0 stays bare (19-byte body, no throttle, no error_message).
+  test "layer1: FindCoordinator v0/v1 byte-exact (v1 carries throttle_time_ms head)" do
+    sock = connect()
+
+    # v0: key str only.
+    body0 = [<<byte_size("g")::unsigned-16>>, "g"]
+    :ok = :gen_tcp.send(sock, req(10, 0, 7, body0))
+
+    assert {:ok,
+            <<
+              _::unsigned-32, 7::unsigned-32, err0::signed-16,
+              cid0::signed-32, hlen0::unsigned-16, host0::binary-size(hlen0)-unit(8),
+              port0::signed-32
+            >>} = recv_frame(sock)
+
+    assert err0 == 0
+    assert host0 == "127.0.0.1"
+
+    # v1: key str + coordinator_type i8. Response: throttle i32 | err i16 |
+    # error_message null string | coordinator_id i32 | host str | port i32.
+    body1 = [<<byte_size("g")::unsigned-16>>, "g", <<0::signed-8>>]
+    :ok = :gen_tcp.send(sock, req(10, 1, 8, body1))
+
+    assert {:ok,
+            <<
+              _::unsigned-32, 8::unsigned-32, throttle::signed-32, err1::signed-16,
+              -1::signed-16, cid1::signed-32, hlen1::unsigned-16,
+              host1::binary-size(hlen1)-unit(8), port1::signed-32
+            >>} = recv_frame(sock)
+
+    assert throttle == 0
+    assert err1 == 0
+    assert host1 == "127.0.0.1"
+    assert port1 == port0
+
+    :gen_tcp.close(sock)
+  end
+
   test "layer1: JoinGroup v5 (first flexible JoinGroup) is crash-only killed, not parsed" do
     parent = self()
 

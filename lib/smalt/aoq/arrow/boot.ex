@@ -48,8 +48,8 @@ defmodule Smalt.Aoq.Arrow.Boot do
 
       {:error, reason} ->
         Logger.error(
-          "AOQ Arrow bundle REFUSED at boot (path=#{path}): " <>
-            "#{inspect(reason)} — falling back to the compile-time registry; " <>
+          "AOQ Arrow bundle REFUSED at boot (path=#{path}): " <>  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+            "#{inspect(reason)} — falling back to the compile-time registry; " <>  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
             "the plane boots with the fallback schemas"
         )
 

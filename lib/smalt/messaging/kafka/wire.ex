@@ -20,10 +20,19 @@ defmodule Smalt.Messaging.Kafka.Wire do
   | api | key | versions served | flexible from |
   |---|---|---|---|
   | Produce | 0 | 0..3 | v9 |
-  | Fetch | 1 | 0..0 | v12 |
+  | Fetch | 1 | 0..3 | v12 |
   | ListOffsets | 2 | 0..1 | v7 |
-  | Metadata | 3 | 0..4 | v9 |
-  | ApiVersions | 18 | 0..0 | v3 |
+  | Metadata | 3 | 0..3 | v9 |
+  | OffsetCommit | 8 | 0..3 | v6 |
+  | OffsetFetch | 9 | 0..1 | v6 |
+  | FindCoordinator | 10 | 0..1 | v4 |
+  | JoinGroup | 11 | 0..2 | v5 |
+  | Heartbeat | 12 | 0..1 | v4 |
+  | LeaveGroup | 13 | 0..1 | v2 |
+  | SyncGroup | 14 | 0..1 | v3 |
+  | SaslHandshake | 17 | 0..0 | v1 |
+  | SaslAuthenticate | 36 | 0..1 | v2 |
+  | ApiVersions | 18 | 0..2 | v3 |
   | SaslHandshake | 17 | 0..0 | v1 |
   | SaslAuthenticate | 36 | 0..1 | v1 |
 
@@ -109,7 +118,11 @@ defmodule Smalt.Messaging.Kafka.Wire do
       # (api_version=(0,11,0), the KD-174D2 probe posture) resolves topics
       # with MetadataRequest[4] before producing, and v2/v3/v4 response
       # shapes are additive over v1 (cluster_id string, throttle head).
-      3 => {0, 4},
+      # KD-COVERS: KD-HC-1 / L6 extraction falsifier — Metadata is capped at
+      # v3 while Fetch caps at v3: advertising Metadata v4 makes real clients
+      # infer a (0,11,0) broker and send Fetch v4 (crash-only kill, 1175
+      # kills witnessed). v3 is the transitive-consistency cap.
+      3 => {0, 3},
       # KD-COVERS: KD-190 — consumer-group family. Every cap is strictly
       # below the KIP-482 flexible threshold for its API and is also an
       # api_version the vendored kafka-python-ng actually sends at the
@@ -135,7 +148,10 @@ defmodule Smalt.Messaging.Kafka.Wire do
       # Conn.route_sasl_authenticate).
       17 => {0, 0},
       36 => {0, 1},
-      18 => {0, 0}
+      # KD-COVERS: KD-HC-3 — ApiVersions v0..v2 (flexible from v3 per
+      # KIP-482; v1/v2 add a throttle_time_ms head). kafkajs sends v1/v2 and
+      # misparses a v0-shaped echo; serve version-correct payloads.
+      18 => {0, 2}
     }
   end
 

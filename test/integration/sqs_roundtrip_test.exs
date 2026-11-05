@@ -51,12 +51,12 @@ defmodule Smalt.Integration.SqsRoundtripTest do
         [{"authorization", "AWS4-HMAC-SHA256 Credential=test/20261104/sqs/aws4_request"}]
       else
         []
-      end
+      end ++ [{"connection", "close"}]
 
     {:ok, conn} = Mint.HTTP.connect(:http, "127.0.0.1", port, protocols: [:http1])
     {:ok, conn, ref} = Mint.HTTP1.request(conn, "POST", "/", auth, body)
     {status, resp} = recv_all(conn, ref, nil, "")
-    :ok = Mint.HTTP.close(conn)
+    _ = Mint.HTTP.close(conn)
     {status, resp}
   end
 
@@ -85,8 +85,12 @@ defmodule Smalt.Integration.SqsRoundtripTest do
               {status || 0, body}
             end
 
-          {:error, conn, _err, _} ->
-            :ok = Mint.HTTP.close(conn)
+          {:error, conn, _err} ->
+            _ = Mint.HTTP.close(conn)
+            {status || 0, body}
+
+          {:error, conn, _err, _responses} ->
+            _ = Mint.HTTP.close(conn)
             {status || 0, body}
         end
     after
@@ -297,8 +301,13 @@ defmodule Smalt.Integration.SqsRoundtripTest do
     t1 = System.monotonic_time(:millisecond)
     recv = receive_msg(port, "sqs-lp-q", ["WaitTimeSeconds=5"])
     wake = System.monotonic_time(:millisecond) - t1
-    assert_received {:wakeup_sent, out}
-    IO.inspect(out, label: "WAKEUP-SEND-RESP")
+
+    out =
+      receive do
+        {:wakeup_sent, out} -> out
+      after
+        2_000 -> flunk("wakeup send never completed")
+      end
 
     assert recv =~ "<Body>wakeup</Body>"
     assert wake < 3_000, "mid-poll wake took #{wake}ms (flush_waiters should be instant)"

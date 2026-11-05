@@ -81,8 +81,16 @@ defmodule Smalt.Messaging.OffsetJournal do
       :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
     end
 
-    # Open or repair DETS table
-    {:ok, _} = :dets.open_file(@dets_table, file: String.to_charlist(dets_path), type: :set)
+    # Open or repair DETS table. After kill -9 the DETS header can be left
+    # truncated/corrupt; repair: true lets DETS auto-repair instead of
+    # crashing on first reopen. Lossless: the journal replay below is
+    # authoritative and re-writes every checkpoint after the reopen.
+    {:ok, _} =
+      :dets.open_file(@dets_table,
+        file: String.to_charlist(dets_path),
+        type: :set,
+        repair: true
+      )
 
     # Open journal for append
     {:ok, fd} = :file.open(String.to_charlist(journal_path), [:append, :raw, :binary])

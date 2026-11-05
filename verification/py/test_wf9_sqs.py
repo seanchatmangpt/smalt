@@ -44,7 +44,8 @@ def make_client():
 client = make_client()
 
 
-def canon_attributes_md5(attrs):
+def canon_attributes_md5(attrs_raw):
+    attrs = {k: v["StringValue"] for k, v in attrs_raw.items()}
     """Inline-Python AWS canonical message-attribute MD5 (String type)."""
     packed = b""
     for name in sorted(attrs.keys()):
@@ -111,15 +112,12 @@ def test_g3_receipt_handle_law(q):
 
     # cross-queue refusal
     other = client.create_queue(QueueName="wf9-court-other")["QueueUrl"]
-    with pytest.raises(client.exceptions.QueueDoesNotExistException) or True:
-        try:
-            client.delete_message(QueueUrl=other, ReceiptHandle=h)
-        except client.exceptions.ClientError as e:
-            code = e.response["Error"]["Code"]
-            if code != "ReceiptHandleIsInvalid":
-                raise AssertionError("expected ReceiptHandleIsInvalid, got %s" % code)
-        else:
-            raise AssertionError("cross-queue delete must fail")
+    try:
+        client.delete_message(QueueUrl=other, ReceiptHandle=h)
+        raise AssertionError("cross-queue delete must fail")
+    except client.exceptions.ClientError as e:
+        code = e.response["Error"]["Code"]
+        assert code == "ReceiptHandleIsInvalid", code
 
     client.delete_message(QueueUrl=q, ReceiptHandle=h)
 
@@ -185,8 +183,9 @@ def test_g7_get_attrs_counts(q):
     client.delete_message(QueueUrl=q, ReceiptHandle=m2[0]["ReceiptHandle"])
 
 
-def test_g8_attributes_md5_canonical(q):
-    attrs = {"alpha": "one", "beta": "two", "gamma-space": "three three"}
+def test_g8_attributes_md5_canonical():
+    q = client.create_queue(QueueName="wf9-g8-%s" % uuid.uuid4().hex[:6])["QueueUrl"]
+    attrs = {"alpha": {"StringValue": "one", "DataType": "String"}, "beta": {"StringValue": "two", "DataType": "String"}, "gamma-space": {"StringValue": "three three", "DataType": "String"}}
     r = client.send_message(QueueUrl=q, MessageBody="with-attrs", MessageAttributes=attrs)
     assert r["MD5OfMessageBody"] == hashlib.md5(b"with-attrs").hexdigest()
     assert r["MD5OfMessageAttributes"] == canon_attributes_md5(attrs), (
@@ -200,9 +199,11 @@ def test_g8_attributes_md5_canonical(q):
     m = r["Messages"][0]
     assert m["MessageAttributes"] == attrs
     client.delete_message(QueueUrl=q, ReceiptHandle=m["ReceiptHandle"])
+    client.delete_queue(QueueUrl=q)
 
 
-def test_g9_batch_partial_failure(q):
+def test_g9_batch_partial_failure():
+    q = client.create_queue(QueueName="wf9-g9-%s" % uuid.uuid4().hex[:6])["QueueUrl"]
     r = client.send_message_batch(
         QueueUrl=q,
         Entries=[
@@ -216,6 +217,7 @@ def test_g9_batch_partial_failure(q):
     assert any(e["Id"] == "bad1" for e in bad)
     m = client.receive_message(QueueUrl=q, WaitTimeSeconds=1).get("Messages", [])
     assert any(x["Body"] == "batch-ok" for x in m)
+    client.delete_queue(QueueUrl=q)
 
 
 def test_g10_version_gate():
@@ -225,7 +227,10 @@ def test_g10_version_gate():
     req = urllib.request.Request(
         ENDPOINT + "/",
         data=body.encode(),
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": "AWS4-HMAC-SHA256 Credential=test",
+        },
         method="POST",
     )
     try:

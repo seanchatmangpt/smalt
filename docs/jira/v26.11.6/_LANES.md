@@ -25,6 +25,16 @@ receipt-pending / UNVERIFIED, never rounded up.
 | L72 | arcus adapters | arcus `internal/{ingress,egress,messaging}/` | per-dialect roundtrip court (arcus-side) | adapter diverges from the AoQ membrane law | arcus `docs/jira/v26.11.5/receipts/l14-kafka-adapter.md` | PARTIAL_ALIVE |
 | L73 | kafka-wire-pack | ggen-marketplace `packs/kafka-wire-pack/` | pack qualification (marketplace gates) | pack renders a face smalt's `wire.ex` does not serve | receipt-pending | UNVERIFIED |
 | L74 | RDF projector | `lib/smalt/aoq/schema_bindings.ex`, `lib/smalt/aoq/rdf_projector.ex` (new); `test/smalt/aoq/rdf_projector_court_test.exs`, `test/integration/graphlaw_canonical_shapes_court_test.exs` | 10-court projector file green + sh:closed shim court flips court 10 RED, restore sha-exact | remove `sh:closed` → court 10 RED (executed) | `receipts/lane16-aoq-rdf-projector.md` | ALIVE |
+| K-IN | Kinesis REST face | `lib/smalt/egress/KinesisRoutes.ex` (new); `mix.exs` (+aws_signature), `verification/py/{pyproject.toml,test_wf10_kinesis.py}` (additive), `test/integration/kinesis_rest_roundtrip_test.exs` (new) | Elixir integration court 8/8 + real-boto3 court 3/3 over real TCP | real boto3 PutRecord/GetRecords against the face diverges or vanishes | `receipts/kin-kinesis-rest-lane.md` | ALIVE |
+| K-SQ | SQS face hardening | `lib/smalt/egress/sqs/{sqs_actions,sqs_query,sqs_routes,sqs_xml}.ex` (mod), `test/integration/sqs_roundtrip_test.exs` (mod) | SQS roundtrip integration court | real SQS client action roundtrip breaks | receipt-pending (lane closing at poll time) | UNVERIFIED |
+| K-GC | Pub/Sub gRPC wire codec | `lib/smalt/data_plane/pubsub_grpc/wire.ex` (new), `test/smalt/data_plane/pubsub_grpc/wire_test.exs` (new) | 13/13 wire codec court | truncated/overlong varint admits, or PublishResponse unpack diverges | `receipts/lane-kgc-pubsub-deferred.md` | PARTIAL_ALIVE |
+| HC | real Kafka clients vs AZ-1 face | `verification/ts/{harness/substrate.ts,wf9-kafka.probe.mjs}` (new/additive), `verification/py/test_wf9_kafka.py` (new), `verification/ts/package.json`, `verification/py/pyproject.toml` (additive) | real confluent-kafka 2.16.1 + kafkajs 2.2.4 legs (rc 0/1/2/3) | real-client produce/group leg vanishes without a typed rc | `receipts/lane-hc-kafka-real-clients.md` | PARTIAL_ALIVE |
+
+### Repair lanes (R-lanes)
+
+R-class lanes (SIGSEGV hunt, peer fixes) hold no receipt files of their own;
+their findings are folded into the owning lanes' receipts and the KD register.
+No _LANES row claims files owned elsewhere.
 
 ## Charter-id ↔ receipt-number mapping
 

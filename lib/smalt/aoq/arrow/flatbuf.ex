@@ -433,14 +433,14 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     # start = U_f - off(tref) where U_f = used() after ident push.
     {chunks1, used1} = push(chunks, used, @ident)
     u_f = used1
-    root_val = u_f - root_off
+    root_val = u_f + 4 - root_off
     {chunks2, _} = push(chunks1, used1, <<root_val::32-little>>)
-    chunks2 |> Enum.reverse() |> IO.iodata_to_binary()
+    chunks2 |> List.flatten() |> IO.iodata_to_binary()
   end
 
   # ---- backwards builder (Rust port) ----
   defp push(chunks, used, bytes) do
-    {[bytes | chunks], used + byte_size(bytes)}
+    {[[bytes] | chunks], used + byte_size(bytes)}
   end
 
   defp push_aligned(st, bytes) do
@@ -451,17 +451,17 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     {b, u2, st2}
   end
 
-  defp push2(chunks, used, bytes), do: {bytes, used + byte_size(bytes), {[bytes | chunks], used + byte_size(bytes)}}
+  defp push2(chunks, used, bytes), do: {bytes, used + byte_size(bytes), {[[bytes] | chunks], used + byte_size(bytes)}}
   defp push2(st, bytes) do
     {chunks, used} = st
-    {bytes, used + byte_size(bytes), {[bytes | chunks], used + byte_size(bytes)}}
+    {bytes, used + byte_size(bytes), {[[bytes] | chunks], used + byte_size(bytes)}}
   end
 
   defp b_string(st, s) do
     {bytes, u1, {c, u}} = push2(st, <<0>>)
     {sbytes, u2, {c1, u2b}} = push_aligned({c, u1}, s)
-    {off, u3, st3} = push2({c1, u2b}, <<byte_size(s)::32-little>>)
-    {off, st3}
+    {_, u3, st3} = push2({c1, u2b}, <<byte_size(s)::32-little>>)
+    {u3, st3}
   end
 
   defp b_vec(st, elem_offs) do
@@ -483,56 +483,86 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   end
 
   defp b_table(st, slots) do
-    ordered = Enum.sort_by(slots, fn {fid, _} -> -fid end)
+    ordered = slots |> Enum.reject(fn {_, v} -> v == {:off, 0} end) |> Enum.sort_by(fn {fid, _} -> -fid end)
     n = length(ordered)
     max_id = ordered |> Enum.map(fn {fid, _} -> fid end) |> Enum.max(fn -> 0 end)
-    {chunks, used} = st
-    # Compute slot positions deterministically (pad depends only on used).
-    {triples, used2} =
-      Enum.map_reduce(ordered, used, fn {fid, v}, u ->
-        pad = rem(8 - rem(u, 8), 8)
-        sz = byte_size(slot_value_bytes(v))
-        {{fid, u + pad + sz, sz, pad}, u + pad + sz}
+    # Pure pass 1: slot positions (pad depends only on running used).
+    {slot_rows, used_end} =
+      Enum.map_reduce(ordered, used_of(st), fn {fid, v}, u ->
+        bytes = slot_bytes_for(v)
+        sz = byte_size(bytes)
+        {{fid, u + sz, bytes, 0}, u + sz}
       end)
-    # Patch Off rels: rel = off_start - elem_off (off-from-end law).
-    ordered_bytes =
-      Enum.map(ordered, fn {fid, v} ->
+    region_len = 8 + vt_bytes - 4 + pad_vt + Enum.sum(Enum.map(slot_rows, fn {_, _, bytes, pad} -> pad + byte_size(bytes) end))
+    # Forward geometry rels: rel = (region end off - block offset) - elem off.
+    slot_region =
+      ordered
+      |> Enum.map(fn {fid, v} ->
+        {_, _, _, pad} = Enum.find(slot_rows, fn {f, _, _, _} -> f == fid end)
         case v do
-          {:off, 0} -> {fid, <<>>}
-          {:off, e} ->
-            {_, off_start, _, _} = Enum.find(triples, fn {f, _, _, _} -> f == fid end)
-            {fid, <<off_start - e::32-little>>}
-          {:u8, x} -> {fid, <<x>>}
-          {:i16, x} -> {fid, <<x::16-little>>}
-          {:i32, x} -> {fid, <<x::32-little>>}
-          {:i64, x} -> {fid, <<x::64-little>>}
+          {:off, e} when is_integer(e) ->
+            before =
+              ordered
+              |> Enum.take_while(fn {f2, _} -> f2 > fid end)
+              |> Enum.map(fn {f2, _} ->
+                {_, _, bytes, pad2} = Enum.find(slot_rows, fn {f3, _, _, _} -> f3 == f2 end)
+                pad2 + byte_size(bytes)
+              end)
+              |> Enum.sum()
+
+            block_off = 8 + vt_bytes - 4 + pad_vt + before + pad
+            [zeros(pad), <<(used_of(st) + region_len - block_off - e)::32-little>>]
+          {:u8, x} -> [zeros(pad), <<x>>]
+          {:i16, x} -> [zeros(pad), <<x::16-little>>]
+          {:i32, x} -> [zeros(pad), <<x::32-little>>]
+          {:i64, x} -> [zeros(pad), <<x::64-little>>]
         end
       end)
-    # push [pad, bytes] per slot in order
-    {c1, u1} =
-      Enum.reduce(ordered_bytes, {chunks, used}, fn {fid, bytes}, {c, u} ->
-        {_, _, _, pad} = Enum.find(triples, fn {f, _, _, _} -> f == fid end)
-        {c2, u2, _} = push2({c, u}, zeros(pad))
-        {c3, u3, _} = push2({c2, u2}, bytes)
-        {c3, u3}
-      end)
     vt_bytes = 4 + 2 * n
-    pad_vt = rem(8 - rem(u1, 8), 8)
-    {_, u2, {c2, _}} = push2({c1, u1}, zeros(pad_vt))
-    u_t = u2 + vt_bytes + 8
+    pad_vt = 0
+    # Forward geometry: voff(id) = prefix + sum of block sizes of the slots
+    # placed BEFORE id in the forward region (desc-id order) + its pad.
+    prefix = 8 + vt_bytes - 4 + pad_vt
     voffs =
       for i <- 0..max_id do
-        case Enum.find(triples, fn {fid, _, _} -> fid == i end) do
+        before =
+          ordered
+          |> Enum.take_while(fn {fid, _} -> fid > i end)
+          |> Enum.map(fn {fid, _} ->
+            {_, _, _, pad} = Enum.find(slot_rows, fn {f, _, _, _} -> f == fid end)
+            _ = pad
+            case Enum.find(slot_rows, fn {f, _, _, _} -> f == fid end) do
+              {_, _, bytes, _} -> byte_size(bytes) + 0
+            end
+          end)
+          |> Enum.sum()
+
+        case Enum.find(slot_rows, fn {f, _, _, _} -> f == i end) do
           nil -> 0
-          {_, off_start, _} -> u_t - off_start
+          {_, off_start, _, pad} ->
+            _ = off_start
+            before + pad + prefix
         end
       end
     voff_bin = Enum.map(voffs, fn v -> <<v::16-little>> end)
-    {_, u3, {c3, _}} = push2({c2, u2}, IO.iodata_to_binary(voff_bin))
-    {_, u4, {c4, _}} = push2({c3, u3}, <<(4 + 2 * n)::16-little, 0::16>>)
-    {_, u5, {c5, _}} = push2({c4, u4}, <<-4::32-little>>)
-    {u5, {c5, u5}}
+    region =
+      IO.iodata_to_binary([
+        <<-4::32-little>>,
+        <<(4 + 2 * n)::16-little, 0::16>>,
+        voff_bin,
+        zeros(pad_vt),
+        slot_region
+      ])
+    tref = used_of(st) + IO.iodata_length(region)
+    {_, tref, st2} = push2(st, region)
+    {tref, st2}
   end
+
+  defp slot_bytes_for({:off, _}), do: <<0::32-little>>
+  defp slot_bytes_for({:u8, v}), do: <<v>>
+  defp slot_bytes_for({:i16, v}), do: <<v::16-little>>
+  defp slot_bytes_for({:i32, v}), do: <<v::32-little>>
+  defp slot_bytes_for({:i64, v}), do: <<v::64-little>>
 
   defp zeros(0), do: <<>>
   defp zeros(n), do: :binary.copy(<<0>>, n)
@@ -588,7 +618,7 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   defp enc_kv_vec(pairs, st) do
     {kv_offs, st1} = Enum.map_reduce(pairs, st, fn {k, v}, st ->
       {k_off, st1} = b_string(st, k)
-      {v_off, st2} = b_string(st, v)
+      {v_off, st2} = b_string(st1, v)
       {kv_t_off, st3} = b_table(st2, [{0, {:off, k_off}}, {1, {:off, v_off}}])
       {kv_t_off, st3}
     end)

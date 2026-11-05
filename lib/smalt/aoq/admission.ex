@@ -188,7 +188,7 @@ defmodule Smalt.Aoq.Admission do
         end
 
       {:refused, _, _} = refused ->
-        raise ArgumentError, "bisect hit non-violation refusal: " <> inspect(refused)
+        raise ArgumentError, "bisect hit non-violation refusal: " <> inspect(refused)  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
     end
   end
 

@@ -100,7 +100,7 @@ defmodule Smalt.Aoq.SchemaBindings do
 
       _seal ->
         raise ArgumentError,
-              "AOQ schema bindings sealed at boot (post-boot write refused); " <>
+              "AOQ schema bindings sealed at boot (post-boot write refused); " <>  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
                 "re-derive via Smalt.Aoq.SchemaBindings.boot/1"
     end
   end

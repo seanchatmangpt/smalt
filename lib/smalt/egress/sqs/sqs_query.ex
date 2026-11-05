@@ -118,6 +118,34 @@ defmodule Smalt.Egress.Sqs.SqsQuery do
     |> Enum.reject(&is_nil(&1["Id"]))
   end
 
+  @doc """
+  Nested dotted-index entries WITHOUT the batch-`Id` filter (message
+  attributes have no Id field). Same ordering contract as `entries/2`.
+  """
+  @spec entries_all(map(), String.t()) :: [map()]
+  def entries_all(params, prefix) when is_binary(prefix) do
+    dot = prefix <> "."
+
+    params
+    |> Enum.flat_map(fn {k, v} ->
+      if String.starts_with?(k, dot) do
+        rest = String.slice(k, byte_size(dot)..-1//1)
+
+        case String.split(rest, ".", parts: 2) do
+          [i, suffix] -> [{parse_index(i), suffix, v}]
+          _ -> []
+        end
+      else
+        []
+      end
+    end)
+    |> Enum.group_by(fn {i, _s, _v} -> i end)
+    |> Enum.sort_by(fn {i, _} -> i end)
+    |> Enum.map(fn {_i, kvs} ->
+      Map.new(kvs, fn {_i, suffix, v} -> {suffix, v} end)
+    end)
+  end
+
   @doc ~S(Raw param fetch with integer parse: `{n, ""}` else nil.)
   @spec int_param(map(), String.t()) :: non_neg_integer() | nil
   def int_param(params, key) do
@@ -132,6 +160,78 @@ defmodule Smalt.Egress.Sqs.SqsQuery do
         nil
     end
   end
+
+
+  # -- Modern-boto3 JSON face -------------------------------------------------
+  # Modern botocore (>=1.34) sends SQS as JSON (x-amz-json-1.0 + X-Amz-Target,
+  # x-amzn-query-mode) — witnessed on the wire in the wf9 court. Flatten the
+  # JSON into the SAME dotted-index flat map the query face uses, so SqsActions
+  # is face-agnostic.
+
+  @spec json_params(binary(), String.t() | nil) :: map()
+  def json_params(body, action) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, params} when is_map(params) ->
+        params
+        |> Enum.reduce(%{}, fn {k, v}, acc -> flat_map_put(acc, k, v, action) end)
+        |> Map.put("Action", action)
+
+      _ ->
+        %{"Action" => action}
+    end
+  end
+
+  defp flat_map_put(acc, "Entries", entries, action) when is_list(entries) do
+    prefix =
+      case action do
+        "SendMessageBatch" -> "SendMessageBatchRequestEntry"
+        "DeleteMessageBatch" -> "DeleteMessageBatchRequestEntry"
+        _ -> "BatchRequestEntry"
+      end
+
+    Enum.reduce(Enum.with_index(entries, 1), acc, fn {e, i}, acc ->
+      Enum.reduce(e, acc, fn {ek, ev}, acc ->
+        Map.put(acc, prefix <> "." <> Integer.to_string(i) <> "." <> ek, scalar(ev))
+      end)
+    end)
+  end
+
+  defp flat_map_put(acc, "AttributeNames", list, _a) when is_list(list),
+    do: put_dotted(acc, "AttributeName", list)
+
+  defp flat_map_put(acc, "MessageAttributeNames", list, _a) when is_list(list),
+    do: put_dotted(acc, "MessageAttributeNames", list)
+
+  defp flat_map_put(acc, "MessageSystemAttributeNames", list, _a) when is_list(list),
+    do: put_dotted(acc, "AttributeName", list)
+
+  defp flat_map_put(acc, "MessageAttributes", attrs, _a) when is_map(attrs) do
+    Enum.reduce(Enum.with_index(attrs, 1), acc, fn {{name, spec}, i}, acc ->
+      Map.merge(acc, %{
+        "MessageAttribute." <> Integer.to_string(i) <> ".Name" => name,
+        "MessageAttribute." <> Integer.to_string(i) <> ".Value" => spec["StringValue"] || "",
+        "MessageAttribute." <> Integer.to_string(i) <> ".DataType" => spec["DataType"] || "String"
+      })
+    end)
+  end
+
+  defp flat_map_put(acc, k, v, _a) when is_list(v), do: put_dotted(acc, k, v)
+  defp flat_map_put(acc, k, v, _a) when is_map(v), do: Map.put(acc, k, Jason.encode!(v))
+
+  defp flat_map_put(acc, k, v, _a),
+    do: Map.put(acc, k, if(is_binary(v), do: v, else: scalar(v)))
+
+  defp put_dotted(acc, base, list) do
+    Enum.reduce(Enum.with_index(list, 1), acc, fn {v, i}, acc ->
+      Map.put(acc, base <> "." <> Integer.to_string(i), scalar(v))
+    end)
+  end
+
+  defp scalar(v) when is_binary(v), do: v
+  defp scalar(v) when is_integer(v), do: Integer.to_string(v)
+  defp scalar(true), do: "true"
+  defp scalar(false), do: "false"
+  defp scalar(v), do: Jason.encode!(v)
 
   defp dotted_index?(k, base) do
     String.starts_with?(k, base <> ".") and

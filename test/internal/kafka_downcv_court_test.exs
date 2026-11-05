@@ -110,6 +110,57 @@ defmodule SmaltTest.KafkaDowncvCourtTest do
     :gen_tcp.close(sock)
   end
 
+  # -- F5: v3 fetch down-converts (KD-190 posture pin) ---------------------------
+
+  # KD-190 posture: the (0,10,1) kafka-python consumer fetches at v3 and its
+  # fetcher expects magic-1 frames there — v3 down-converts exactly like
+  # v0/v1 (real Kafka serves magic-2 only from Fetch v4+). F3 pins the other
+  # side: v2 stays verbatim.
+  test "F5: Fetch v3 down-converts a stored magic-2 batch to legacy v0 frames" do
+    uniq = Base.encode16(:crypto.strong_rand_bytes(4))
+    value = "DNCV" <> uniq <> String.duplicate("V", 35)
+    key = "dncv-v3-" <> uniq
+    batch = stamp_base(magic2_batch(1, [m2_record(key, value)]), hwm())
+    assert {:ok, base, 1} = Log.produce(@topic, @part, [batch])
+
+    port = Smalt.Messaging.Kafka.Listener.port()
+
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
+    # Fetch v3: top-level max_bytes i32 between min_bytes and topics.
+    fetch_body =
+      <<-1::signed-32, 100::signed-32, 0::signed-32, 1_048_576::signed-32>> <>
+        topics(1, @topic, [<<@part::signed-32, 0::signed-64, 1_048_576::signed-32>>])
+
+    :ok = :gen_tcp.send(sock, req(1, 3, fetch_body))
+    assert {:ok, resp} = resp(sock)
+
+    {set, hwm_seen} = parse_fetch_v2(resp, @topic, @part)
+    assert hwm_seen == base + 1
+
+    frames = parse_message_set(set)
+    assert length(frames) >= 1
+
+    ours =
+      Enum.filter(frames, fn {_off, rec} ->
+        match?({:ok, [%{value: ^value}]}, Records.parse_records(rec))
+      end)
+
+    assert [{off, rec}] = ours
+    assert off == base
+
+    # legacy v0 face: magic 0, IEEE CRC32 valid — a down-convert, not a
+    # verbatim magic-2 echo.
+    <<crc::unsigned-32, 0::8, _attrs::8, _::binary>> = rec
+    <<_::binary-size(4), body::binary>> = rec
+    assert :erlang.crc32(body) == crc
+    assert {:ok, [%{key: ^key, value: ^value}]} = Records.parse_records(rec)
+
+    assert :binary.match(IO.iodata_to_binary(set), batch) == :nomatch
+    :gen_tcp.close(sock)
+  end
+
   # -- F4: count laws on the mixed partition --------------------------------------
 
   test "F4: KD-180 count law — legacy frame counts 1, magic-2 batch counts its records" do

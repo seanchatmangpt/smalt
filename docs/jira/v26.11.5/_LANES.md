@@ -37,6 +37,7 @@ an on-disk receipt census; every SHA verified in the owning repo's git log.
 | L52 | bundle boot write via Tables.boot/1 | `a3c91d64` | PASS |
 | L53 | substrate readiness poll budget | `358fe84c` | PASS |
 | L54 | KD-189 legal-hold PUT header-only | `00f3877d` | PASS |
+| L59 | paired kafka-vs-aoq court + C7 alloc repair + KD-197 | no git (v26.11.6 wave) | PARTIAL_ALIVE |
 
 ## Lanes — cgap (read-only census)
 

@@ -47,7 +47,24 @@ defmodule SmaltTest.Courts.OffsetJournalTest do
     assert File.stat!(journal_path).size > 0
 
     # Start new instance pointing to same directory
-    {:ok, new_pid} = OffsetJournal.start_link(data_dir: @test_dir)
+    if sup_pid = Process.whereis(OffsetJournal) do
+      try do
+        GenServer.stop(sup_pid)
+      catch
+        :exit, _ -> :ok
+      end
+    end
+
+    {:ok, new_pid} = case OffsetJournal.start_link(data_dir: @test_dir) do
+      {:ok, p} -> {:ok, p}
+      {:error, {:already_started, p}} ->
+        try do
+          GenServer.stop(p)
+        catch
+          :exit, _ -> :ok
+        end
+        OffsetJournal.start_link(data_dir: @test_dir)
+    end
 
     # Assert offsets are immediately restored from journal replay
     assert {:ok, 100} = OffsetJournal.fetch(:kafka, "test-group", "test-topic", 0)

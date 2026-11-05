@@ -1,0 +1,27 @@
+{
+  "schema": "smalt.blake3.vectors/1",
+  "algorithm": "BLAKE3 keyless 32-byte",
+  "input_law": "ivMod251: input of length n has byte i = (i mod 251)",
+  "canonical": "/Users/sac/smalt/verification/blake3_vectors.json",
+  "generator_pin": {
+    "source": "cgap-blake3 (real, path-dep scratch cargo helper r7i-vgen)",
+    "cgap_commit": "a216b486fe7d312ad982ff66b158c30ae493ec09",
+    "helper_command": "CARGO_TARGET_DIR=/tmp/r7i-vgen/target cargo run --release (crate at /tmp/r7i-vgen, dep cgap-blake3 = { path = /Users/sac/cgap/crates/cgap-blake3 }); helper asserts hash == hash_wide_simd == hash_many_simd per vector before minting",
+    "generated": "2026-11-04",
+    "lane": "R7-I",
+    "note": "Sizes 0..4096 exercise chunk boundaries and parent joins; 2097153 (2 MiB+1) spans 2049 chunks forcing >= 3 Merkle reduction levels across the SIMD (hash_wide_simd / hash_many_simd) drivers -- the SIMD witness row."
+  },
+  "vectors": [
+    {"name": "iv251_0", "size": 0, "input_law": "ivMod251", "digest": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"},
+    {"name": "iv251_63", "size": 63, "input_law": "ivMod251", "digest": "e9bc37a594daad83be9470df7f7b3798297c3d834ce80ba85d6e207627b7db7b"},
+    {"name": "iv251_64", "size": 64, "input_law": "ivMod251", "digest": "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98"},
+    {"name": "iv251_65", "size": 65, "input_law": "ivMod251", "digest": "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee"},
+    {"name": "iv251_1023", "size": 1023, "input_law": "ivMod251", "digest": "10108970eeda3eb932baac1428c7a2163b0e924c9a9e25b35bba72b28f70bd11"},
+    {"name": "iv251_1024", "size": 1024, "input_law": "ivMod251", "digest": "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7"},
+    {"name": "iv251_1025", "size": 1025, "input_law": "ivMod251", "digest": "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444"},
+    {"name": "iv251_2048", "size": 2048, "input_law": "ivMod251", "digest": "e776b6028c7cd22a4d0ba182a8bf62205d2ef576467e838ed6f2529b85fba24a"},
+    {"name": "iv251_2049", "size": 2049, "input_law": "ivMod251", "digest": "5f4d72f40d7a5f82b15ca2b2e44b1de3c2ef86c426c95c1af0b6879522563030"},
+    {"name": "iv251_4096", "size": 4096, "input_law": "ivMod251", "digest": "015094013f57a5277b59d8475c0501042c0b642e531b0a1c8f58d2163229e969"},
+    {"name": "iv251_2097153", "size": 2097153, "input_law": "ivMod251", "digest": "52dc212cb4cc61cb94d25bd7b1d47b256e4c3a6d68956df50c235c37a2aeacd7"}
+  ]
+}

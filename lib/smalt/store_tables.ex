@@ -219,6 +219,7 @@ defmodule Smalt.StoreTables do
   @persisted_tables [
     :smalt_blobs,
     :smalt_cosmos_docs,
+    :smalt_eh_checkpoints,
     :smalt_event_messages,
     :smalt_ledger_meta,
     :smalt_ledger_transactions,
@@ -396,7 +397,7 @@ defmodule Smalt.StoreTables do
         owner_module: "Smalt.Store",
         sweep_strategy: "retention",
         metadata_only: true,
-        persisted: false,
+        persisted: true,
         ordered_set: true
       },
       :smalt_eh_epochs => %{

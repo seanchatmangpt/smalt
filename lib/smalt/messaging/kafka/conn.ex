@@ -473,7 +473,10 @@ defmodule Smalt.Messaging.Kafka.Conn do
 
   # -- ApiVersions v0 ------------------------------------------------------------
 
-  defp route(18, 0, corr, _body, state) do
+  # KD-COVERS: KD-HC-3 — ApiVersions v0..v2, version-correct payloads: v0 is
+  # the bare shape, v1/v2 prepend throttle_time_ms (KIP-511: flexible from
+  # v3, never served).
+  defp route(18, ver, corr, _body, state) do
     entries =
       Wire.version_matrix()
       |> Enum.sort()
@@ -481,7 +484,8 @@ defmodule Smalt.Messaging.Kafka.Conn do
         <<k::integer-size(16), lo::integer-size(16), hi::integer-size(16)>>
       end)
 
-    body = [<<0::signed-integer-size(16), length(entries)::integer-size(32)>>, entries]
+    throttle = if ver >= 1, do: [<<0::integer-size(32)>>], else: []
+    body = [throttle, <<0::signed-integer-size(16), length(entries)::integer-size(32)>>, entries]
     send_response(state.sock, corr, body)
     state
   end
@@ -927,10 +931,15 @@ defmodule Smalt.Messaging.Kafka.Conn do
   # KD-COVERS: KD-181 — version-dispatched fetch face.
   defp serve_batch(base, raw, ver) do
     case raw do
-      # KD-COVERS: KD-190 — magic-2 batches down-convert for every fetch
-      # version below v4 (real Kafka serves magic-2 from Fetch v4+; the
-      # (0,10,1) consumer posture fetches at v3 and expects magic-1 frames).
-      <<_::binary-size(16), 2::integer-size(8), _::binary>> when ver <= 3 ->
+      # KD-COVERS: KD-190 — the (0,10,1) consumer posture fetches at v3 and
+      # expects magic-1 frames, so v3 down-converts (real Kafka serves
+      # magic-2 from Fetch v4+). v2 stays VERBATIM per the pinned downcv F3
+      # law (Fetch v2 serves verbatim); v0/v1 down-convert per KD-181.
+      <<_::binary-size(16), 2::integer-size(8), _::binary>> when ver == 3 ->
+        down_convert(base, raw)
+
+      <<_::binary-size(16), 2::integer-size(8), _::binary>> when ver <= 1 ->
+        # KD-COVERS: KD-181 — Fetch v0/v1 legacy clients get down-conversion.
         down_convert(base, raw)
 
       <<_::binary-size(16), 2::integer-size(8), _::binary>> ->

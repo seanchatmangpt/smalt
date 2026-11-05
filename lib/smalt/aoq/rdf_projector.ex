@@ -158,7 +158,7 @@ defmodule Smalt.Aoq.RdfProjector do
 
   defp source_label(guid) do
     hex = Base.encode16(:crypto.hash(:sha256, guid), case: :lower)
-    "_:s" <> binary_part(hex, 0, 10)
+    "_:s" <> binary_part(hex, 0, 10)  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
   end
 
 
@@ -185,16 +185,16 @@ defmodule Smalt.Aoq.RdfProjector do
   end
 
   defp frame_label(rec) do
-    "_:f" <> Integer.to_string(rec.epoch) <> "_" <> Integer.to_string(rec.seq)
+    "_:f" <> Integer.to_string(rec.epoch) <> "_" <> Integer.to_string(rec.seq)  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
   end
 
   defp frame_iolist(rec, src_ix) do
-    src = "  prov:used " <> Map.fetch!(src_ix, rec.guid) <> " .\n\n"
+    src = "  prov:used " <> Map.fetch!(src_ix, rec.guid) <> " .\n\n"  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
 
     started =
       case rec[:started_at] do
         nil -> []
-        ts -> ["  prov:startedAtTime \"" <> ts <> "\"^^xsd:dateTime ;\n"]
+        ts -> ["  prov:startedAtTime \"" <> ts <> "\"^^xsd:dateTime ;\n"]  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
       end
 
     [
@@ -206,13 +206,13 @@ defmodule Smalt.Aoq.RdfProjector do
       Integer.to_string(rec.seq),
       "\" ;\n",
       "  cimi:frame.magic \"AOQ1\" ;\n",
-      "  cimi:frame.version " <> Integer.to_string(1) <> " ;\n",
-      "  cimi:frame.epoch " <> Integer.to_string(rec.epoch) <> " ;\n",
-      "  cimi:frame.sequence " <> Integer.to_string(rec.seq) <> " ;\n",
-      "  cimi:frame.type " <> Integer.to_string(rec.type) <> " ;\n",
-      "  cimi:frame.flags " <> Integer.to_string(rec.flags) <> " ;\n",
-      "  cimi:frame.payloadLength " <> Integer.to_string(rec.payload_len) <> " ;\n",
-      "  cimi:frame.crc32 \"" <> rec.crc32 <> "\" ;\n",
+      "  cimi:frame.version " <> Integer.to_string(1) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.epoch " <> Integer.to_string(rec.epoch) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.sequence " <> Integer.to_string(rec.seq) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.type " <> Integer.to_string(rec.type) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.flags " <> Integer.to_string(rec.flags) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.payloadLength " <> Integer.to_string(rec.payload_len) <> " ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
+      "  cimi:frame.crc32 \"" <> rec.crc32 <> "\" ;\n",  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
       started,
       src
     ]
@@ -228,7 +228,7 @@ defmodule Smalt.Aoq.RdfProjector do
 
         base = [
           {f, :rdf_type, :prov_activity},
-          {f, :dcterms_identifier, Integer.to_string(rec.epoch) <> ":" <> Integer.to_string(rec.seq)},
+          {f, :dcterms_identifier, Integer.to_string(rec.epoch) <> ":" <> Integer.to_string(rec.seq)},  # AOQ-FENCE-OK: prose/Turtle text build, not AoQ frame egress
           {f, :cimi_frame_magic, @magic},
           {f, :cimi_frame_version, 1},
           {f, :cimi_frame_epoch, rec.epoch},
