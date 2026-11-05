@@ -426,8 +426,9 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   """
 @spec encode(Schema.t()) :: binary()
   def encode(%Schema{} = schema) do
-    {chunks, used} = enc_schema(schema)
-    root_off = used
+    {root_off, st} = enc_schema(schema)
+    {chunks, used} = st
+    root_off = root_off
     # finish: push ident then root; root value = tref index from region
     # start = U_f - off(tref) where U_f = used() after ident push.
     {chunks1, used1} = push(chunks, used, @ident)
@@ -477,8 +478,8 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
         push2(stx, <<rel::32-little>>)
       end)
     _ = rel_bytes
-    {cnt, u3, st3} = push2(st2, <<length(elem_offs)::32-little>>)
-    {cnt, st3}
+    {_, u3, st3} = push2(st2, <<length(elem_offs)::32-little>>)
+    {u3, st3}
   end
 
   defp b_table(st, slots) do
@@ -486,15 +487,37 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     n = length(ordered)
     max_id = ordered |> Enum.map(fn {fid, _} -> fid end) |> Enum.max(fn -> 0 end)
     {chunks, used} = st
-    {triples, {c1, u1}} =
-      Enum.map_reduce(ordered, {chunks, used}, fn {fid, v}, {c, u} ->
+    # Compute slot positions deterministically (pad depends only on used).
+    {triples, used2} =
+      Enum.map_reduce(ordered, used, fn {fid, v}, u ->
         pad = rem(8 - rem(u, 8), 8)
-        {_, u_pad, {c_a, _}} = push2({c, u}, zeros(pad))
-        {bytes, u_b, {c_b, u_b2}} = push2({c_a, u_pad}, slot_value_bytes(v))
-        {{fid, u_b, bytes}, {c_b, u_b2}}
+        sz = byte_size(slot_value_bytes(v))
+        {{fid, u + pad + sz, sz, pad}, u + pad + sz}
       end)
+    # Patch Off rels: rel = off_start - elem_off (off-from-end law).
+    ordered_bytes =
+      Enum.map(ordered, fn {fid, v} ->
+        case v do
+          {:off, 0} -> {fid, <<>>}
+          {:off, e} ->
+            {_, off_start, _, _} = Enum.find(triples, fn {f, _, _, _} -> f == fid end)
+            {fid, <<off_start - e::32-little>>}
+          {:u8, x} -> {fid, <<x>>}
+          {:i16, x} -> {fid, <<x::16-little>>}
+          {:i32, rel_calc_marker} -> {fid, <<x::32-little>>}
+          {:i64, x} -> {fid, <<x::64-little>>}
+        end
+      end)
+    # push [pad, bytes] per slot in order
+    {c1, u1} =
+      Enum.reduce(ordered_bytes, {chunks, used}, fn {fid, bytes}, {c, u} ->
+        {_, _, _, pad} = Enum.find(triples, fn {f, _, _, _} -> f == fid end)
+        {c2, u2, _} = push2({c, u}, zeros(pad))
+        {c3, u3, _} = push2({c2, u2}, bytes)
+        {c3, u3}
+    end
     vt_bytes = 4 + 2 * n
-    pad_vt = rem(8 - rem(u1, 8), 8)
+    pad_vt = rem(8 - rem(u1, missing_marker2), 8)
     {_, u2, {c2, _}} = push2({c1, u1}, zeros(pad_vt))
     u_t = u2 + vt_bytes + 8
     voffs =
@@ -505,7 +528,7 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
         end
       end
     voff_bin = Enum.map(voffs, fn v -> <<v::16-little>> end)
-    {_, u3, {c3, _}} = push2({c2, u2}, voff_bin)
+    {_, u3, {c3, _}} = push2({c2, u2}, IO.iodata_to_binary(voff_bin))
     {_, u4, {c4, _}} = push2({c3, u3}, <<(4 + 2 * n)::16-little, 0::16>>)
     {_, u5, {c5, _}} = push2({c4, u4}, <<-4::32-little>>)
     {u5, {c5, u5}}

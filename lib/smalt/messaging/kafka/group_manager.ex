@@ -273,18 +273,23 @@ defmodule Smalt.Messaging.Kafka.GroupManager do
     g = get_group(group)
     member = g.members[mid]
 
-    err =
-      cond do
-        is_nil(member) -> 25
-        gen != g.generation -> 22
-        g.state == :preparing -> 27
-        true ->
-          m = Map.put(member, :last, now_ms())
-          put_group(group, %{g | members: Map.put(g.members, mid, m)})
-          0
-      end
+    cond do
+      is_nil(member) ->
+        {:reply, 25, state}
 
-    {:reply, err, state}
+      gen != g.generation ->
+        {:reply, 22, state}
+
+      true ->
+        # Real-broker semantics: ANY member request refreshes session liveness —
+        # including a heartbeat answered 27 REBALANCE_IN_PROGRESS, else the
+        # sweeper evicts members mid-rebalance (witnessed: kafka-python
+        # rejoin latency > session timeout during a 2-member rebalance).
+        m = Map.put(member, :last, now_ms())
+        put_group(group, %{g | members: Map.put(g.members, mid, m)})
+        err = if g.state == :preparing, do: 27, else: 0
+        {:reply, err, state}
+    end
   end
 
   def handle_call({:leave, group, mid}, _from, state) do
