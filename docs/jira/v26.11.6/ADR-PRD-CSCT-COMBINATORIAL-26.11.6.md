@@ -3,9 +3,19 @@
 **Document Identifier:** ADR-PRD-CSCT-COMB-26.11.6  
 **Title:** RFC-0042 CSCT Combinatorial Matrix: Exhaustive 80-Cell Triumvirate Verification across `cgap`, `arcus`, and `smalt`  
 **Target Release:** `v26.11.6`  
-**Status:** Approved / Active Sovereign Standard  
+**Status:** PARTIAL_ALIVE — evidence-bounded; "Active Sovereign Standard"
+revoked pending Measure phase (CT-23 unclosed, 13/80 cells executed;
+evidence: `receipts/csct-claim-verification-verdict.md`,
+`CSCT_CONFORMANCE.md` CT-01..CT-23)  
 **Authors:** System Architecture Group  
-**Classification:** Internal Core Architecture & Commercial Execution Standard  
+**Classification:** Internal Core Architecture & Commercial Execution Standard
+
+**Claim-vocabulary preamble (charter remediation 2026-11-05):** ADMITTED is
+a bench-receipt enum minted only by an executed court — never self-assignable
+by a charter or ADR. Every quantitative claim below carries exactly one
+label: MEASURED(method, receipt path) / UNMEASURED / REFUTED(receipt path)
+/ MODEL-DERIVED UNMEASURED. Rows whose only provenance was this prose or
+the `cell_idx % n` formula have been typed down.  
 
 ---
 
@@ -49,11 +59,11 @@ $$\mathbf{\Omega}_{\text{CSCT}} = \mathcal{D} \times \mathcal{T} \times \mathcal
          ▼                                                                         ▼
 [CHALLENGER ARC STAGES (S: 6)]                                            [ANTI-VACUITY MUTATIONS (A: 4)]
 • S1: ST-01 (Warmer - Wire Parity)                                        • A1: M1 (Poison SigV4 -> 403)
-• S2: ST-02 (Reframe - 6.66x Tax)                                         • A2: M2 (SPSC Overflow -> Refusal)
-• S3: ST-03 (Drowning - $422k/mo)                                         • A3: M3 (BitWeaving Parity -> Refusal)
-• S4: ST-04 (Emotional - P99 < 5ms)                                       • A4: M4 (SIGKILL -> Zero-Loss Replay)
-• S5: ST-05 (New Way - 0 B/op)
-• S6: ST-06 (Solution - 352x ROI)
+• S2: ST-02 (Reframe - amplification UNMEASURED, CT-06)                                         • A2: M2 (SPSC Overflow -> Refusal)
+• S3: ST-03 (Drowning - $422k/mo, inputs UNMEASURED, CT-04)                                         • A3: M3 (BitWeaving Parity -> Refusal)
+• S4: ST-04 (Emotional - P99 < 5ms, gate UNBUILT, CT-15)                                       • A4: M4 (SIGKILL -> Zero-Loss Replay)
+• S5: ST-05 (New Way - 320.0 ns/record MEASURED one-shot)
+• S6: ST-06 (Solution - ROI gate 350.0, MODEL-DERIVED UNMEASURED)
 ```
 
 ### 2.1 Dimension 1: Client Ingress Dialects ($\mathcal{D}$, $|\mathcal{D}| = 5$)
@@ -78,11 +88,29 @@ Every dialect is driven strictly by unmodified official client SDKs:
 
 ### 2.4 Dimension 4: Challenger Arc Stages ($\mathcal{S}$, $|\mathcal{S}| = 6$)
 - **$S_1$ (ST-01 Warmer):** Baseline wire-parity across 1,000,000 records.
-- **$S_2$ (ST-02 Reframe):** Demonstration of $\ge 6.66\times$ serialization tax and memory amplification.
-- **$S_3$ (ST-03 Rational Drowning):** Status-quo bleeding exhibit: $\$422,386/\text{month}$ ($\$5,068,632/\text{year}$) vs $\$1,200/\text{month}$ ($\$14,400/\text{year}$).
-- **$S_4$ (ST-04 Emotional Impact):** 10x saturated burst injection demonstrating $P99 < 5\text{ ms}$ vs cloud GC $2,750\text{ ms}$ under Little's Law invariant $W \le 10\text{ ms}$.
-- **$S_5$ (ST-05 A New Way):** True zero-copy C-ABI NVMe append path ($0\text{ B/op}$, $< 15\text{ ns/record}$).
-- **$S_6$ (ST-06 The Solution):** Commercial gross ROI gate ($\text{ROI} \ge 352\times$) with cryptographically chained BLAKE3 receipt.
+- **$S_2$ (ST-02 Reframe):** Serialization/memory amplification exhibit —
+  UNMEASURED (CT-06; the prior 4.53x/4.75x/6.66x constants were stitched
+  from unrelated sources and are deleted, verdict:20).
+- **$S_3$ (ST-03 Rational Drowning):** Status-quo exhibit:
+  $\$422{,}386/\text{month}$ ($\$5{,}068{,}632/\text{year}$) vs
+  $\$1{,}200/\text{month}$ ($\$14{,}400/\text{year}$) — arithmetic
+  cents-exact, inputs UNMEASURED (verdict:27; no pricing receipt, SUT
+  ceiling asserted never priced; CT-04).
+- **$S_4$ (ST-04 Emotional Impact):** 10x saturated burst injection with
+  $P99 < 5\text{ ms}$ vs cloud GC $2{,}750\text{ ms}$ under Little's Law
+  ceiling $W \le 10\text{ ms}$ (formula kept; gate UNBUILT — CT-15 GAP;
+  the prior "$W_{\text{actual}} \approx 0.045\text{ ms}$" and "222x
+  safety margin" were formula-generated and are deleted, verdict:11).
+- **$S_5$ (ST-05 A New Way):** Zero-copy C-ABI NVMe append target.
+  Lawful residue: 320.0 ns/record MEASURED (one-shot, unfenced — durable
+  receipt value, verdict:21); the prior "$< 15\text{ ns/record}$" and
+  universal "$0\text{ B/op}$" claims are deleted (formula constants and
+  L59-refuted universal — verdict:18/:20,
+  `receipts/l59-kafka-vs-aoq.md`).
+- **$S_6$ (ST-06 The Solution):** Commercial gross ROI gate
+  ($\text{ROI} \ge 352\times$ target, executable gate pin $350.0$)
+  with cryptographically chained BLAKE3 receipt. Standing MODEL-DERIVED
+  UNMEASURED until CT-04 closes.
 
 ### 2.5 Dimension 5: Anti-Vacuity Adversarial Mutations ($\mathcal{A}$, $|\mathcal{A}| = 4$)
 - **$A_1$ (M1 Poison SigV4):** Mutated signature / credential must fail closed with HTTP 403 Forbidden.
@@ -110,13 +138,26 @@ Under a continuous $100\text{k msgs/sec}$ saturate load ($\lambda = 100,000$) wi
 
 $$W_{\text{ceiling}} = \frac{1,000}{100,000} = 10\text{ ms}$$
 
-If residence time exceeds $10\text{ ms}$, the system has breached queuing equilibrium. The sovereign substrate guarantees $P99 \le 5\text{ ms}$ ($W_{\text{actual}} \approx 0.045\text{ ms}$), providing a $222\times$ safety margin below the Little's Law ceiling.
+If residence time exceeds $10\text{ ms}$, the system has breached queuing
+equilibrium. The ceiling $W_{\text{ceiling}} = L/\lambda$ is kept as a
+formula; GATE STATUS: UNBUILT (CT-15 GAP — no bench computes $L/\lambda$
+or fails on drift). The prior "$W_{\text{actual}} \approx 0.045\text{ ms}$"
+and "$222\times$ safety margin" figures were formula-generated
+(verdict:11) and are deleted; no measured P99 is asserted here.
 
 ### 3.3 The Commercial ROI Equation
 
-$$\text{ROI}_{\text{gross}} = \frac{\text{Cost}_{\text{StatusQuo}}}{\text{Cost}_{\text{SUT}}} = \frac{\$5,068,632.00}{\$14,400.00} = 351.988\times \approx 352\times$$
+Canonical form (remediation 2026-11-05):
 
-$$\text{ROI}_{\text{net}} = \frac{\$5,068,632.00 - \$14,400.00}{\$14,400.00} = 350.988\times \approx 351\times$$
+$$\text{ROI}_{\text{gross}} = \frac{\$5,068,632.00}{\$14,400.00} = 351.99\times$$
+
+Executable gate pin: $350.0$ (cgap `crates/csct` REQUIRED_ROI_X, arcus
+ST-06 gate $\ge 350\times$). Standing: MODEL-DERIVED UNMEASURED until
+CT-04 closes — inputs are hardcoded ledger lines with no pricing receipt
+(verdict:27). Note the registered pin divergence (csct-spec/README 352.0
+vs code 350.0; KD row minted this remediation). The prior "net
+350.988 ≈ 351×" line was removed with this rewrite; the gross form above
+is the only canonical expression.
 
 ---
 
@@ -145,12 +186,36 @@ $$\text{ROI}_{\text{net}} = \frac{\$5,068,632.00 - \$14,400.00}{\$14,400.00} = 3
 | C73..C76 | Azure EH | C-ABI NIF | Arrow / BitWeaving / Journal / BLAKE3 | In-process partition lease | M3 (Parity Checksum) |
 | C77..C80 | Azure EH | UDS AOQ1 | Arrow / BitWeaving / Journal / BLAKE3 | Sidecar AMQP proxy | M4 (SIGKILL Replay) |
 
+**Cell provenance annotation (per `receipts/csct-claim-verification-verdict.md`
+:11, remediation 2026-11-05):** all 80 cells are FORMULA-GENERATED, not
+court-executed — the receipt's per-cell metrics are arithmetic on the loop
+index (`cell_idx % n`; 19 distinct values across 80 cells), probe outcomes
+(incl. Kafka SIMULATED_WIRE) are non-gating and dropped from the evidence
+payload, and T2/T3/T4 transports are never combined with dialects (60 cells
+pure formula). The 16 D5/Azure cells are NO-COLLABORATOR (CT-01: no dialect
+face, no client, no probe exists). The table below is the TARGET surface
+the matrix names, not a record of execution.
+
 ---
 
 ## 5. Verification & Acceptance Criteria
 
-1. **Complete Matrix Execution:** All 80 cells of the matrix must be executed and verified by automated courts without human intervention.
+1. **Complete Matrix Execution:** 13/80 cells EXECUTED (the ~13 distinct
+   real tests under the wave — verdict:9/:11), 67/80 NOT-TESTED. The
+   original "All 80 cells must be executed and verified by automated
+   courts" criterion is unmet by its own standard (verdict:11); it
+   remains the close condition for CT-01/CT-23.
 2. **Fail-Closed Anti-Vacuity:** Every court must witness real rejection when presented with mutated or corrupt frames (M1..M4).
-3. **Little's Law Invariant:** End-to-end P99 latency across all 80 cells must strictly observe $P99 < 5.0\text{ ms}$, bounded by $W_{\text{ceiling}} = 10\text{ ms}$.
-4. **Economic ROI Integrity:** The delivered commercial receipt must certify an annual savings of $\$5,068,632 - \$14,400 = \$5,054,232$ yielding gross $\text{ROI} \ge 352\times$.
+3. **Little's Law Invariant:** End-to-end P99 latency across all 80 cells
+   must strictly observe $P99 < 5.0\text{ ms}$, bounded by
+   $W_{\text{ceiling}} = 10\text{ ms}$. The $W \le 10\text{ ms}$ figure is
+   a ceiling FORMULA only; the enforcing gate is UNBUILT (CT-15 GAP).
+4. **Economic ROI Integrity:** Canonical expression: gross ROI =
+   $\$5,068,632 / \$14,400 = 351.99\times$; the executable gate pins
+   $350.0$ (cgap `crates/csct` REQUIRED_ROI_X / arcus ST-06 $\ge 350\times$).
+   Standing: MODEL-DERIVED UNMEASURED until CT-04 closes — the ledger
+   line items are hardcoded, no pricing receipt exists, and the
+   $1,200/mo SUT ceiling was asserted, never priced (verdict:27).
+   Registered pin divergence: csct-spec/README pins 352.0 vs code 350.0
+   (KD row minted, this remediation).
 5. **Cryptographic Standing:** The receipt must be output to `cgap/reports/challenger_sales_combinatorial_receipt.json` and cryptographically verifiable with status `ALIVE`.

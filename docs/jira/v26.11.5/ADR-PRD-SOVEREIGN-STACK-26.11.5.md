@@ -8,7 +8,17 @@
 
 **Classification:** Core System Architecture & Sovereign Commercial Posture
 
-**Status:** Approved / Active Production Specification
+**Status:** PARTIAL_ALIVE — evidence-bounded; PRODUCTION QUALIFIED revoked
+pending Measure phase (CT-23 unclosed; max lawful standing PARTIAL_ALIVE;
+evidence: `docs/jira/v26.11.6/receipts/csct-claim-verification-verdict.md`,
+`docs/jira/v26.11.6/CSCT_CONFORMANCE.md` CT-01..CT-23)
+
+**Claim-vocabulary preamble (charter remediation 2026-11-05):** ADMITTED
+is a bench-receipt enum minted only by an executed court — it is never
+self-assignable by a charter or ADR. Every quantitative claim in this
+document carries exactly one label: MEASURED(method, receipt path) /
+UNMEASURED / REFUTED(receipt path). Claims whose only provenance was this
+prose have been typed down or deleted.
 
 ---
 
@@ -20,7 +30,7 @@ The sovereign computational stack (`smalt`, `arcus`, `cgap`, `ggen`) collapses t
 
 * **Rust `#![no_std]` & AVX2/AVX-512 SIMD BitWeaving**: Eliminates runtime garbage collection and bounds-check taxes.
 * **BEAM (Elixir/Erlang) Actor Supervision**: Enforces fail-closed lifecycle isolation and monotonic execution leases ($\mathbf{\Phi}_{\text{lease}}$).
-* **Go Peripheral Membrane**: Delivers zero-copy wire frame slicing ($0\,\text{B/op}$) within a sub-$15\text{ MB}$ RAM acoustic baffle.
+* **Go Peripheral Membrane**: Delivers zero-copy wire frame slicing within a sub-$15\text{ MB}$ RAM acoustic baffle (footprint UNMEASURED in this ADR; allocation standing scoped below).
 * **Apache Arrow Columnar Layouts & `io_uring`**: Direct hardware-speed memory transit and NVMe journal append.
 
 ### The Commercial Capture Invariant
@@ -29,7 +39,11 @@ The sovereign stack does **not** compete on commodity price discounts. Any engin
 
 The enterprise customer contracts strictly for:
 
-1. **Deterministic Latency**: Sub-millisecond execution ($P99 < 0.1675\text{ ms}$) eliminating bid timeouts, chargeback windows, and order-book adverse selection.
+1. **Deterministic Latency**: Sub-millisecond execution eliminating bid
+   timeouts, chargeback windows, and order-book adverse selection (no
+   measured P99 bound is asserted by this ADR; the prior P99 figure was
+   prose-invented and is deleted — verdict receipt, latency lane,
+   `docs/jira/v26.11.6/receipts/csct-claim-verification-verdict.md`).
 2. **Parasitic Ingress Parity**: Drop-in replacement for existing cloud SDKs (`boto3`, `@aws-sdk`, `google-cloud-pubsub`, `kafkajs`) across local loopback ports (`:4566`, `:8085`, `:8086`, `:9092`) with zero application refactoring.
 3. **99.9% Edge Filtration**: Complete reduction of transit turbulence via in-situ semantic reasoning (`bn3`, `OCEL v2.0`, `POWL v2`, `HTN FOND`).
 
@@ -133,7 +147,11 @@ Offsets are committed monotonically into local `DETS` storage backed by an appen
   * GCP Bearer: Intercepts `Authorization: Bearer <token>`, enforcing deterministic prefix and formatting admission without outbound external calls.
 * **Memory & Allocation Invariants**:
   * RSS Footprint: Strict $< 15\text{ MB}$ RAM ceiling at idle.
-  * Allocation Ceiling: $0\,\text{B/op}$ on the ingestion and slicing hot path.
+  * Allocation Ceiling: $0\,\text{B/op}$ MEASURED(alloc-court,
+    `docs/jira/v26.11.6/receipts/l59-kafka-vs-aoq.md`) on the
+    encode/split/pterm legs only; NOT a universal claim — the drain
+    path is MEASURED at 904.2 B/op in the same receipt (caller-side
+    `sendmsg` iov binary-flattening) and is excluded from this ceiling.
   * Buffer Management: Contiguous Arrow buffer slicing; zero Go heap string conversions on record payloads.
 
 ### 3.2. `cgap v26.11.5` (Hardware Execution Kernel)
@@ -163,6 +181,11 @@ Offsets are committed monotonically into local `DETS` storage backed by an appen
 $$W_{\text{ceiling}} = \frac{L}{\lambda} = \frac{1{,}000}{100{,}000\text{ msgs/sec}} = 10.0\text{ ms}$$
 
 Enforces an active fail-closed ceiling. If residence time $W$ crosses $10.0\text{ ms}$ at saturation throughput ($\lambda = 100\text{k msgs/sec}$), the substrate trips the **Andon 101 cord**, applying non-blocking backpressure to preserve deterministic latency bounds.
+
+GATE STATUS: UNBUILT — $W_{\text{ceiling}} = L/\lambda$ is kept as a formula
+only; no bench computes $L/\lambda$ or fails on drift (CT-15 GAP,
+`docs/jira/v26.11.6/CSCT_CONFORMANCE.md`). The gate and the Andon trip are
+UNMEASURED until a measured residence-time gate lands.
 
 ### 3.4. `ggen v26.11.5` (AOT Generative Foundry)
 
@@ -226,8 +249,10 @@ The release must execute and pass the automated qualification test harness ("The
   ├─ G1: Project AWS Kinesis, SQS, and GCP Pub/Sub schemas via ggen v26.11.5
   ├─ G2: Compile bn3 branchless quad decoders into Arrow bit-plane projections
   ├─ G3: Integrate OCEL v2 multi-object event grouping and POWL v2 verification
-  └─ Gate 1: Compile checks clean; zero directories named generated/; 
-             0 B/op heap allocation on hot-path record slicing verified
+  └─ Gate 1: Compile checks clean; zero directories named generated/;
+             0 B/op alloc-court on encode/split/pterm legs only
+             (drain path 904.2 B/op excluded —
+             docs/jira/v26.11.6/receipts/l59-kafka-vs-aoq.md)
 
 [Wave 2: Membrane Ingress & Boundary Seam]
   ├─ M1: Bind loopback listeners on :4566, :8085, :8086, and :9092 in arcus
