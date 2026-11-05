@@ -294,7 +294,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       {oks, fails} =
         Enum.reduce(entries, {[], []}, fn e, {oks, fails} ->
           case batch_send_one(name, e) do
-            {:ok, id, entry} -> {[entry | oks], fails}
+            {:ok, _id, entry} -> {[entry | oks], fails}
             {:error, id, code, msg, fault?} -> {oks, [%{"Id" => id, "SenderFault" => fault?, "Code" => code, "Message" => msg} | fails]}
           end
         end)
@@ -302,18 +302,6 @@ defmodule Smalt.Egress.Sqs.SqsActions do
       {:ok, %{"Successful" => Enum.reverse(oks), "Failed" => Enum.reverse(fails)}}
     end
   end
-
-  defp message_attributes_from_entry(e) when is_map(e) do
-    case e["MessageAttribute"] do
-      attrs when is_list(attrs) ->
-        Map.new(attrs, fn a -> {a["Name"], a["Value"]} end)
-      attrs when is_map(attrs) ->
-        attrs
-      _ ->
-        %{}
-    end
-  end
-  defp message_attributes_from_entry(_), do: %{}
 
   defp batch_send_one(name, e) do
     body = e["MessageBody"]
@@ -410,7 +398,7 @@ defmodule Smalt.Egress.Sqs.SqsActions do
     payload =
       %{
         "MessageId" => msg.message_id || lock.lock_token,
-        "ReceiptHandle" => SqsReceipt.mint(queue, msg.seq, lock.lock_token, lock.locked_until),
+        "ReceiptHandle" => receipt,
         "MD5OfBody" => SqsMd5.body_md5(raw),
         "Body" => raw,
         "Attributes" => Map.new(sys_attrs)
@@ -440,20 +428,6 @@ defmodule Smalt.Egress.Sqs.SqsActions do
   defp message_attributes_requested?(names, msg) do
     names != nil and msg[:app_props] != %{} and msg[:app_props] != nil and
       ("All" in names or Enum.any?(names, &Map.has_key?(msg[:app_props] || %{}, &1)))
-  end
-
-  defp message_attributes_xml(msg) do
-    props = msg[:app_props] || %{}
-
-    children =
-      props
-      |> Enum.map(fn {n, v} ->
-        "<MessageAttribute><Name>" <>
-          SqsXml.escape(n) <>
-          "</Name><Value>" <> SqsXml.escape(v) <> "</Value><DataType>String</DataType></MessageAttribute>"
-      end)
-
-    children
   end
 
   defp raw_body(body) when is_binary(body), do: body
@@ -616,7 +590,6 @@ defmodule Smalt.Egress.Sqs.SqsActions do
   end
 
   defp clamp(n, lo, hi) when is_integer(n), do: n |> max(lo) |> min(hi)
-  defp clamp(_, lo, _), do: lo
 
   defp parse_int(v) when is_binary(v) do
     case Integer.parse(v) do

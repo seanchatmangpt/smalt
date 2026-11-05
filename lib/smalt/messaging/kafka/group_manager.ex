@@ -68,7 +68,7 @@ defmodule Smalt.Messaging.Kafka.GroupManager do
   def handle_find_coordinator(ver, corr, body, sock, port) do
     case parse_string(body) do
       {:ok, _key, _rest} ->
-        # KD-COVERS: KD-HC-2 — v1 field order is
+        # KD-COVERS: KD-207 — v1 field order is
         # {throttle_time_ms, error_code, error_message, coordinator_id, host,
         # port} per KIP-113 / the Apache protocol guide (FindCoordinator v1
         # adds a throttle_time_ms i32 head). Premise-rot disclosure: the

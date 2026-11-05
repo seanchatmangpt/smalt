@@ -101,19 +101,21 @@ defmodule Smalt.Egress.Sqs.SqsXml do
 
   defp result_xml("SendMessageBatch", payload) when is_map(payload) do
     Enum.map(payload["Successful"] || [], fn e ->
-      "<SendMessageBatchResultEntry>" <>
-        scalars_to_xml(e) <>
-        "</SendMessageBatchResultEntry>"
+      ["<SendMessageBatchResultEntry>", scalars_to_xml(e), "</SendMessageBatchResultEntry>"]
     end) ++
       Enum.map(payload["Failed"] || [], fn e ->
-        "<BatchResultErrorEntry>" <>
+        [
+          "<BatchResultErrorEntry>",
           scalars_to_xml(%{
-            "Id" => e["Id"],
+            "Id" => escape(e["Id"]),
             "SenderFault" => if(e["SenderFault"], do: "true", else: "false")
-          }) <>
-          "<Code>" <>
-          escape(e["Code"]) <>
-          "</Code><Message>" <> escape(e["Message"]) <> "</Message></BatchResultErrorEntry>"
+          }),
+          "<Code>",
+          escape(e["Code"]),
+          "</Code><Message>",
+          escape(e["Message"]),
+          "</Message></BatchResultErrorEntry>"
+        ]
       end)
   end
 
@@ -122,9 +124,15 @@ defmodule Smalt.Egress.Sqs.SqsXml do
       "<DeleteMessageBatchResultEntry><Id>" <> escape(e["Id"]) <> "</Id></DeleteMessageBatchResultEntry>"
     end) ++
       Enum.map(payload["Failed"] || [], fn e ->
-        "<BatchResultErrorEntry>" <>
-          scalars_to_xml(%{"Id" => e["Id"], "SenderFault" => "false"}) <>
-          "<Code>" <> escape(e["Code"]) <> "</Code><Message>" <> escape(e["Message"]) <> "</Message></BatchResultErrorEntry>"
+        [
+          "<BatchResultErrorEntry>",
+          scalars_to_xml(%{"Id" => escape(e["Id"]), "SenderFault" => "false"}),
+          "<Code>",
+          escape(e["Code"]),
+          "</Code><Message>",
+          escape(e["Message"]),
+          "</Message></BatchResultErrorEntry>"
+        ]
       end)
   end
 
@@ -193,25 +201,6 @@ defmodule Smalt.Egress.Sqs.SqsXml do
       msg_attrs_xml,
       "</Message>"
     ]
-    |> IO.iodata_to_binary()
-  end
-
-  @doc "XML-escape text content."
-  @spec escape(term()) :: String.t()
-  def escape(v) when is_binary(v) do
-    v
-    |> String.replace("&", "&amp;")
-    |> String.replace("<", "&lt;")
-    |> String.replace(">", "&gt;")
-  end
-
-  def escape(v), do: v |> to_string() |> escape()
-
-  # uuid-shaped request id; SDKs ignore it.
-  defp request_id do
-    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
-
-    :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [a, b, c, d, e])
     |> IO.iodata_to_binary()
   end
 end

@@ -173,9 +173,6 @@ defmodule Smalt.Messaging.Kafka.Conn do
               {:refused, reason} ->
                 # vendored client expects close-on-failure, no wire answer
                 kill(state, {:sasl_authentication_failed, reason})
-
-              {:error, :malformed_plain} ->
-                kill(state, :malformed_sasl_authenticate)
             end
 
       _ ->
@@ -242,6 +239,94 @@ defmodule Smalt.Messaging.Kafka.Conn do
   defp route(12, ver, corr, body, state), do: group_route(:handle_heartbeat, 12, ver, corr, body, state)
   defp route(13, ver, corr, body, state), do: group_route(:handle_leave, 13, ver, corr, body, state)
   defp route(14, ver, corr, body, state), do: group_route(:handle_sync, 14, ver, corr, body, state)
+  defp route(17, 0, corr, body, state), do: route_sasl_handshake(corr, body, state)
+
+  defp route(36, ver, corr, body, state), do: route_sasl_authenticate(ver, corr, body, state)
+
+  defp route(18, ver, corr, _body, state) do
+    entries =
+      Wire.version_matrix()
+      |> Enum.sort()
+      |> Enum.map(fn {k, {lo, hi}} ->
+        <<k::integer-size(16), lo::integer-size(16), hi::integer-size(16)>>
+      end)
+
+    throttle = if ver >= 1, do: [<<0::integer-size(32)>>], else: []
+    body = [<<0::signed-integer-size(16), length(entries)::integer-size(32)>>, entries, throttle]
+    send_response(state.sock, corr, body)
+    state
+  end
+
+  defp route(3, ver, corr, body, state) do
+    case parse_metadata_request(body, ver) do
+      :all ->
+        serve_metadata(ver, corr, Log.list_topics() |> Enum.map(&{&1, true}), state)
+
+      {:ok, allow, names} ->
+        known = Log.list_topics()
+
+        blocks =
+          Enum.map(names, fn name ->
+            cond do
+              name in known -> {name, true}
+              allow == 1 ->
+                Log.ensure_topic(name)
+                {name, true}
+              true -> {name, false}
+            end
+          end)
+
+        serve_metadata(ver, corr, blocks, state)
+      end
+  end
+
+  defp route(0, ver, corr, body, state) do
+
+    case parse_produce(body, ver) do
+      {:ok, entries} ->
+        results =
+          Enum.map(entries, fn {topic, parts} ->
+            part_blocks =
+              Enum.map(parts, fn {p, raw_set} ->
+                {err, base} = produce_partition(topic, p, raw_set)
+
+                # ProduceResponse partition block: partition i32 |
+                # error_code i16 | base_offset i64 (| timestamp i64 in v2).
+                case ver do
+                  v when v <= 1 ->
+                    [<<p::signed-integer-size(32), err::signed-integer-size(16),
+                       base::signed-integer-size(64)>>]
+
+                  _ ->
+                    [<<p::signed-integer-size(32), err::signed-integer-size(16),
+                       base::signed-integer-size(64), -1::signed-integer-size(64)>>]
+                end
+              end)
+
+            [
+              <<byte_size(topic)::unsigned-integer-size(16), topic::binary>>,
+              <<length(part_blocks)::integer-size(32)>>,
+              part_blocks
+            ]
+          end)
+
+        # ProduceResponse v1/v2 carry throttle_time_ms AFTER the topics array.
+        throttle = if ver >= 1, do: [<<0::integer-size(32)>>], else: []
+
+        send_response(state.sock, corr, [
+          <<length(results)::integer-size(32)>>,
+          results,
+          throttle
+        ])
+
+        state
+
+      :kill ->
+        kill(state, :malformed_produce_request)
+    end
+  catch
+    {:kill_batch, reason} -> kill(state, {:corrupt_batch, reason})
+  end
 
   defp group_route(fun, key, ver, corr, body, state) do
     result =
@@ -263,9 +348,6 @@ defmodule Smalt.Messaging.Kafka.Conn do
 
   # -- SASL face (KD-191): SaslHandshake 17 v0 / SaslAuthenticate 36 v0..v1 -------
 
-  defp route(17, 0, corr, body, state), do: route_sasl_handshake(corr, body, state)
-
-  defp route(36, ver, corr, body, state), do: route_sasl_authenticate(ver, corr, body, state)
 
   # SaslHandshakeResponse: error_code i16 | mechanisms[] (strings).
   defp route_sasl_handshake(corr, body, %{phase: :await_sasl} = state) do
@@ -473,27 +555,74 @@ defmodule Smalt.Messaging.Kafka.Conn do
 
   # -- ApiVersions v0 ------------------------------------------------------------
 
-  # KD-COVERS: KD-HC-3 — ApiVersions v0..v2, version-correct payloads: v0 is
-  # the bare shape, v1/v2 prepend throttle_time_ms (KIP-511: flexible from
-  # v3, never served).
-  defp route(18, ver, corr, _body, state) do
-    entries =
-      Wire.version_matrix()
-      |> Enum.sort()
-      |> Enum.map(fn {k, {lo, hi}} ->
-        <<k::integer-size(16), lo::integer-size(16), hi::integer-size(16)>>
-      end)
-
-    throttle = if ver >= 1, do: [<<0::integer-size(32)>>], else: []
-    body = [throttle, <<0::signed-integer-size(16), length(entries)::integer-size(32)>>, entries]
-    send_response(state.sock, corr, body)
-    state
-  end
+  # KD-COVERS: KD-208 — ApiVersions v0..v2, version-correct payloads: v0 is
+  # the bare {error_code, entries} shape; v1/v2 APPEND throttle_time_ms as
+  # the TAIL field (AFTER the array — ApiVersions is the one API whose
+  # throttle lands last per the protocol guide / KIP-183; witnessed: kafkajs
+  # parsed a head-placed throttle as error_code and the array count from the
+  # error_code bytes -> empty apiVersions -> "server does not support the
+  # requested API version"). Flexible from v3 (KIP-511), never served; the
+  # v3+ request takes the error-35 downgrade at the dispatch face.
 
   # -- Metadata v0/v1 ------------------------------------------------------------
 
-  defp route(3, ver, corr, _body, state) do
-    topics = Log.list_topics()
+  # KD-COVERS: KD-206 — named-topic echo + auto-create: a Metadata request
+  # with a non-null topics array is answered with ONE block PER REQUESTED
+  # topic (err 0 with full partition blocks when known; err 3
+  # UNKNOWN_TOPIC_OR_PARTITION when unknown), never with the topic census —
+  # kafkajs/librdkafka require the requested name present in the response or
+  # they report the topic unavailable. v3+ carries the
+  # allow_auto_topic_creation byte; true + unknown name materializes the
+  # topic (Log.ensure_topic/1 — real-Kafka default). Null/empty topics
+  # array -> the full census (null-topics librdkafka posture).
+
+  # v0: topics = array of string. v1+: array of {name string}. v3+: trailing
+  # allow_auto_topic_creation byte. Null array (-1) or empty -> :all.
+  defp parse_metadata_request(<<-1::signed-integer-size(32), _::binary>>, _ver), do: :all
+
+  defp parse_metadata_request(<<n::signed-integer-size(32), rest::binary>>, ver)
+       when n >= 0 do
+    case take_topic_names(rest, n, ver, []) do
+      {:ok, names, rest2} ->
+        # v0-v2 requests carry no allow flag: the real-broker default
+        # (auto.create.topics.enable=true) applies — auto-create on. v3+
+        # reads the client's byte.
+        allow =
+          case ver >= 3 and byte_size(rest2) >= 1 do
+            true -> :binary.at(rest2, 0)
+            false -> 1
+          end
+
+        {:ok, allow, names}
+
+      :kill ->
+        :kill
+    end
+  end
+
+  defp parse_metadata_request(_, _), do: :kill
+
+  defp take_topic_names(rest, 0, ver, acc) when ver >= 1,
+    do: {:ok, Enum.reverse(acc), rest}
+
+  defp take_topic_names(rest, 0, 0, acc), do: {:ok, Enum.reverse(acc), rest}
+
+  defp take_topic_names(
+         <<tlen::unsigned-integer-size(16), name::binary-size(tlen)-unit(8), rest::binary>>,
+         n,
+         ver,
+         acc
+       )
+       when n > 0 do
+    # v0 entries are bare strings; v1+ entries are {name} structs (same
+    # length-prefixed name head at this face — no other request fields).
+    _ = ver
+    take_topic_names(rest, n - 1, ver, [name | acc])
+  end
+
+  defp take_topic_names(_, _, _, _), do: :kill
+
+  defp serve_metadata(ver, corr, blocks, state) do
     parts = Log.partition_count()
 
     # MetadataResponse shapes (kafka-python pinned matrix, KD-174): v0
@@ -505,28 +634,37 @@ defmodule Smalt.Messaging.Kafka.Conn do
     cluster_id = if ver >= 2, do: [<<-1::signed-integer-size(16)>>], else: []
 
     controller =
-      if ver >= 1, do: [<<0::integer-size(32)>>], else: []
+      if ver >= 1, do: [<<-1::integer-size(32)>>], else: []
 
     throttle = if ver >= 3, do: [<<0::integer-size(32)>>], else: []
 
     topic_blocks =
-      Enum.map(topics, fn t ->
+      Enum.map(blocks, fn {name, known?} ->
+        # Unknown echo: err 3 UNKNOWN_TOPIC_OR_PARTITION, zero partitions
+        # (real-Kafka shape for a named unknown topic, no auto-create).
         part_blocks =
-          Enum.map(0..(parts - 1), fn p ->
-            # err i16 | partition i32 | leader i32 | replicas[1]=[0] | isr[1]=[0]
-            <<
-              0::signed-integer-size(16), p::integer-size(32), 0::integer-size(32),
-              1::integer-size(32), 0::integer-size(32), 1::integer-size(32),
-              0::integer-size(32)
-            >>
-          end)
+          if known? do
+            Enum.map(0..(parts - 1), fn p ->
+              # err i16 | partition i32 | leader i32 | replicas[1]=[0] | isr[1]=[0]
+              <<
+                0::signed-integer-size(16), p::integer-size(32), 0::integer-size(32),
+                1::integer-size(32), 0::integer-size(32), 1::integer-size(32),
+                0::integer-size(32)
+              >>
+            end)
+          else
+            []
+          end
 
         is_internal = if ver >= 1, do: [<<0::integer-size(8)>>], else: []
 
+        err = if known?, do: 0, else: Wire.error_code(:unknown_topic_or_partition)
+
         [
-          <<0::signed-integer-size(16), byte_size(t)::unsigned-integer-size(16), t::binary>>,
+          <<err::signed-integer-size(16), byte_size(name)::unsigned-integer-size(16),
+            name::binary>>,
           is_internal,
-          <<parts::integer-size(32)>>,
+          <<length(part_blocks)::integer-size(32)>>,
           part_blocks
         ]
       end)
@@ -560,53 +698,6 @@ defmodule Smalt.Messaging.Kafka.Conn do
   # Records.parse_records varint records + headers) — stored verbatim,
   # re-served byte-exact on a v2 fetch.
 
-  defp route(0, ver, corr, body, state) do
-
-    case parse_produce(body, ver) do
-      {:ok, entries} ->
-        results =
-          Enum.map(entries, fn {topic, parts} ->
-            part_blocks =
-              Enum.map(parts, fn {p, raw_set} ->
-                {err, base} = produce_partition(topic, p, raw_set)
-
-                # ProduceResponse partition block: partition i32 |
-                # error_code i16 | base_offset i64 (| timestamp i64 in v2).
-                case ver do
-                  v when v <= 1 ->
-                    [<<p::signed-integer-size(32), err::signed-integer-size(16),
-                       base::signed-integer-size(64)>>]
-
-                  _ ->
-                    [<<p::signed-integer-size(32), err::signed-integer-size(16),
-                       base::signed-integer-size(64), -1::signed-integer-size(64)>>]
-                end
-              end)
-
-            [
-              <<byte_size(topic)::unsigned-integer-size(16), topic::binary>>,
-              <<length(part_blocks)::integer-size(32)>>,
-              part_blocks
-            ]
-          end)
-
-        # ProduceResponse v1/v2 carry throttle_time_ms AFTER the topics array.
-        throttle = if ver >= 1, do: [<<0::integer-size(32)>>], else: []
-
-        send_response(state.sock, corr, [
-          <<length(results)::integer-size(32)>>,
-          results,
-          throttle
-        ])
-
-        state
-
-      :kill ->
-        kill(state, :malformed_produce_request)
-    end
-  catch
-    {:kill_batch, reason} -> kill(state, {:corrupt_batch, reason})
-  end
 
   # Verify every batch fail-closed (magic 2 + CRC32C) BEFORE anything is
   # stored; a bad batch kills the connection (crash-only law).

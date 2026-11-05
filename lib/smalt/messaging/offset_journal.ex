@@ -81,9 +81,11 @@ defmodule Smalt.Messaging.OffsetJournal do
       :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
     end
 
-    # Open or repair DETS table. After kill -9 the DETS header can be left
+    # Open or repair DETS table.  # KD-COVERS: KD-190
+    # After kill -9 the DETS header can be left
     # truncated/corrupt; repair: true lets DETS auto-repair instead of
-    # crashing on first reopen. Lossless: the journal replay below is
+    # crashing on first reopen (witnessed kill -9 makes first reopen
+    # corrupt-header-prone). Lossless: the journal replay below is
     # authoritative and re-writes every checkpoint after the reopen.
     {:ok, _} =
       :dets.open_file(@dets_table,
@@ -236,8 +238,10 @@ defmodule Smalt.Messaging.OffsetJournal do
   defp compute_receipt(dialect, group, topic, partition, offset, epoch) do
     content = "#{dialect}:#{group}:#{topic}:#{partition}:#{offset}:#{epoch}"
     # 16-byte BLAKE3 receipt tag (falls back to SHA256[0..15] if blake3 NIF absent)
+    # apply/3: Smalt.Security.Blake3 is an optional runtime-loaded module, so
+    # the probe must stay dynamic (compile-time remote call warns under WIP).
     case :erlang.function_exported(Smalt.Security.Blake3, :hash16, 1) do
-      true -> Smalt.Security.Blake3.hash16(content)
+      true -> apply(Smalt.Security.Blake3, :hash16, [content])
       false -> :binary.part(:crypto.hash(:sha256, content), 0, 16)
     end
   end

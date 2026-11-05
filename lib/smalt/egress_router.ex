@@ -114,6 +114,13 @@ defmodule Smalt.EgressRouter do
 
   # KD-101 narrowed: webhook receiver surface (zero-auth /eventgrid class)
   plug(Smalt.EventGridWebhookPlug)
+  # AWS SigV4 faces (K-SQ + K-IN lanes): these authenticate via the
+  # Authorization: AWS4-HMAC-SHA256 header, which Smalt.Auth.Bearer would
+  # 401-challenge (non-Bearer token). Mounted BEFORE Bearer — each face's
+  # own SigV4 gate is the admission law. Both claim only their own request
+  # shape (X-Amz-Target / Action= on POST /) and pass through un-halted.
+  plug(:kinesis_rest_face)
+  plug(:sqs_query_face)
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
 
@@ -173,18 +180,6 @@ defmodule Smalt.EgressRouter do
   # the reference never resolves at compile time; claims only /apim-gw/* and
   # passes everything else through un-halted.
   plug(:apim_gateway_plane)
-  # KINESIS lane (K-IN): POST / with X-Amz-Target: Kinesis_20131202.<Op> —
-  # the botocore-documented json 1.1 face (SigV4 kinesis service, pinned
-  # 2-shard registry on the EH partition store, 200+JSON success, AWS __type
-  # errors). Runtime atom plug (w6r idiom): claims only its target shape,
-  # passes everything else through un-halted.
-  plug(:kinesis_rest_face)
-  # SQS lane (K-SQ): POST / with Action= — the AWS query-protocol face
-  # (form-POST parse, XML envelopes, SigV4 service=sqs, E1 claim_wait
-  # long-poll). Runtime atom plug: claims only Action= POSTs on /,
-  # passes everything else through un-halted. BEFORE ServiceBusRestRoutes
-  # per the lane's disclosed mount (path / is claimed only on Action=).
-  plug(:sqs_query_face)
   plug(:w6r_fallthrough)
   plug(:match)
   plug(:dispatch)

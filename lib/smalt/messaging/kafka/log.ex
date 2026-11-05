@@ -31,7 +31,9 @@ defmodule Smalt.Messaging.Kafka.Log do
   POLICY_VIOLATION produce face, nothing stored, nothing journaled.
   """
 
-  use GenServer
+  # The GenServer implementation lives in Smalt.Messaging.PartitionLog (started
+  # under this module's name via start_link/1 below); this face is a stateless
+  # API wrapper, so no `use GenServer` here (no init/1 callback of its own).
   require Logger
 
   alias Smalt.Messaging.EventHubs
@@ -56,7 +58,9 @@ defmodule Smalt.Messaging.Kafka.Log do
 
   @doc """
   Topics this face serves: the default topic always, plus any topic that
-  already has stored batches (any face — isolation is by topic).
+  already has stored batches (any face — isolation is by topic), plus any
+  topic explicitly materialized via `ensure_topic/1` (KD-206 metadata
+  auto-create face).
   """
   @spec list_topics() :: [String.t()]
   def list_topics do
@@ -64,8 +68,28 @@ defmodule Smalt.Messaging.Kafka.Log do
 
     ([default_topic()] ++
        (:ets.tab2list(:smalt_kafka_batches)
-        |> Enum.map(fn {{t, _p, _b}, _} -> t end)))
+        |> Enum.map(fn {{t, _p, _b}, _} -> t end)) ++
+       (:ets.tab2list(:smalt_kafka_next)
+        |> Enum.map(fn {{t, _p}, _} -> t end)))
     |> Enum.uniq()
+  end
+
+  @doc """
+  KD-206 metadata auto-create face (real-Kafka default: a Metadata request
+  naming an unknown topic with allow_auto_topic_creation=true creates it).
+  Materializes {topic, partition} -> 0 next-counter entries for the served
+  partition range — the topic then answers metadata, reads (hwm 0), and
+  produce. Idempotent, crash-only noop on an unknown topic form.
+  """
+  @spec ensure_topic(String.t()) :: :ok
+  def ensure_topic(topic) when is_binary(topic) do
+    ensure_tables()
+
+    Enum.each(0..(partition_count() - 1), fn p ->
+      :ets.insert(:smalt_kafka_next, {{topic, p}, 0})
+    end)
+
+    :ok
   end
 
   @doc "Idempotently ensure the log tables exist (server-owned)."

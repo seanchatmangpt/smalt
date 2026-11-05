@@ -95,64 +95,17 @@ defmodule Smalt.Messaging.Kafka.Wire do
     }
   end
 
-  @doc "Advertised {min, max} per api_key — exactly the served surface, nothing more."
+  @doc "Advertised {min, max} per api_key — projected from kafka-wire-pack ontology via WireProjection (single source of truth; pack gates 010-090 govern the matrix)."
   @spec version_matrix() :: %{non_neg_integer() => {non_neg_integer(), non_neg_integer()}}
   def version_matrix do
-    %{
-      # KD-COVERS: KD-174 — Produce v3 advertised so real clients negotiate
-      # magic-2 RecordBatch produce (Produce v3 == v2 wire schema at this
-      # face: record_set bytes + throttle-tail response).
-      # produce (kafka-python picks broker_max per API from ApiVersions).
-      # Request/response shapes for v3 are byte-shape-identical to v2 here
-      # (record_set bytes + {partition, err, base_offset, timestamp} block,
-      # throttle tail) — see Conn.route(0, ...) and Records magic-2 codec.
-      0 => {0, 3},
-      # KD-COVERS: KD-190 — Fetch v3 added: the vendored client sends Fetch v3
-      # at the (0,10,1) consumer posture (fetcher.py picks v3 for
-      # api_version >= (0,10,1) WITHOUT ApiVersions down-negotiation). v3
-      # request adds a top-level max_bytes; response shape is v2-identical.
-      1 => {0, 3},
-      2 => {0, 1},
-      # KD-COVERS: KD-174 — Metadata v2..v4 is required for the Produce v3
-      # negotiation to be reachable at all: a real 0.11-class client
-      # (api_version=(0,11,0), the KD-174D2 probe posture) resolves topics
-      # with MetadataRequest[4] before producing, and v2/v3/v4 response
-      # shapes are additive over v1 (cluster_id string, throttle head).
-      # KD-COVERS: KD-HC-1 / L6 extraction falsifier — Metadata is capped at
-      # v3 while Fetch caps at v3: advertising Metadata v4 makes real clients
-      # infer a (0,11,0) broker and send Fetch v4 (crash-only kill, 1175
-      # kills witnessed). v3 is the transitive-consistency cap.
-      3 => {0, 3},
-      # KD-COVERS: KD-190 — consumer-group family. Every cap is strictly
-      # below the KIP-482 flexible threshold for its API and is also an
-      # api_version the vendored kafka-python-ng actually sends at the
-      # (0,10,1) probe posture (checks against tmp/kafkalib class lists:
-      # OffsetCommit v0..v3 all real; OffsetFetch v0/v1; FindCoordinator
-      # v0/v1; JoinGroup v0/v1/v2 (v5 is the first flexible JoinGroup);
-      # Heartbeat v0/v1; LeaveGroup v0/v1 (v2 does not exist in the vendored
-      # protocol module — the class list jumps v1 -> v3); SyncGroup v0/v1
-      # (v3 is the first flexible SyncGroup)).
-      8 => {0, 3},
-      9 => {0, 1},
-      10 => {0, 1},
-      11 => {0, 2},
-      12 => {0, 1},
-      13 => {0, 1},
-      14 => {0, 1},
-      # KD-COVERS: KD-191 — SASL face. Handshake v0 only (v1 is the first
-      # flexible SaslHandshake). SaslAuthenticate v0..v1: v1's compact
-      # string/bytes fields are served explicitly (the API's flexible
-      # threshold is v1 for SaslHandshake; SaslAuthenticate goes flexible
-      # only at v2, so both advertised versions are classic-width here
-      # except v1's own KIP-482 compact fields, parsed and encoded in
-      # Conn.route_sasl_authenticate).
-      17 => {0, 0},
-      36 => {0, 1},
-      # KD-COVERS: KD-HC-3 — ApiVersions v0..v2 (flexible from v3 per
-      # KIP-482; v1/v2 add a throttle_time_ms head). kafkajs sends v1/v2 and
-      # misparses a v0-shaped echo; serve version-correct payloads.
-      18 => {0, 2}
-    }
+    # KD-COVERS: KD-190, KD-206, KD-208 — served version matrix projected from
+    # the pack ontology (see lib/smalt/messaging/kafka/wire_projection.ex header).
+    # Adapter preserves the exact %{api_key => {min, max}} shape the wire face
+    # has always served (pinned by test/internal/kafka_sasl_court_test.exs:
+    # [17] == {0, 0}, [36] == {0, 1}).
+    Map.new(Smalt.Messaging.Kafka.WireProjection.version_matrix_rows(), fn row ->
+      {row.key, {row.min, row.max}}
+    end)
   end
 
   @doc "Kafka error codes used by this face."
