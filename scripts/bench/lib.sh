@@ -34,7 +34,7 @@ RECEIPTS_DIR="${RECEIPTS_DIR:-$BENCH_REPO/docs/jira/v26.10.14/receipts}"
 # Machine spec — the exact block every lane embeds in its machine field.
 # ---------------------------------------------------------------------------
 bench_machine_spec() {
-  local cpu cores ram elixir otp darwin
+  local cpu cores ram elixir otp darwin load1 load5
   cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown")
   cores=$(sysctl -n hw.ncpu 2>/dev/null || echo "0")
   ram_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
@@ -42,8 +42,17 @@ bench_machine_spec() {
   elixir=$(elixir -e 'IO.puts System.version()' 2>/dev/null | tail -1 || echo "unknown")
   otp=$(elixir -e 'IO.puts :erlang.system_info(:otp_release)' 2>/dev/null | tail -1 || echo "unknown")
   darwin=$(sw_vers -productVersion 2>/dev/null || echo "unknown")
-  printf '{"cpu":"%s","cores":%s,"ram_gb":%s,"elixir":"%s","otp":"%s","darwin":"%s"}' \
-    "$cpu" "$cores" "$ram" "$elixir" "$otp" "$darwin"
+  # Live load sample at emission time (V2 audit): a machine field without load
+  # cannot disambiguate a slow run from a loaded machine.
+  read -r load1 load5 _ <<<"$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2, $3, $4}')"
+  load1="${load1:-unknown}" load5="${load5:-unknown}"
+  python3 -c '
+import json, sys
+print(json.dumps({
+    "cpu": sys.argv[1], "cores": int(sys.argv[2]), "ram_gb": int(sys.argv[3]),
+    "elixir": sys.argv[4], "otp": sys.argv[5], "darwin": sys.argv[6],
+    "load1": sys.argv[7], "load5": sys.argv[8],
+}))' "$cpu" "$cores" "$ram" "$elixir" "$otp" "$darwin" "$load1" "$load5"
 }
 
 # ---------------------------------------------------------------------------
@@ -154,26 +163,48 @@ bench_down() {
 # ---------------------------------------------------------------------------
 bench_emit() {
   # bench_emit <jsonl_path> <surface> <op> <n> <ops_per_sec> <p50_ms> <p95_ms> <p99_ms> <errors>
+  # auth_mode: BENCH_AUTH_MODE (default anonymous, matches MIX_ENV=test boot);
+  # timer: BENCH_TIMER (default perf_counter) — identify the timer class.
   local file="$1"; shift
   local surface="$1" op="$2" n="$3" ops="$4" p50="$5" p95="$6" p99="$7" errors="$8"
   local lane="${BENCH_LANE:-unknown-lane}"
+  local auth_mode="${BENCH_AUTH_MODE:-anonymous}"
+  local timer="${BENCH_TIMER:-perf_counter}"
   local machine
   machine=$(bench_machine_spec)
   mkdir -p "$(dirname "$file")"
-  printf '{"lane":"%s","surface":"%s","op":"%s","n":%s,"ops_per_sec":%s,"p50_ms":%s,"p95_ms":%s,"p99_ms":%s,"errors":%s,"machine":%s}\n' \
-    "$lane" "$surface" "$op" "$n" "$ops" "$p50" "$p95" "$p99" "$errors" "$machine" \
-    >>"$file"
+  # JSON via python3 json.dumps (V2 audit): printf interpolation injected
+  # unescaped quotes when any field carried quotes/backslashes.
+  python3 -c '
+import json, sys
+lane, surface, op, n, ops, p50, p95, p99, errors, auth_mode, timer, machine = sys.argv[1:]
+def num(s):
+    try:
+        return float(s)
+    except ValueError:
+        return s
+row = {"lane": lane, "surface": surface, "op": op, "n": int(n),
+       "ops_per_sec": num(ops), "p50_ms": num(p50), "p95_ms": num(p95),
+       "p99_ms": num(p99), "errors": int(errors),
+       "auth_mode": auth_mode, "timer": timer,
+       "machine": json.loads(machine)}
+print(json.dumps(row))
+' "$lane" "$surface" "$op" "$n" "$ops" "$p50" "$p95" "$p99" "$errors" \
+    "$auth_mode" "$timer" "$machine" >>"$file"
 }
 
 bench_percentile() {
   # stdin: one latency (ms) per line. Prints "p50 p95 p99" (ms).
+  # Empty input is a typed error with a NONZERO exit (V2 audit) — the old
+  # "0 0 0" fake-passed whole lanes on swallowed collection failures.
   python3 -c '
 import sys
 v = sorted(float(x) for x in sys.stdin if x.strip())
 if not v:
-    print("0 0 0"); raise SystemExit
-def pct(p):
-    return v[round((p/100.0)*(len(v)-1))]
+    print("bench_percentile: EMPTY-INPUT: no latency samples on stdin (typed refusal)", file=sys.stderr)
+    raise SystemExit(2)
+def pct(p):  # nearest-rank: ceil((p/100)*n), 1-based
+    return v[max(0, -(-p*len(v)//100) - 1)]
 print(f"{pct(50):.3f} {pct(95):.3f} {pct(99):.3f}")
 '
 }

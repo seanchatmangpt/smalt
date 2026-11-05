@@ -18,6 +18,7 @@ wall time is measured per phase. Receipt: tmp/bench-concurrent-receipt.json
 """
 import http.client
 import json
+import math
 import os
 import signal
 import socket
@@ -48,7 +49,10 @@ TLS_PORT = int(os.environ.get("SMALT_BENCH_TLS_PORT", "39540"))
 EVENT_HUBS_PORT = int(os.environ.get("SMALT_BENCH_EH_PORT", "39541"))
 MCP_PORT = int(os.environ.get("SMALT_BENCH_MCP_PORT", "39542"))
 SUB_ID = "bench-sub"
-API_VERSION = "2021-01-01"
+# 2021-04-01 floor (parity with scripts/bench.py:44): ARM rejects 2021-01-01
+# with InvalidApiVersionParameter — bench.py carried the fix, this file was
+# missed (V2 audit).
+API_VERSION = "2021-04-01"
 
 ARM_WORKERS = 32
 ARM_PER_WORKER = 25
@@ -67,9 +71,10 @@ def fail_closed(msg, code=1):
 
 
 def pct(sorted_vals, p):
+    """Nearest-rank percentile (ceil((p/100)*n), 1-based); empty = typed refusal."""
     if not sorted_vals:
-        return float("nan")
-    k = int(round((p / 100.0) * (len(sorted_vals) - 1)))
+        fail_closed("percentile of empty sample (typed refusal, never nan)")
+    k = max(0, math.ceil((p / 100.0) * len(sorted_vals)) - 1)
     return sorted_vals[k]
 
 
@@ -89,12 +94,18 @@ def spawn_substrate():
                "{{:ok, _}} = Application.ensure_all_started(:smalt)"]
     else:
         cmd = ["mix", "run", "--no-halt"]
+    # Substrate output goes to a real log file, not DEVNULL: a rc=1 boot with
+    # DEVNULL output is unattributable (bench.py:105-110 attribution fix,
+    # mirrored here — V2 audit).
+    log_path = os.path.join(REPO, "tmp", "bench-concurrent-substrate.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    log_f = open(log_path, "w")
     return subprocess.Popen(
         cmd,
         cwd=REPO,
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
         stdin=subprocess.DEVNULL,
     )
@@ -133,15 +144,36 @@ def stats_dict(vals):
     }
 
 
+def latency_accounting(result, stats):
+    """In-field errored-request accounting (V2 audit): latency percentiles over
+    successful requests only are success-biased whenever any request errored —
+    the field must say so instead of silently reporting a flattering tail."""
+    issued = result.issued
+    success = stats["n"]
+    errored = len(result.errors)
+    return {
+        **stats,
+        "issued": issued,
+        "success_n": success,
+        "errored_n": errored,
+        "success_bias": errored > 0,
+        "success_bias_warning": (
+            f"{errored}/{issued} requests errored; percentiles cover the "
+            f"{success} successes only" if errored else None),
+    }
+
+
 class Result:
     def __init__(self):
         self.lock = threading.Lock()
         self.latencies = []
         self.status_counts = {}
         self.errors = []
+        self.issued = 0
 
     def add(self, dt_ms, status, err=None):
         with self.lock:
+            self.issued += 1
             if err is None:
                 self.latencies.append(dt_ms)
                 self.status_counts[status] = self.status_counts.get(status, 0) + 1
@@ -200,6 +232,10 @@ def arm_put_worker(wid, result, barrier, token):
 
 def cosmos_worker(wid, result, barrier, token):
     barrier.wait()
+    # Persistent connection per worker (V2 audit): the old per-doc connect sat
+    # INSIDE the timer, so POST samples carried TCP handshake cost. Reuse one
+    # connection; on transport error record it and reopen outside the timer.
+    conn = http.client.HTTPConnection(HOST, DATA_PORT, timeout=15)
     for i in range(COSMOS_PER_WORKER):
         n = wid * COSMOS_PER_WORKER + i
         doc_id = f"bcosmos-{wid}-{i}"
@@ -209,16 +245,20 @@ def cosmos_worker(wid, result, barrier, token):
                    "Content-Length": str(len(body))}
         try:
             t0 = time.perf_counter()
-            conn = http.client.HTTPConnection(HOST, DATA_PORT, timeout=15)
             conn.request("POST", "/dbs/bench/colls/c/docs", body=body,
                          headers=headers)
             r1 = conn.getresponse()
             r1.read()
             dt = (time.perf_counter() - t0) * 1000.0
-            conn.close()
             result.add(dt, r1.status)
         except Exception as exc:
             result.add(None, None, err=f"cosmos w{wid} #{i}: {exc!r}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = http.client.HTTPConnection(HOST, DATA_PORT, timeout=15)
+    conn.close()
 
 
 def cas_worker(wid, result, barrier, rg_name, token):
@@ -351,9 +391,9 @@ def main():
         for f in failures:
             print(f"[FAIL] {f}", file=sys.stderr)
 
-        arm_stats = stats_dict(arm.latencies)
-        cos_stats = stats_dict(cos.latencies)
-        cas_stats = stats_dict(cas.latencies)
+        arm_stats = latency_accounting(arm, stats_dict(arm.latencies))
+        cos_stats = latency_accounting(cos, stats_dict(cos.latencies))
+        cas_stats = latency_accounting(cas, stats_dict(cas.latencies))
 
         print("\n== Concurrent results ==")
         print(f"  arm_concurrent     : n={arm_stats['n']} wall {arm_wall:.3f}s "
@@ -378,12 +418,15 @@ def main():
             "arm_concurrent": {
                 "workers": ARM_WORKERS, "per_worker": ARM_PER_WORKER,
                 "wall_s": round(arm_wall, 3), "latency": arm_stats,
+                "timer_scope": "request-only (persistent connection per worker)",
                 "status_counts": {str(k): v for k, v in arm.status_counts.items()},
                 "errors": len(arm.errors),
             },
             "cosmos_concurrent": {
                 "workers": COSMOS_WORKERS, "per_worker": COSMOS_PER_WORKER,
                 "wall_s": round(cos_wall, 3), "latency": cos_stats,
+                "timer_scope": "request-only (persistent connection per worker; "
+                               "connect excluded from timer)",
                 "status_counts": {str(k): v for k, v in cos.status_counts.items()},
                 "errors": len(cos.errors),
             },
@@ -391,6 +434,7 @@ def main():
                 "workers": CAS_WORKERS, "per_worker": CAS_PER_WORKER,
                 "resource_id": f"/subscriptions/{SUB_ID}/resourceGroups/{rg_name}",
                 "wall_s": round(cas_wall, 3), "latency": cas_stats,
+                "timer_scope": "request-only (persistent connection per worker)",
                 "status_counts": {str(k): v for k, v in cas.status_counts.items()},
                 "errors": len(cas.errors),
             },

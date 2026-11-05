@@ -15,11 +15,21 @@ quiet-check is not a proxy for court readiness on those faces.
 Exit 0 quiet / 1 with a typed violation list.
 """
 
+import json
 import os
+import socket
 import subprocess
 import sys
+import time
 
 COURT_PORTS = ["9443", "8443", "5672", "5673", "9444", "9445"]
+ENV_GATE_JSONL = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "tmp", "env-gate.jsonl")
+# machdep.xcpm.cpu_thermal_level: 0 = no throttling; >=1 = thermal pressure.
+THERMAL_MAX = 0
+# kern.memorystatus_vm_pressure_level: 1 normal, 2 warning, 3 critical.
+MEM_PRESSURE_MAX = 2
 
 
 def sh(cmd):
@@ -27,6 +37,25 @@ def sh(cmd):
         return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
     except subprocess.TimeoutExpired:
         return None
+
+
+def _emit_env_rejected(load1, load5, thermal_level, mem_pressure, violations):
+    """Append one ENV_REJECTED jsonl row on refusal (V2 audit)."""
+    try:
+        os.makedirs(os.path.dirname(ENV_GATE_JSONL), exist_ok=True)
+        row = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "host": socket.gethostname(),
+            "load1": round(load1, 2),
+            "thermal_level": thermal_level,   # None = UNKNOWN-PROBE
+            "mem_pressure": mem_pressure,     # None = UNKNOWN-PROBE
+            "violations": violations,
+        }
+        with open(ENV_GATE_JSONL, "a") as f:
+            f.write(json.dumps(row) + "\n")
+    except OSError as e:
+        print("quiet_check: failed to append %s: %s" % (ENV_GATE_JSONL, e),
+              file=sys.stderr)
 
 
 def main():
@@ -88,7 +117,40 @@ def main():
             "load %.1f/%.1f > threshold (%d cpus)" % (load1, load5, ncpu)
         )
 
+    # Thermal + memory-pressure probes (V2 audit): load alone misses the
+    # throttled/under-pressure machine. Absent key = typed UNKNOWN-PROBE
+    # refusal (fail-closed), never a silent pass. No sudo-requiring probes.
+    def sysctl_int(key):
+        r = sh("sysctl -n %s" % key)
+        out = (r.stdout or "").strip() if r else ""
+        if r is None or r.returncode != 0 or not out:
+            return None
+        try:
+            return int(out)
+        except ValueError:
+            return None
+
+    thermal_level = sysctl_int("machdep.xcpm.cpu_thermal_level")
+    mem_pressure = sysctl_int("kern.memorystatus_vm_pressure_level")
+    if thermal_level is None:
+        violations.append(
+            "UNKNOWN-PROBE: machdep.xcpm.cpu_thermal_level unavailable "
+            "(cannot verify thermal state; refusing, fail-closed)")
+    elif thermal_level > THERMAL_MAX:
+        violations.append(
+            "thermal_level %d > %d (CPU thermal throttling active)"
+            % (thermal_level, THERMAL_MAX))
+    if mem_pressure is None:
+        violations.append(
+            "UNKNOWN-PROBE: kern.memorystatus_vm_pressure_level unavailable "
+            "(cannot verify memory pressure; refusing, fail-closed)")
+    elif mem_pressure > MEM_PRESSURE_MAX:
+        violations.append(
+            "mem_pressure_level %d > %d (system memory pressure)"
+            % (mem_pressure, MEM_PRESSURE_MAX))
+
     if violations:
+        _emit_env_rejected(load1, load5, thermal_level, mem_pressure, violations)
         print("QUIET-CHECK REFUSE (typed violations):")
         for v in violations:
             print("  - " + v)
