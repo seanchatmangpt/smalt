@@ -203,7 +203,8 @@ defmodule Smalt.DataPlane.AzureCache do
   # connect-time command (witnessed byte-capture, v26.10.29 consumer court
   # r3): refusing it (-ERR) makes the client stall its handshake with no
   # fallback. Accept the negotiation; honest divergence: the notifications
-  # are never emitted. KD-COVERS: see r1/r3 receipts.
+  # are never emitted. No KD-COVERS token for this file; see the
+  # r1/r3 receipts (v26.10.29 consumer courts).
   defp dispatch(_account, _cache, "CLIENT", ["MAINT_NOTIFICATIONS" | _]),
     do: resp_simple("OK")
   defp dispatch(_account, _cache, "CONFIG", ["GET" | _params]), do: resp_array([])
