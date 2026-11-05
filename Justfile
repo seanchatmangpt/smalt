@@ -316,3 +316,5 @@ import 'justfile.d/58-posh.just'
 import 'justfile.d/59-posh-ops.just'
 # 60-dod — DoD single-source reader: just dod / dod-section (v26.10.30 lane 1)
 import 'justfile.d/60-dod.just'
+# 62-bin-opt — AoQ bin_opt_info gate + shim court (v26.11.5 lane L12r)
+import 'justfile.d/62-bin-opt.just'
