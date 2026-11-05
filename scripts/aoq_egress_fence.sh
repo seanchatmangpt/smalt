@@ -16,7 +16,9 @@ command -v rg >/dev/null 2>&1 || { echo "aoq_egress_fence: refusing to fake-pass
 set -u
 cd "$(dirname "$0")/.."
 
-mapfile -t hits < <(rg -n '<>' lib/smalt/aoq/ --glob '*.ex' --glob '*.exs' || true)
+# Match real binary-append `<>` — not `<<>>` (empty binary literal), not
+# `<<...>>` internals: `<>` not adjacent to another bracket.
+mapfile -t hits < <(rg -n -P '(?<![<])<>(?![>])' lib/smalt/aoq/ --glob '*.ex' --glob '*.exs' || true)
 
 if [ "${#hits[@]}" -eq 0 ]; then
   echo "aoq_egress_fence: CLEAN — no <> occurrences in lib/smalt/aoq/"
@@ -29,7 +31,9 @@ for line in "${hits[@]}"; do
   file="${line%%:*}"
   lineno="${line#*:}"
   lineno="${lineno%%:*}"
-  content="$(sed -n "${lineno}p" "$file" | sed 's/^[[:space:]]*//')"
+  # Strip backtick-quoted spans first: prose mentioning `<>` in docs
+  # (e.g. moduledocs citing this fence) is not egress code.
+  content="$(sed -n "${lineno}p" "$file" | sed 's/`[^`]*`//g; s/^[[:space:]]*//')"
 
   # Allowlist (known-by-design, documented here LOUDLY):
   #  1. Comment lines (first non-space char is `#`) — prose mentioning the
@@ -47,11 +51,27 @@ for line in "${hits[@]}"; do
   case "$content" in
     "#"* ) allowed=1 ;;
   esac
+  # If `<>` only ever appears inside backtick-quoted prose spans, the line
+  # is documentation, not egress code.
+  case "$content" in
+    *"<>"*) : ;;
+    *) allowed=1 ;;
+  esac
   case "$file" in
     lib/smalt/aoq/flags.ex | lib/smalt/aoq/tables.ex) allowed=1 ;;
   esac
   if [ "$allowed" -eq 0 ] && printf '%s' "$content" | grep -q 'AOQ-FENCE-OK'; then
     allowed=1
+  fi
+  # Continuation rule: a line whose code ends with `<>` (multi-line
+  # concat chain) may carry its AOQ-FENCE-OK marker on the FOLLOWING line.
+  if [ "$allowed" -eq 0 ]; then
+    case "$(printf '%s' "$content" | sed 's/#.*$//; s/[[:space:]]*$//')" in
+      *"<>")
+        next="$(sed -n "$((lineno + 1))p" "$file")"
+        printf '%s' "$next" | grep -q 'AOQ-FENCE-OK' && allowed=1
+        ;;
+    esac
   fi
 
   if [ "$allowed" -eq 1 ]; then
