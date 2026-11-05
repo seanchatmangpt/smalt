@@ -84,14 +84,23 @@ def load_register():
         parts = split_row(line)
         if len(parts) < 6:
             continue
-        # trailing prose may follow; empty cell -> empty status (not a KD row crash)
-        sm = re.match(r"[A-Za-z-]+", parts[5].strip())
+        # Layout-robust status/evidence extraction (L35 2026-11-04: the
+        # canonical register gained a `dialect` column — id | dialect |
+        # surface | divergence | evidence | close | status — shifting the
+        # historical 6-cell indices; the old parts[5] status read every
+        # OPEN row as its close-condition cell, so NO row could ever parse
+        # as OPEN and flips silently found nothing eligible).
+        # status = the vocabulary word leading the LAST cell (trailing
+        # prose may follow; empty cell -> empty status, not a crash).
+        # evidence = the cell carrying a receipt path (.md).
+        sm = re.match(r"[A-Za-z-]+", parts[-1].strip())
         status = sm.group(0) if sm else ""
+        evidence = next((c for c in reversed(parts) if ".md" in c), "")
         rows[m.group(1)] = {
             "line_no": i,
             "parts": parts,
             "status": status,
-            "evidence": parts[3],
+            "evidence": evidence,
         }
     return rows
 
@@ -263,9 +272,13 @@ def witness(kid, evidence_field, shim_mtime, explicit=None):
 
 
 def flip_line(line, witness_path):
-    """OPEN -> CLOSED-SIMULATED in one table row, preserving the rest."""
+    """OPEN -> CLOSED-SIMULATED in one table row, preserving the rest.
+    Status lives in the LAST cell (L35 2026-11-04: the register's `dialect`
+    column shift moved status off the historical parts[5] index; the old
+    index overwrote the close-condition cell and left the trailing status
+    reading OPEN)."""
     parts = split_row(line)
-    parts[5] = (
+    parts[-1] = (
         f"CLOSED-SIMULATED (shim landed, witness receipt at {witness_path})"
     )
     return "| " + " | ".join(parts) + " |"

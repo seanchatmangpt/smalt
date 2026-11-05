@@ -115,7 +115,12 @@ defmodule Smalt.ArmGateway.Router do
   # InvalidApiVersionParameter before the ACR pass-through ever sees them.
   # AcrRouter returns UNCHANGED for every non-ACR conn, so the generic face
   # behavior for all other types is byte-identical.
-  plug(Smalt.ArmGateway.Providers.AcrRouter)
+  # L35 (v26.11.5, KD-188): storage account managementPolicies child face.
+  # Claims ONLY the .../storageAccounts/:acct/managementPolicies[/:name]
+  # shape (the generic child families 404 RouteNotFound it); passes every
+  # other conn through UNCHANGED. Mounted BEFORE ResourceProviders so the
+  # deep child is claimed before the generic face's api-version gate.
+  plug(Smalt.ArmGateway.Providers.ManagementPoliciesRouter)
   plug(Smalt.ArmGateway.Plug.ResourceProviders)
   plug(:match)
   plug(:dispatch)
