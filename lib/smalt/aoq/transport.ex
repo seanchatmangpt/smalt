@@ -46,7 +46,11 @@ defmodule Smalt.Aoq.Transport do
     with {:ok, addr} <- resolve(host),
          {:ok, sock} <- :socket.open(:inet, :dgram, :udp) do
       sockaddr = %{family: :inet, addr: addr, port: port}
-      connect_bounded(sock, sockaddr, deadline(timeout))
+
+      case connect_bounded(sock, sockaddr, deadline(timeout)) do
+        :ok -> {:ok, sock}
+        {:error, _} = refusal -> refusal
+      end
     else
       {:error, reason} -> refuse(reason)
       other -> refuse(other)
