@@ -46,12 +46,12 @@ def capture(ports, shared_key):
     arm = ports["arm"]
     ns_path = (f"/subscriptions/gates-sub/resourceGroups/gates-rg/providers/"
                f"Microsoft.ServiceBus/namespaces/{NS}?api-version={API_VERSION}")
-    s_ns, _, ns_body = common.http(arm, "PUT", ns_path, {"location": "gates", "skuName": "Standard"})
+    s_ns, _, ns_body = common.http(arm, "PUT", ns_path, {"location": "gates", "skuName": "Standard"}, tls=True)
     if s_ns == 202:
         op_path = ns_body.get("id") if isinstance(ns_body, dict) else None
         assert op_path, f"ARM namespace PUT returned 202 without an operation id: {ns_body}"
         for _ in range(60):
-            s_op, _, op_body = common.http(arm, "GET", op_path, None)
+            s_op, _, op_body = common.http(arm, "GET", op_path, None, tls=True)
             assert s_op == 200, f"LRO poll returned {s_op}: {op_body}"
             if isinstance(op_body, dict) and op_body.get("status") == "Succeeded":
                 break
@@ -63,7 +63,7 @@ def capture(ports, shared_key):
     q_path = (f"/subscriptions/gates-sub/resourceGroups/gates-rg/providers/"
               f"Microsoft.ServiceBus/namespaces/{NS}/queues/{QUEUE}"
               f"?api-version={API_VERSION}")
-    s_q, _, q_body = common.http(arm, "PUT", q_path, {"location": "gates", "properties": {}})
+    s_q, _, q_body = common.http(arm, "PUT", q_path, {"location": "gates", "properties": {}}, tls=True)
     assert s_q in (200, 201), f"ARM queue PUT {QUEUE} returned {s_q}: {q_body}"
 
     result = common.run_amqp_driver(

@@ -13,6 +13,7 @@ Fail-closed contract: a gate exits 0 only when
 import json
 import os
 import signal
+import ssl
 import socket
 import subprocess
 import sys
@@ -85,14 +86,31 @@ API_VERSION = "2021-01-01"
 RECEIPT_DIR = os.path.join(REPO, "tmp", "invariant-gates")
 DRIVER = os.path.join(REPO, "gates", "amqp_invariant_driver.exs")
 
-PORT_KEYS = ("arm", "arm_tls", "egress", "amqp", "event_hubs", "mcp")
+# Post-WO-32 cordon (43e68a45, v26.10.31): the BEAM no longer binds the
+# plaintext ARM front door (9443-class) or the ARM TLS twin (9444-class).
+# ControlSupervisor mounts NO listener (lib/smalt/plane/control_supervisor.ex
+# moduledoc): the ARM face — including the STS token endpoint
+# POST /{tenant}/oauth2/v2.0/token — rides the data-plane TLS twin
+# (Smalt.Application.TlsTwinDispatch on :egress_tls_port, enabled here by
+# SMALT_TLS_ALL_PLANES=1; TLS-everywhere P14). The gate's "arm" key is that
+# face port: an https port serving BOTH the ArmGateway router (oauth2,
+# /subscriptions SB management) and the EgressRouter (/kv, blob, ...) via the
+# TlsTwinDispatch prefix dispatch. "arm_tls" is RETIRED — no BEAM listener
+# exists behind it post-cordon.
+PORT_KEYS = ("arm", "egress", "amqp", "event_hubs", "mcp")
 ENV_NAMES = {
-    "arm": "SMALT_TEST_ARM_PORT",
-    "arm_tls": "SMALT_TEST_ARM_TLS_PORT",
+    # gate "arm" key -> the TlsTwinDispatch https port (:egress_tls_port)
+    "arm": "SMALT_TEST_EGRESS_TLS_PORT",
     "egress": "SMALT_TEST_EGRESS_PORT",
     "amqp": "SMALT_TEST_AMQP_PORT",
     "event_hubs": "SMALT_TEST_EVENT_HUBS_PORT",
 }
+# CA-signed dev pair the TLS twin must serve (verified by http(tls=True);
+# without these the twin auto-generates a port-keyed self-signed cert under
+# tmp/dev-certs/ which no client can verify).
+DEV_CERT = os.path.join(REPO, ".smalt", "tls", "dev-cert.pem")
+DEV_KEY = os.path.join(REPO, ".smalt", "tls", "dev-key.pem")
+DEV_CA = os.path.join(REPO, ".smalt", "tls", "ca-cert.pem")
 
 
 def free_port():
@@ -129,6 +147,18 @@ def spawn_substrate(ports, shared_key=None, tries=3):
         env["MIX_ENV"] = "test"
         for key, var in ENV_NAMES.items():
             env[var] = str(ports[key])
+        # WO-32 cordon boot: enable the data-plane TLS twin (the post-cordon
+        # ARM face) and pin the CA-signed dev pair so the gate's https client
+        # can verify the chain (a port-keyed self-signed auto-cert would make
+        # every http(tls=True) call fail chain verification).
+        if not (os.path.isfile(DEV_CERT) and os.path.isfile(DEV_KEY)
+                and os.path.isfile(DEV_CA)):
+            raise RuntimeError(
+                "gate TLS twin requires the repo dev cert triple "
+                f"({DEV_CERT}, {DEV_KEY}, {DEV_CA}) — run scripts/gen_dev_cert.sh")
+        env["SMALT_TLS_ALL_PLANES"] = "1"
+        env["SMALT_TLS_CERTFILE"] = DEV_CERT
+        env["SMALT_TLS_KEYFILE"] = DEV_KEY
         cmd = [
             "mix", "run", "--no-start", "-e",
             # put_env BEFORE app start: :mcp_port has no SMALT_TEST_* env override
@@ -161,9 +191,15 @@ def spawn_substrate(ports, shared_key=None, tries=3):
             logf.close()
         try:
             try:
-                wait_for_port(ports["arm"], proc)
+                # Post-cordon boot contract: the BEAM binds egress (plaintext
+                # 8443-class), amqp/event_hubs (5672/5673-class), mcp and the
+                # TLS twin (the "arm" key). It NEVER binds a plaintext ARM
+                # port — waiting on one times out (D33 BLOCKED-BOOT witness:
+                # `substrate never bound :53068 within 120.0s`, pre-fix run
+                # 2026-11-04).
                 wait_for_port(ports["egress"], proc)
                 wait_for_port(ports["amqp"], proc)
+                wait_for_port(ports["arm"], proc)
             except RuntimeError:
                 raise
             except BaseException:
@@ -208,7 +244,7 @@ def spawn_substrate(ports, shared_key=None, tries=3):
             fresh = pick_ports()
             ports.clear()
             ports.update(fresh)
-            print(f"[gate] substrate port stolen pre-bind; re-picked all six "
+            print(f"[gate] substrate port stolen pre-bind; re-picked all five "
                   f"-> {ports['arm']}/{ports['egress']}/{ports['amqp']} "
                   f"(attempt {attempt + 1}/{tries})")
     raise last_err or RuntimeError("spawn_substrate: exhausted retries")
@@ -224,10 +260,22 @@ def kill_substrate(proc, ports):
     _substrate.kill_substrate(proc, ports=tuple(ports.values()))
 
 
-def http(port, method, path, body=None, headers=None, timeout=15):
-    """Return (status, header-dict, parsed-json-or-raw-text)."""
+def http(port, method, path, body=None, headers=None, timeout=15, tls=False):
+    """Return (status, header-dict, parsed-json-or-raw-text).
+
+    tls=True opens https against the post-cordon ARM face (the TLS twin /
+    TlsTwinDispatch port, gate key "arm") with chain verification against the
+    repo dev CA (.smalt/tls/ca-cert.pem). check_hostname is disabled: the
+    gate connects by IP and the leaf's SAN already carries IP:127.0.0.1 — the
+    chain check is the load-bearing verification, never skipped.
+    """
     import http.client
-    conn = http.client.HTTPConnection(HOST, port, timeout=timeout)
+    if tls:
+        ctx = ssl.create_default_context(cafile=DEV_CA)
+        ctx.check_hostname = False
+        conn = http.client.HTTPSConnection(HOST, port, context=ctx, timeout=timeout)
+    else:
+        conn = http.client.HTTPConnection(HOST, port, timeout=timeout)
     data = None
     hdrs = dict(headers or {})
     if body is not None:

@@ -57,7 +57,7 @@ def mint_token(ports):
     })
     status, _, body = common.http(
         ports["arm"], "POST", "/gatekvacct/oauth2/v2.0/token", body=form,
-        headers={"Content-Type": "application/x-www-form-urlencoded"})
+        headers={"Content-Type": "application/x-www-form-urlencoded"}, tls=True)
     if status != 200 or not isinstance(body, dict) or "access_token" not in body:
         raise RuntimeError(f"STS mint failed: {status} {body}")
     return body["access_token"]
