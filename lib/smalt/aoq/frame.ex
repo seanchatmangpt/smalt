@@ -212,6 +212,40 @@ defmodule Smalt.Aoq.Frame do
     end
   end
 
+  # ── dispatch handlers (frame_types table targets) ───────────────────
+
+  @doc """
+  Epoch-rotate handler (frame type 0x03, `Smalt.Aoq.Tables` dispatch
+  contract). The header epoch is the CURRENT epoch (admitted by decode
+  against the booted registry); the payload is exactly 2 bytes: the NEW
+  epoch id as u16 big-endian.
+
+  Lawful path: append the new epoch via `Smalt.Aoq.Tables.rotate_epoch/2`
+  (whole-map re-put, append-only) storing `{:rotated_from, current_epoch,
+  seq}` as the epoch value. Typed refusals:
+
+  - `{:error, {:bad_rotate_payload, payload}}` — payload not exactly 2 bytes
+  - `{:error, :tables_unbooted}` — pre-boot rotate
+  - `{:error, {:epoch_regression, new, max_existing}}` — stale/regressing epoch
+  """
+  @spec handle_epoch_rotate(t(), body()) ::
+          :ok
+          | {:error,
+             {:bad_rotate_payload, body()}
+             | :tables_unbooted
+             | {:epoch_regression, epoch(), non_neg_integer()}}
+  def handle_epoch_rotate(%__MODULE__{epoch: current, seq: seq}, payload) do
+    case payload do
+      <<new_epoch::unsigned-integer-size(16)>> ->
+        Smalt.Aoq.Tables.rotate_epoch(new_epoch, {:rotated_from, current, seq})
+
+      other ->
+        {:error, {:bad_rotate_payload, other}}
+    end
+  end
+
+  def handle_epoch_rotate(_, _), do: {:error, {:bad_rotate_payload, nil}}
+
   # ── compat wrappers (existing courts keep their surface) ────────────
 
   @doc """

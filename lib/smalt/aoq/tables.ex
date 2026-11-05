@@ -106,6 +106,48 @@ defmodule Smalt.Aoq.Tables do
     guarded_put(:arrow_schemas, fn m -> Map.put(m, schema_id, schema) end)
   end
 
+  @doc """
+  The narrow lawful post-boot epoch-rotation path (spec §5: any future
+  mutation of these tables must re-derive and put the whole map).
+
+  Appends `epoch_id` to the `{:aoq, :epochs}` map and puts the WHOLE
+  map in one `:persistent_term.put` — never an incremental write.
+  The registry is append-only per epoch: a `epoch_id` not strictly
+  greater than every existing epoch id is a regression and is refused
+  (old epochs retained for late frames, so overwrite is impossible).
+
+  Returns typed results (never raises):
+
+  - `:ok` — epoch appended, whole map re-put, seal untouched
+  - `{:error, :tables_unbooted}` — seal absent (pre-boot rotate)
+  - `{:error, {:epoch_regression, epoch_id, max_existing}}`
+  """
+  @spec rotate_epoch(non_neg_integer(), term()) ::
+          :ok | {:error, :tables_unbooted | {:epoch_regression, non_neg_integer(), non_neg_integer()}}
+  def rotate_epoch(epoch_id, value) do
+    case :persistent_term.get({:aoq, :sealed}, nil) do
+      nil ->
+        {:error, :tables_unbooted}
+
+      _seal ->
+        epochs = :persistent_term.get({:aoq, :epochs})
+
+        max_existing =
+          epochs |> Map.keys() |> case do
+            [] -> nil
+            keys -> Enum.max(keys)
+          end
+
+        if max_existing != nil and epoch_id <= max_existing do
+          {:error, {:epoch_regression, epoch_id, max_existing}}
+        else
+          # Lawful mutation class: re-derive the whole map, one put.
+          :persistent_term.put({:aoq, :epochs}, Map.put(epochs, epoch_id, value))
+          :ok
+        end
+    end
+  end
+
   # ── internals ──────────────────────────────────────────────────────
 
   defp fetch(name) do
