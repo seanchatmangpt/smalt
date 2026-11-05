@@ -75,3 +75,10 @@ receipt-durability-gate:
         exit 1
     fi
     echo "receipt-durability-gate: PASS"
+
+# KD-210 receipt provenance gate: every numeric metric must carry a source
+# binding (measured/const/unmeasured); const-bound metrics can never satisfy a
+# PASS verdict. Non-vacuity: `receipt-provenance selftest` must fire all legs.
+[no-cd]
+receipt-provenance *args:
+    python3 scripts/validate_receipt.py {{args}}
