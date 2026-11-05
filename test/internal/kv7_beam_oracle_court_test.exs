@@ -5,9 +5,10 @@
 # list / delete), each exercised through BOTH faces, (status, body) parity
 # asserted per operation (key sets + scalars, byte-equal).
 #
-# Wire law consumed, not re-stated: KD-15 challenge handshake (tokenless 401
-# + WWW-Authenticate -> bearer resend), KD-03 per-face value polarity, KD-S4
-# newest-first versions index, KD-102 soft-delete contract. The posh half is
+# Wire law consumed, not re-stated: KD-15 challenge handshake (tokenless
+# 401 + WWW-Authenticate; the authed resend here rides the data plane's
+# SharedKey dev-key admission - see SmaltTest.Kv7Oracle), KD-03 per-face
+# value polarity, KD-S4 newest-first versions index, KD-102 soft-delete. The posh half is
 # reached through its own delegation bindings (azure.Kv7TranslateFor) via a
 # law-free runtime driver (SmaltTest.Kv7Oracle.posh_translate/3) - no kv7 law
 # is copied into this court.
@@ -28,15 +29,14 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
 
   test "kv7 BEAM-oracle live leg: six ops through both faces, same keys, parity" do
     assert :ok = Oracle.require_substrate!()
-    token = Oracle.mint_token()
     name = "l16-oracle-#{System.system_time(:millisecond)}"
     base = "/secrets/#{name}?api-version=#{@api}"
 
     # -- op 1: PUT (create) - KD-15 handshake then 201 ----------------------
-    {401, _} = Oracle.beam_call(:put, base, ~s({"value":"l16-v1"}), nil)
+    {401, _} = Oracle.beam_call(:put, base, ~s({"value":"l16-v1"}), tokenless: true)
     assert Oracle.challenge?(), "KD-15: tokenless PUT answered no WWW-Authenticate challenge"
 
-    {201, put1} = Oracle.beam_call(:put, base, ~s({"value":"l16-v1"}), token)
+    {201, put1} = Oracle.beam_call(:put, base, ~s({"value":"l16-v1"}))
     assert put1["value"] == "l16-v1", "PUT must echo the value (point face)"
     v1 = version_of!(put1["id"], name)
 
@@ -45,7 +45,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     assert_parity(put1, posh, :put)
 
     # -- op 2: point GET (latest == last write) -----------------------------
-    {200, get1} = Oracle.beam_call(:get, base, nil, token)
+    {200, get1} = Oracle.beam_call(:get, base, nil)
     assert get1["id"] == put1["id"], "latest must resolve the last write"
     assert get1["value"] == "l16-v1"
 
@@ -54,8 +54,8 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     assert_parity(get1, posh, :get)
 
     # -- op 3: PUT re-set x2 (version accumulation) --------------------------
-    {200, put2} = Oracle.beam_call(:put, base, ~s({"value":"l16-v2"}), token)
-    {200, put3} = Oracle.beam_call(:put, base, ~s({"value":"l16-v3"}), token)
+    {200, put2} = Oracle.beam_call(:put, base, ~s({"value":"l16-v2"}))
+    {200, put3} = Oracle.beam_call(:put, base, ~s({"value":"l16-v3"}))
     v2 = version_of!(put2["id"], name)
     v3 = version_of!(put3["id"], name)
     assert v1 != v2 and v2 != v3, "version mint collision"
@@ -66,7 +66,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
 
     # -- op 4: PATCH (attributes-only; value never rotates) ------------------
     patch_body = ~s({"attributes":{"enabled":false}})
-    {200, patch} = Oracle.beam_call(:patch, base, patch_body, token)
+    {200, patch} = Oracle.beam_call(:patch, base, patch_body)
     assert patch["value"] == "l16-v3", "PATCH must never rotate the value"
 
     enabled =
@@ -92,7 +92,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     assert_parity(patch, posh, :patch)
 
     # -- op 5: versions list (newest-first; value AND version per KD-S3 law) --
-    {200, vers} = Oracle.beam_call(:get, "/secrets/#{name}/versions?api-version=#{@api}", nil, token)
+    {200, vers} = Oracle.beam_call(:get, "/secrets/#{name}/versions?api-version=#{@api}", nil)
     entries = vers["value"] || flunk("versions face returned no envelope: #{inspect(vers)}")
     assert length(entries) == 3, "versions face: #{length(entries)} entries (want 3)"
     assert versions_newest_first?(entries, [v3, v2, v1])
@@ -117,7 +117,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     end)
 
     # -- op 6: list face (KD-03 drop-list: bundles never carry the value) -----
-    {200, list} = Oracle.beam_call(:get, "/secrets?api-version=#{@api}", nil, token)
+    {200, list} = Oracle.beam_call(:get, "/secrets?api-version=#{@api}", nil)
     bundles = list["value"] || flunk("list face returned no envelope: #{inspect(list)}")
 
     mine =
@@ -149,7 +149,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     assert_parity(list_row, rendered, :list)
 
     # -- op 7: DELETE (KD-102 soft delete; deleted bundle carries no value) ---
-    {200, del} = Oracle.beam_call(:delete, base, nil, token)
+    {200, del} = Oracle.beam_call(:delete, base, nil)
     assert is_map_key(del, "recoveryId"), "delete must answer the recoveryId contract"
     refute is_map_key(del, "value"), "deleted bundle must never carry the value"
 
@@ -165,7 +165,7 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
     assert_parity_core(del, posh, :delete)
 
     # Live GET after soft delete must 404 by construction.
-    {404, _} = Oracle.beam_call(:get, base, nil, token)
+    {404, _} = Oracle.beam_call(:get, base, nil)
 
     :ok
   end
@@ -200,12 +200,12 @@ defmodule Smalt.Internal.Kv7BeamOracleCourtTest do
   # (status, body) parity: key SETS equal + scalars byte-equal (value/id);
   # attributes compared on the enabled scalar (created/updated are
   # wall-clock on BEAM). The posh face answered 200 by construction here.
-  defp assert_parity(beam, posh, face) do
+  defp assert_parity(beam, posh, face) when is_atom(face) or is_tuple(face) do
     assert is_map_key(posh, "value") == is_map_key(beam, "value"),
-           "#{face}: value polarity diverged (beam #{is_map_key(beam, "value")} vs posh #{is_map_key(posh, "value")})"
+           "#{inspect(face)}: value polarity diverged (beam #{is_map_key(beam, "value")} vs posh #{is_map_key(posh, "value")})"
 
     assert MapSet.new(Map.keys(beam)) == MapSet.new(Map.keys(posh)),
-           "#{face}: key sets diverged (beam #{inspect(Map.keys(beam))} vs posh #{inspect(Map.keys(posh))})"
+           "#{inspect(face)}: key sets diverged (beam #{inspect(Map.keys(beam))} vs posh #{inspect(Map.keys(posh))})"
 
     assert_parity_core(beam, posh, face)
   end
