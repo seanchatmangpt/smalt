@@ -31,7 +31,7 @@ The posh P1 census facts this spec builds on:
 | `Smalt.Aoq.Listener` | Bandit/ThousandIsland | AoQ wire face (own pinned port) |
 | `Smalt.Aoq.WorkerPool` | `:poolboy`-class pool supervisor | fixed pool of frame workers |
 | `Smalt.Aoq.Worker` (xN) | plain GenServer-free processes | stateless per-frame parse/emit |
-| `Smalt.Aoq.NifHolder` (per NIF family) | GenServer | holds NIF resources; refc binaries outlive frames |
+| `Smalt.Aoq.NifHolder` (per NIF family) | GenServer | holds NIF resource refs alive |
 | `Smalt.Aoq.Cursor` | GenServer owning `:atomics` | ring cursors, lease counters, seq (see §6) |
 | QUIC runtime (deferred) | per LANE-03 decision | placeholder slot, not started in v1 |
 
