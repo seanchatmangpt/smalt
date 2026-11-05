@@ -59,6 +59,7 @@ BINOPT_BUILD_ROOT="${BINOPT_BUILD_ROOT:-$ROOT/tmp/bin-opt/build}"
 BINOPT_RECEIPT_DIR="${BINOPT_RECEIPT_DIR:-$ROOT/tmp/bin-opt}"
 mkdir -p "$BINOPT_BUILD_ROOT" "$BINOPT_RECEIPT_DIR"
 BEAMS="$BINOPT_RECEIPT_DIR/beams"
+rm -rf "$BEAMS"
 mkdir -p "$BEAMS"
 
 # --- Pinned toolchain (repo .tool-versions: elixir 1.20.4-otp-29 / OTP 29.1.2)
@@ -113,10 +114,17 @@ scope = os.path.realpath(sys.argv[2] if len(sys.argv) > 2 else os.environ["BINOP
 FAIL = [r"NOT OPTIMIZED", r"doesn't support context reuse",
         r"no match .* could be optimized", r"optimization .* is not possible",
         r"not a binary directive", r"deferred"]
-BENIGN = [r"BINARY CREATED: binary is returned from the function",
+BENIGN = [r"OPTIMIZED: match context reused",
+          r"BINARY CREATED: binary is returned from the function",
           r"BINARY CREATED: binary is used in a term that is returned from the function"]
+# bin_opt_info diagnostics begin with one of these prefixes; any other scoped
+# warning is a plain compiler warning owned by other gates, not this one.
+BIN_OPT_PREFIX = re.compile(r"^(OPTIMIZED|NOT OPTIMIZED|BINARY CREATED)\b")
 
 def classify(text):
+    if not BIN_OPT_PREFIX.match(text) and \
+       not any(re.search(p, text) for p in FAIL):
+        return "SKIP"  # not a bin_opt diagnostic (other gates' surface)
     if any(re.search(p, text) for p in BENIGN):
         return "BENIGN"
     if any(re.search(p, text) for p in FAIL):
@@ -124,7 +132,7 @@ def classify(text):
     return "UNCLASSIFIED"
 
 blocks = re.split(r"(?=^\s*warning: )", log, flags=re.M)
-scoped_fail, scoped_benign = [], 0
+scoped_fail, scoped_benign, scoped_skip = [], 0, 0
 for b in blocks:
     m = re.search(r"└─\s+(\S+?):\d+", b)
     if not m:
@@ -139,12 +147,14 @@ for b in blocks:
     c = classify(text)
     if c == "BENIGN":
         scoped_benign += 1
+    elif c == "SKIP":
+        scoped_skip += 1
     else:
         scoped_fail.append(("UNCLASSIFIED: " if c == "UNCLASSIFIED" else "") + text)
 
 for s in scoped_fail:
     print("WARN-FAIL:", s)
-print(f"SUMMARY scoped_fail={len(scoped_fail)} scoped_benign={scoped_benign}")
+print(f"SUMMARY scoped_fail={len(scoped_fail)} scoped_benign={scoped_benign} scoped_other={scoped_skip}")
 PYEOF
 )"
 echo "$RESULT" | tail -n 1

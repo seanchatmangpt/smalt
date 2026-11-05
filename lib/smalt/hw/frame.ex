@@ -82,10 +82,12 @@ defmodule Smalt.Hw.Frame do
   on the next 0x7E after any malformed frame: bad CRC or wrong length are
   silently dropped, exactly like the TS/Python decoders.
   """
-  defstruct buf: <<>>, in_frame: false, escaped: false, frames: []
+  # C9 alloc fix: the decode accumulator is a cons'd byte list (prepend-only);
+  # the raw frame body is materialized as a binary once per frame in emit/1.
+  defstruct buf: [], in_frame: false, escaped: false, frames: []
 
   @type t :: %__MODULE__{
-          buf: binary(),
+          buf: [non_neg_integer()],
           in_frame: boolean(),
           escaped: boolean(),
           frames: [binary()]
@@ -103,13 +105,13 @@ defmodule Smalt.Hw.Frame do
 
   defp do_push(<<@flag, rest::binary>>, d) do
     d =
-      if d.in_frame and d.buf != <<>> do
+      if d.in_frame and d.buf != [] do
         emit(d)
       else
         d
       end
 
-    do_push(rest, %{d | in_frame: true, buf: <<>>, escaped: false})
+    do_push(rest, %{d | in_frame: true, buf: [], escaped: false})
   end
 
   defp do_push(<<_b, rest::binary>>, %{in_frame: false} = d) do
@@ -121,14 +123,16 @@ defmodule Smalt.Hw.Frame do
   end
 
   defp do_push(<<b, rest::binary>>, %{escaped: true} = d) do
-    do_push(rest, %{d | buf: <<d.buf::binary, Bitwise.bxor(b, @esc_xor)>>, escaped: false})
+    do_push(rest, %{d | buf: [Bitwise.bxor(b, @esc_xor) | d.buf], escaped: false})
   end
 
   defp do_push(<<b, rest::binary>>, d) do
-    do_push(rest, %{d | buf: <<d.buf::binary, b>>})
+    do_push(rest, %{d | buf: [b | d.buf]})
   end
 
-  defp emit(%{buf: raw} = d) do
+  defp emit(%{buf: buf} = d) do
+    raw = buf |> :lists.reverse() |> IO.iodata_to_binary()
+
     payload =
       with <<len::little-integer-size(16), rest::binary>> <- raw,
            <<body::binary-size(^len), crc::little-integer-size(16), _::binary>> <- rest,
