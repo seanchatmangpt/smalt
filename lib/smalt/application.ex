@@ -355,6 +355,10 @@ defmodule Smalt.Application do
           :control -> [Smalt.Plane.ControlSupervisor]
           :integration -> [Smalt.Plane.IntegrationSupervisor]
           :identity -> [Smalt.Plane.IdentitySupervisor]
+          # AoQ (L28r, spec §1.3): mounts on the data-plane supervisor
+          # (single lawful start site); the az_prod_aoq profile flips the
+          # config :smalt, :aoq gate the DataSupervisor reads.
+          :aoq -> [Smalt.Plane.DataSupervisor]
           _ -> []
         end)
     end

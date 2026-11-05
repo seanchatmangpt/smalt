@@ -16,13 +16,13 @@ defmodule Smalt.Planes do
   `Smalt.Planes.InvalidPlane`.
   """
 
-  @known [:control, :data, :integration, :identity]
+  @known [:control, :data, :integration, :identity, :aoq]
 
   defmodule InvalidPlane do
     @moduledoc false
     defexception [:plane]
 
-    @known [:control, :data, :integration, :identity]
+    @known [:control, :data, :integration, :identity, :aoq]
 
     @impl true
     def message(%__MODULE__{plane: plane}) do
