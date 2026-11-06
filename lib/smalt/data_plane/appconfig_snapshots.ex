@@ -5,8 +5,10 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
   Azure parity surface (Azure.AppConfiguration snapshots API):
 
     - `create/3` — PUT /snapshots/{name}: select KV records by key filter
-      (prefix match, same semantics as the `/kv` list filter) and label
-      filter (exact match), freeze a deep copy of the selection, and walk
+      (the UNIFIED selector law, `Smalt.DataPlane.AppConfigKeySelect`:
+      starless = prefix, '*' = wildcard glob — the same grammar as the
+      `/kv` list filter, KD-A12 close) and label filter (exact match),
+      freeze a deep copy of the selection, and walk
       `provisioning -> ready` synchronously (the emulator has no async
       provisioning arm; itemCount is final at `ready`).
     - `get/1` — GET /snapshots/{name}: snapshot settings + `itemCount`.
@@ -30,6 +32,7 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
 
   @table :smalt_appconfig_snapshots
 
+  alias Smalt.DataPlane.AppConfigKeySelect
   alias Smalt.Store
 
   @typedoc "Typed refusal: {HTTP-mappable code, message}"
@@ -74,8 +77,10 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
       Azure composition field. Any other value is a typed
       `InvalidComposition` refusal.
 
-  Selection semantics mirror the live `/kv` list route: key filter is a
-  prefix match, label filter is exact. An empty selection is legal (Azure
+  Selection semantics are the unified selector law (KD-A12, shared with
+  the live `/kv` list route via `Smalt.DataPlane.AppConfigKeySelect`):
+  key filter is prefix-or-glob (starless = prefix, '*' = wildcard), label
+  filter is exact. An empty selection is legal (Azure
   allows itemCount 0) but `nil`/malformed filters are a typed refusal.
   The selected records are deep-copied at creation — this IS the freeze.
   Status walks `provisioning -> ready` before returning.
@@ -242,7 +247,7 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
   end
   defp parse_composition(_), do: {:ok, "key"}
 
-  # Key composition: OR within selectors' key prefixes; label: AND-exact per
+  # Key composition: OR within selectors' key selectors (prefix-or-glob); label: AND-exact per
   # matched selector ("key" composition). "label" composition mirrors it
   # across labels. A record matches when some selector matches it on the
   # composition dimension and every selector match agrees on the other.
@@ -262,8 +267,11 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
     end)
   end
 
+  # KD-A12 unified key-selector law: the snapshot key selector delegates to
+  # the SAME helper as the /kv list filter — starless = prefix, '*' =
+  # wildcard glob, nil/"" = match-all. Label selectors below stay EXACT.
   defp key_match?(_record, nil), do: true
-  defp key_match?(record, prefix), do: String.starts_with?(record["key"], prefix)
+  defp key_match?(record, pattern), do: AppConfigKeySelect.match(record["key"], pattern)
 
   defp label_match?(_record, nil), do: true
   defp label_match?(record, label), do: record["label"] == label

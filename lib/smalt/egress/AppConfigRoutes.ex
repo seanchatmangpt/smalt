@@ -4,6 +4,14 @@ defmodule Smalt.Egress.AppConfigRoutes do
   function '__MODULE__'/1+14): App Configuration (/kv, /snapshots) arm, verbatim relocation.
   Fallthrough router — unmatched conns pass through un-halted; the main
   router's blob splat + 404 catch-all handle everything else, unchanged.
+
+  Selector law (KD-A12 close, v26.11.6): the `/kv` key AND label query
+  filters share ONE grammar via `Smalt.DataPlane.AppConfigKeySelect.match/2`
+  — starless pattern = prefix match, `*` = wildcard glob (leading/trailing/
+  mid), nil/empty = match-all. (This previously read "same semantics" as
+  the snapshot selector while actually differing — the snapshot selector
+  was prefix-only with no glob arm; both now share the helper, and snapshot
+  LABEL selectors additionally stay exact.)
   """
   use Plug.Router
   # public_secret_record/list_secret_record are local (they shadow the
@@ -20,6 +28,7 @@ defmodule Smalt.Egress.AppConfigRoutes do
       maybe_put_content_type: 2
     ]
   alias Smalt.Store
+  alias Smalt.DataPlane.AppConfigKeySelect
   alias Smalt.DataPlane.AppConfigSnapshots
   plug :match
   plug :dispatch
@@ -485,20 +494,11 @@ defmodule Smalt.Egress.AppConfigRoutes do
     )
   end
 
-  # Glob match: exact when no `*`, trailing-`*` prefix (or leading-`*`
-  # suffix) match otherwise. A nil filter matches everything.
-  defp kv_glob_match?(_value, nil), do: true
-  defp kv_glob_match?(_value, "*"), do: true
-
-  defp kv_glob_match?(value, pattern) when is_binary(value) and is_binary(pattern) do
-    case String.split(pattern, "*", parts: 2) do
-      [exact] -> value == exact
-      [prefix, ""] -> String.starts_with?(value, prefix)
-      [prefix, suffix] -> String.starts_with?(value, prefix) and String.ends_with?(value, suffix)
-    end
-  end
-
-  defp kv_glob_match?(_non_binary, _pattern), do: false
+  # KD-A12 unified key-selector law: delegate to the shared data-plane
+  # helper (starless = PREFIX, '*' = wildcard glob, nil/"" = match-all).
+  # One implementation serves the /kv list filter and the snapshot key
+  # selector — see Smalt.DataPlane.AppConfigKeySelect.
+  defp kv_glob_match?(value, pattern), do: AppConfigKeySelect.match(value, pattern)
 
   # Repeated `tags=k=v` query params (App Config tag-filter grammar, w6l):
   # AND semantics across pairs; a record matches when every demanded pair is

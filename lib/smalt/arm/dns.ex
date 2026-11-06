@@ -9,7 +9,7 @@ defmodule Smalt.Arm.Dns do
 
   @table :smalt_arm_dns
   @rec_table :smalt_arm_dns_records
-  @recordset_types ~w(A AAAA CNAME MX TXT SRV PTR)
+  @recordset_types ~w(A AAAA CAA CNAME MX TXT SRV PTR)
   @seed_types ~w(SOA NS)
 
   @spec ensure_table() :: :ok
@@ -118,9 +118,10 @@ defmodule Smalt.Arm.Dns do
     up = String.upcase(rtype)
 
     cond do
-      up == "CAA" ->
-        {:error, 400, %{code: "InvalidParameter", message: "CAA records are not supported"}}
-
+      # KD-A1 RAISE (v26.11.6, lane R-KDRES): CAA admitted — arcus
+      # tenancy_dns.go RecordSetTypes already includes CAA; smalt's own
+      # registry (ash_gen/registry.ex) maps Microsoft.Network/dnsZones/CAA
+      # to Smalt.Network.CAA. Parity, not divergence.
       up in @seed_types and (rname == "@" or rname == zone <> ".") ->
         {:error, 400, %{code: "InvalidParameter", message: "SOA/NS at zone apex is auto-seeded and not editable"}}
 

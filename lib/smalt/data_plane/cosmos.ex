@@ -646,7 +646,11 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp pkr_ranges(record, db, coll) do
     rid = Map.get(record, "_rid") || coll_rid(db, coll)
-    n = 1 + rem(:erlang.phash2(rid), length(@pkr_split_points) + 1)
+    # KD-A5 RAISE (v26.11.6, lane R-KDRES): portable hash — FNV-1a (offset
+    # 2166136261, prime 16777619) matching Go hash/fnv New32a, so the per-rid
+    # range count matches arcus pkrRangeCount exactly. :erlang.phash2 was
+    # BEAM-specific and not portable.
+    n = 1 + rem(fnv1a_32(rid), length(@pkr_split_points) + 1)
     splits = Enum.take(@pkr_split_points, n - 1)
 
     bounds = ["" | splits] ++ ["FF"]
@@ -664,6 +668,22 @@ defmodule Smalt.DataPlane.Cosmos do
         "throughputFraction" => 1.0 / n
       }
     end)
+  end
+
+  # KD-A5 (v26.11.6): FNV-1a 32-bit over the rid — matches arcus
+  # pkrRangeCount (internal/dialect/azure/cosmos_containers.go, Go
+  # hash/fnv New32a). Deterministic and portable across dialects.
+  defp fnv1a_32(data) when is_binary(data) do
+    :lists.foldl(
+      fn b, acc ->
+        :erlang.band(
+          :erlang.band(:erlang.bxor(:erlang.band(acc, 0xFFFF_FFFF), b), 0xFFFF_FFFF) * 16_777_619,
+          0xFFFF_FFFF
+        )
+      end,
+      2_166_136_261,
+      :binary.bin_to_list(data)
+    )
   end
 
   defp pkr_ranges_etag(ranges) do

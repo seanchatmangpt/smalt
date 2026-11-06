@@ -68,6 +68,50 @@ defmodule DataPlane.CosmosPkrangesTest do
     end
   end
 
+  # KD-A5 (v26.11.6, lane R-KDRES): portable FNV-1a count law. Pinned vector
+  # shared with the arcus court (cosmos_containers_test.go): the store pair
+  # (kdres-db0, c1) mints rid dEPF8YSR0PYx -> count 2; (kdres-db0, c2) mints
+  # rid dEPF8YSRnAq- -> count 1; (kdres-db0, kdcoll) mints rid dEPF8YSRhRTs
+  # -> count 3. Raw-rid pins also shared: "" -> 2, "dbx" -> 2, "DEADBEEF" -> 1
+  # (fnv1a_32 = 2166136261 / 3712800865 / 1409103093 respectively).
+  test "KD-A5: exact per-rid range counts match the portable FNV-1a law", %{
+    db: db,
+    coll: coll
+  } do
+    for {dbx, collx, _rid, _count} <-
+          [{"kdres-db0", "c1", nil, 0}, {"kdres-db0", "c2", nil, 0}, {"kdres-db0", "kdcoll", nil, 3}] do
+      case Cosmos.create_db(dbx) do
+        {:ok, 201, _, _} -> :ok
+        {:ok, 409, _, _} -> :ok
+        {:error, 409, _} -> :ok
+        other -> flunk("create_db #{dbx}: #{inspect(other)}")
+      end
+
+      case Cosmos.create_collection(dbx, collx, %{"partitionKey" => %{"paths" => ["/pk"]}}) do
+        {:ok, 201, _, _} -> :ok
+        {:ok, 409, _, _} -> :ok
+        {:error, 409, _} -> :ok
+        other -> flunk("create_collection #{dbx}/#{collx}: #{inspect(other)}")
+      end
+
+      on_exit(fn ->
+        Cosmos.drop_container(dbx, collx)
+        Cosmos.drop_db(dbx)
+      end)
+    end
+
+    for {dbx, collx, rid, count} <- [
+          {"kdres-db0", "c1", "dEPF8YSR0PYx", 2},
+          {"kdres-db0", "c2", "dEPF8YSRnAq-", 1},
+          {"kdres-db0", "kdcoll", "dEPF8YSRhRTs", 3}
+        ] do
+      assert Cosmos.coll_rid(dbx, collx) == rid
+      assert {:ok, 200, _h, body} = Cosmos.partition_key_ranges(dbx, collx)
+      assert body["_count"] == count
+      assert length(body["PartitionKeyRanges"]) == count
+    end
+  end
+
   test "witness: unknown container 404 NotFound", %{db: db} do
     assert {:ok, @not_found, _h, %{"code" => "NotFound"}} =
              Cosmos.partition_key_ranges(db, "no-such-container")

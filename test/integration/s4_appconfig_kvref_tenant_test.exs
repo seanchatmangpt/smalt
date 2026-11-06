@@ -257,6 +257,44 @@ defmodule Smalt.Internal.S4AppconfigKvrefTenantTest do
     assert rec["itemCount"] >= 5
     assert {:ok, items} = AppConfigSnapshots.kv_view(snap)
     assert Enum.any?(items, &(&1["key"] == "tenant/access"))
+
+    # KD-A12 unified selector law: snapshot key selectors share the /kv
+    # glob grammar — trailing star ("tenant/*"), leading star ("*access")
+    # and the starless PREFIX case all select the tenant keys, and a
+    # non-matching glob never selects across the key namespace (the
+    # feature-flag rows "access.allowed-groups"/"loginMethods.*" carry the
+    # same label but must not leak into a tenant/* selection).
+    all = Store.list_all(:smalt_appconfig)
+
+    glob_cases = [
+      {"tenant/*", true},
+      {"*access", true},
+      {"tenant/", true},
+      {"loginMethods*", false}
+    ]
+
+    for {pattern, selects_tenant} <- glob_cases do
+      snap_name = "s4-tenant-glob-#{:erlang.unique_integer([:positive])}"
+
+      on_exit(fn -> :ets.delete(:smalt_appconfig_snapshots, snap_name) end)
+
+      assert {:ok, glob_rec} =
+               AppConfigSnapshots.create(
+                 snap_name,
+                 %{"filters" => [%{"key" => pattern, "label" => @slug}]},
+                 all
+               )
+
+      assert {:ok, glob_items} = AppConfigSnapshots.kv_view(snap_name)
+      has_tenant = Enum.any?(glob_items, &(&1["key"] == "tenant/access"))
+
+      if selects_tenant do
+        assert has_tenant, "pattern #{inspect(pattern)} should select tenant/access"
+        assert glob_rec["item_count"] == length(glob_items)
+      else
+        refute has_tenant, "pattern #{inspect(pattern)} must not select tenant/access"
+      end
+    end
   end
 
   test "label isolation: a second tenant's rows never leak across slugs", %{} do
