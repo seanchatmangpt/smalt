@@ -10074,6 +10074,12 @@
       "ok": true,
       "standing": "PARTIAL"
     },
+    "/Users/sac/smalt/docs/jira/v26.11.4/receipts/s5-zp19-soak.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
     "/Users/sac/smalt/docs/jira/v26.11.5/receipts/l11-supervisor.md": {
       "annotation": "",
       "key": "Standing",
@@ -10218,13 +10224,97 @@
       "ok": true,
       "standing": "ALIVE"
     },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/csct-claim-verification-verdict.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
     "/Users/sac/smalt/docs/jira/v26.11.6/receipts/final-per-repo.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/kd191-kafka-sasl-lane10.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/kd193-engine-verdict.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PASS"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/kin-kinesis-rest-lane.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l1-kafka-group-family.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PASS"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l17-landing-blocked.md": {
       "annotation": "",
       "key": "Standing",
       "ok": true,
       "standing": "PARTIAL"
     },
-    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/kd191-kafka-sasl-lane10.md": {
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l17r-landing-retry.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l59-kafka-vs-aoq.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l60-offset-journal-landing.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/l7-flatbuffer-ipc.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane-bc-bench-conversion.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane-hc-kafka-real-clients.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane-hr-i-port-law.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane-kgc-pubsub-deferred.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane-ksq-sqs-face.md": {
       "annotation": "",
       "key": "Standing",
       "ok": true,
@@ -10241,6 +10331,12 @@
       "key": "Standing",
       "ok": true,
       "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane2-offset-restart.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
     },
     "/Users/sac/smalt/docs/jira/v26.11.6/receipts/lane4-aoq-quic-nif.md": {
       "annotation": "",
@@ -10259,6 +10355,120 @@
       "key": "Standing",
       "ok": true,
       "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/r1i-aoq-v3-repositioning.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/r4i-rows-carrier.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/r7i-blake3-shared-vectors.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/s19-v0-census-court.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": false,
+      "standing": null
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/s19-v1-native-court.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/s19-v1b-seal-prep.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "BLOCKED"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/s19-v2-wasm-court.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/s22-controls-mapping.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/wave-receipt-overnight-1.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.6/receipts/wp-kafka-wire-parity.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l1-c1-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l2-c2-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l3-c3-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l4-c4-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l5-c5-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l6-c6-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PASS"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l7-c7-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PARTIAL_ALIVE"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l8-register-reanchor.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PASS"
+    },
+    "/Users/sac/smalt/docs/jira/v26.11.7/receipts/p3-l9-stance-notes.md": {
+      "annotation": "",
+      "key": "Standing",
+      "ok": true,
+      "standing": "PASS"
     }
   },
   "generated_by": "scripts/receipt_standing_lint.py",

@@ -197,3 +197,6 @@ coverage/
 bench/tmp/
 .ggen-v2/lease/
 .ggen/freeze/
+# Lane hygiene
+_build-lane*/
+.venv/
