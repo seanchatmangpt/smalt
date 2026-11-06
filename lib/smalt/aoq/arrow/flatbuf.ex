@@ -31,10 +31,14 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   @spec decode(binary()) :: {:ok, Schema.t()} | {:error, term()}
   def decode(bin) when is_binary(bin) and byte_size(bin) >= 8 do
     try do
-      case binary_part(bin, 4, 4) do
-        @ident -> :ok
-        <<0, 0, 0, 0>> -> :ok
-        _ -> throw({:error, :bad_identifier})
+      # absent-or-ARRO law: the identifier slot may be unwritten
+      # (pyarrow/Arrow-C++ omits it in the streaming format).
+      leading = binary_part(bin, 4, 1)
+
+      if leading == <<0>> or binary_part(bin, 4, 4) == @ident do
+        :ok
+      else
+        throw({:error, :bad_identifier})
       end
       tref = u32(bin, 0)
       {vt, vs} = vtable(bin, tref)
@@ -153,8 +157,14 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   end
 
   defp decode_meta(bin, schema_tref, svt, svs) do
-    {base, n} = voff_vec(bin, schema_tref, svt, svs, 2)
-    0..(n - 1)
+    case voff_vec(bin, schema_tref, svt, svs, 2) do
+      {nil, _} -> %{}
+      {base, n} -> meta_pairs(bin, base, n)
+    end
+  end
+
+  defp meta_pairs(bin, base, n) do
+    0..(n - 1)//1
     |> Enum.map(fn i ->
       kref = elem_table_ref(bin, base, i)
       {kvt, kvs} = vtable(bin, kref)
@@ -245,6 +255,12 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     end
   end
 
+  defp int_atom(8, true), do: :i8
+  defp int_atom(16, true), do: :i16
+  defp int_atom(32, true), do: :i32
+  defp int_atom(64, true), do: :i64
+  defp int_atom(8, false), do: :u8
+  defp int_atom(16, false), do: :u16
   defp int_atom(32, false), do: :u32
   defp int_atom(64, false), do: :u64
 
@@ -473,11 +489,12 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
       for {e, i} <- Enum.with_index(elem_offs) do
         {i, vec_off - 4 * (i + 1) - e}
       end
-    {rel_bytes, u2, st2} =
+    st2 =
       Enum.reduce(Enum.reverse(rels), {c1, u1}, fn {_i, rel}, stx ->
-        push2(stx, <<rel::32-little>>)
+        {_b, _u, st2x} = push2(stx, <<rel::32-little>>)
+        st2x
       end)
-    _ = rel_bytes
+
     {_, u3, st3} = push2(st2, <<length(elem_offs)::32-little>>)
     {u3, st3}
   end
@@ -493,7 +510,8 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
         sz = byte_size(bytes)
         {{fid, u + sz, bytes, 0}, u + sz}
       end)
-    vt_bytes = 4 + 2 * n
+    n_eff = max_id + 1
+    vt_bytes = 4 + 2 * n_eff
     pad_vt = 0
     region_len = 8 + vt_bytes - 4 + pad_vt + Enum.sum(Enum.map(slot_rows, fn {_, _, bytes, pad} -> pad + byte_size(bytes) end))
     # Forward geometry rels: rel = (region end off - block offset) - elem off.
@@ -548,7 +566,7 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     region =
       IO.iodata_to_binary([
         <<-4::32-little>>,
-        <<(4 + 2 * n)::16-little, 0::16>>,
+        <<(4 + 2 * max_id + 2)::16-little, 0::16>>,
         voff_bin,
         zeros(pad_vt),
         slot_region
@@ -669,8 +687,8 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     {ty_off, 0, st1}
   end
 
-  defp plain_ty({:list, elem, _nl}, st) do
-    {elem_f_off, st1} = enc_elem_field(elem, 1, st)
+  defp plain_ty({:list, elem, nl}, st) do
+    {elem_f_off, st1} = enc_elem_field(elem, nl, st)
     b_table(st1, [{5, {:off, elem_f_off}}])
   end
 
@@ -703,7 +721,17 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
     ]
     {vf_off, st4} = b_table(st3, vf_slots)
     {kv_vec, st5} = b_vec(st4, [kf_off, vf_off])
-    {entries_f, st6} = b_table(st5, [{5, {:off, kv_vec}}])
+    # entries Struct TYPE table (children=kv), then the entries FIELD
+    # table (nullable=false, tag Struct(13), type + children) per the
+    # Arrow Map layout.
+    {struct_ty, st5b} = b_table(st5, [{5, {:off, kv_vec}}])
+    {entries_f, st6} =
+      b_table(st5b, [
+        {2, {:u8, 13}},
+        {3, {:off, struct_ty}},
+        {5, {:off, kv_vec}}
+      ])
+
     {entries_vec, st7} = b_vec(st6, [entries_f])
     b_table(st7, [{0, {:u8, bool_byte(sorted)}}, {5, {:off, entries_vec}}])
   end
@@ -723,13 +751,17 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
   defp spec_slots({:table, _n, slots}), do: slots
   defp spec_slots(nil), do: []
 
-  defp enc_elem_field(elem_type, nullable, st) do
+  defp enc_elem_field(elem_type, nullable, st) when is_boolean(nullable) do
     {ty_off, st1} = plain_ty(elem_type, st)
     b_table(st1, [
       {1, {:u8, bool_byte(nullable)}},
       {2, {:u8, type_tag(elem_type)}},
       {3, {:off, ty_off}}
     ])
+  end
+
+  defp enc_elem_field(elem_type, _one_literal, st) do
+    enc_elem_field(elem_type, true, st)
   end
 
   defp enc_index_field(idx, st) do

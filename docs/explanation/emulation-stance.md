@@ -62,6 +62,16 @@ why the cleanup is refused: the census that pinned them is the
 authority, and changing them regresses real handshakes. (Register:
 `docs/WIRE_PARITY.md`; pinions in the repo CLAUDE.md Conventions.)
 
+## Evidence notes (post-dating the stance text)
+
+- The Azure dialect face is now co-pinned in arcus
+  (`internal/dialect/azure/`, ~70 files per KD-212 and the v26.11.6
+  arcus register): the 80/20 stance governs both checkouts, and the
+  KD register remains the honesty mechanism on both sides — a
+  divergence is registered where it is witnessed, then co-cited.
+- kv7 is core-resident per the v26.10.31 decision: the 8443 KV REST
+  7.4 sub-dialect lives in the core, never deleted with an ARM strip.
+
 ## See Also
 
 - `docs/jira/v26.10.16/KNOWN_DIVERGENCES.md` — the register of truth

@@ -9,7 +9,11 @@ defmodule Smalt.Plane.ControlSupervisor do
   v26.10.31 cordon (WO-32): the BEAM no longer binds 9443/9444. The ARM
   gateway listener (Bandit front door on 9443) and the ARM TLS twin (9444)
   are REMOVED — posh (Go membrane) owns the 9443 wire; the ARM router module
-  remains callable in-process for dialect-conformance courts. LRO Notifier/Sweeper REMAIN (ruling documented: LRO record store
+  remains callable in-process for dialect-conformance courts — the arcus-side
+  counterpart wire courts are the dialect-law anchors
+  (`../arcus/internal/dialect/azure/wire_court_test.go`,
+  `routing_court_test.go`, `error_code_parity_court_test.go`; each verified
+  present on disk 2026-11-05). LRO Notifier/Sweeper REMAIN (ruling documented: LRO record store
   + Sweeper/Notifier serve the vendor-neutral LRO state machine; only the
   ARM wire spelling leaves with the dialect).
   """

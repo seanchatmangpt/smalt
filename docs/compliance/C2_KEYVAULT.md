@@ -74,3 +74,30 @@ not gaps.
 3. Nest the MAA claims under `x-ms-isolation-tee` on the token-mint side
    (`Security.Attestation`, row 13) so smalt-minted tokens match the real
    shape; SKR admission already accepts both.
+
+## Arcus anchors (lane P3-L2, 2026-11-05)
+
+Dual anchors from the C2 loci into the arcus Go membrane
+(`internal/dialect/azure/{kv7,armkv,attestation}.go`); all line numbers
+real from disk at anchor time. SKR release-contract rows 7/8 stay GAP both
+sides — UNSUPPORTED(gap-both-sides), no flip.
+
+| C2 locus (smalt) | smalt:lines | arcus anchor | verdict |
+|---|---|---|---|
+| key_vault_actions.ex encrypt/decrypt/wrap/unwrap + sign/verify face | 56-76 | kv7.go:54-90 Bundles/RenderBundle | ANCHORED (row 2a AAD GAP residue unchanged) |
+| key_vault_actions.ex list delegates (rows 4/5) | 78-82 | kv7.go:43-49 + :61-71 | ANCHORED (row 4 OperationNotAllowed: smalt-only extension, no arcus counterpart) |
+| key_vault_actions.ex error face (rows 1/17) | — | kv7.go:226-296 Kv7ErrCode; armkv.go:88-104; smalt spellings skr.ex:404-431 | ANCHORED (innererror unmodeled both sides) |
+| key_vault_actions.ex soft-delete delegates (KD-102) | 96-109 | kv7.go:212-296 Kv7Lifecycle/Kv7Step | ANCHORED |
+| key_vault_actions.ex create/list projection (rows 6/19) | 84-85, 78-82 | armkv.go:24-104 ApplyPolarity | ANCHORED (row 6 PARTIAL residue unchanged) |
+| key_vault_actions.ex KD-15 api_version/challenge_mode | 36-50 | armkv.go:135-162 APIVersionAdmitted ("7.4") | ANCHORED |
+| key_vault_actions.ex GAP rows 7/8 (release contract) | n/a | none in kv7.go/armkv.go | UNSUPPORTED(gap-both-sides) — GAP stays GAP |
+| skr.ex authorized?/1 (row 11) | 131-157, 171-190 | attestation.go:713-743 SKRAdmission + :770-781 complianceStatus | ANCHORED (arcus verifyAttestedClaims :744-758 decodes without RS256 verify — registered divergence, disclosed) |
+| skr.ex jti single-use (row 12) | 201-223 | attestation.go:584-679 nonce table | ANCHORED (arcus spelling nonceReplay vs TokenReplay — row 17 divergence disclosed) |
+| skr.ex fetch_exportable/1 (row 10) | 109-123 | attestation.go:74-75 CodeKeyNotFound/CodeKeyNotExportable | ANCHORED (key-store half out of file scope both sides) |
+| skr.ex commit_release/7 (GAP rows 7/8) | 255-285 | attestation.go:686-711 SKRReleaseRequest/Result — no target/enc/nonce, no signed object | UNSUPPORTED(gap-both-sides) — GAP stays GAP |
+| attestation.ex attest_enclave/2 claims | 28-76, 57-68 | attestation.go:472-540 Attest + :541-562 buildClaimsEnvelope | ANCHORED (row 13 PARTIAL: flat x-ms-isolation-tee minted both sides; arcus runtime claims superset disclosed) |
+
+Anchor marker count: 16 `<- arcus:` tokens (kv7.go 6, armkv.go 4,
+attestation.go 6) = 16 anchored loci above. Gates: no GAP row flipped
+(rows 2a/7/8 remain GAP); gofmt clean on all three Go files; `go vet
+./internal/dialect/azure/` exit 0.

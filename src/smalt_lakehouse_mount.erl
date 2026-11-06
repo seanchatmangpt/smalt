@@ -473,17 +473,49 @@ ipc_window_info(_, _) ->
     {error, {ipc_bad_window, []}}.
 
 meta_span_gate(Window, Len, MetaSpan, SchemaGate) ->
-    case lists:member(MetaSpan, [64, 120]) of
-        false ->
-            {error, {ipc_bad_meta_size, [{got, MetaSpan}, {expected, MetaSpan}]}};
+    %% Region first word (window 8..12): the flatbuffer's root uoffset on
+    %% the fb era; a legacy magic word on the legacy eras. cgap's
+    %% parse_meta_with fork law: legacy spans stay legacy; a non-legacy
+    %% span goes fb UNLESS the region word is a legacy magic or zero
+    %% (which classifies BadMetaSize).
+    RegionWord = case Len >= 12 of
+                     true -> binary_part(Window, 8, 4);
+                     false -> <<0, 0, 0, 0>>
+                 end,
+    LegacySpan = lists:member(MetaSpan, [64, 120]),
+    %% R4-I fb fork (cgap-parity law): a non-legacy span that is a
+    %% multiple of 8, >= 64, whose region word is NOT a legacy magic
+    %% (IPC1/AOQ1/zero) takes the fb branch. The ARRO flatbuffer
+    %% identifier lives at window offset 12..16 (flatbuffer bytes 4..8),
+    %% never at 8..12.
+    IsFb = (not LegacySpan)
+        andalso (MetaSpan rem 8 =:= 0)
+        andalso (MetaSpan >= 64)
+        andalso (RegionWord =/= <<16#49504331:32/little>>)
+        andalso (RegionWord =/= <<16#414F5131:32/little>>)
+        andalso (RegionWord =/= <<0, 0, 0, 0>>),
+    case IsFb of
         true ->
-            Alignment = case MetaSpan of 64 -> 8; 120 -> 64 end,
             BodyAt = ?IPC_PREFIX + MetaSpan,
             case Len < BodyAt of
                 true ->
                     {error, {ipc_truncated, [{needed, BodyAt}, {got, Len}]}};
                 false ->
-                    header_gate(Window, Len, Alignment, BodyAt, SchemaGate)
+                    fb_gate(Window, Len, MetaSpan, BodyAt, SchemaGate)
+            end;
+        false ->
+            case LegacySpan of
+                false ->
+                    {error, {ipc_bad_meta_size, [{got, MetaSpan}, {expected, MetaSpan}]}};
+                true ->
+                    Alignment = case MetaSpan of 64 -> 8; 120 -> 64 end,
+                    BodyAt = ?IPC_PREFIX + MetaSpan,
+                    case Len < BodyAt of
+                        true ->
+                            {error, {ipc_truncated, [{needed, BodyAt}, {got, Len}]}};
+                        false ->
+                            header_gate(Window, Len, Alignment, BodyAt, SchemaGate)
+                    end
             end
     end.
 
@@ -592,6 +624,247 @@ carrier_gate(Window, _BodyAt, Seq, Schema) ->
                     {ok, {Rows, hex32(Schema), Seq, undefined}}
             end
     end.
+
+
+%% -- fb branch (R4-I): flatbuffer Message metadata windows --------------
+
+%% fb_gate: the fb-era gate chain, in order: metadata parse -> bodyLength
+%% extent -> body pad -> EOS -> cgap:schema_blake3 schema gate ->
+%% cgap:body_blake3 PRESENCE -> cgap:rows PRESENCE (decimal).
+%% Absent/non-decimal rows and absent digest refuse with the SAME atoms
+%% as the legacy walk (ipc_rows_carrier_missing /
+%% ipc_body_digest_missing), so walk/2 sums and census law are untouched.
+fb_gate(Window, Len, MetaSpan, BodyAt, SchemaGate) ->
+    Region = binary_part(Window, 8, MetaSpan),
+    Alignment = fb_alignment(MetaSpan),
+    case fb_parse_message(Region) of
+        {error, _} ->
+            {error, {ipc_fb_meta, []}};
+        {ok, {BodyLen, MetaPairs}} ->
+            BodyPad = pad_to(BodyLen, Alignment),
+            case (BodyLen < 0) orelse
+                 (Len < BodyAt + BodyLen + BodyPad + ?IPC_EOS_SIZE) of
+                true ->
+                    {error, {ipc_bad_body_len,
+                             [{got, BodyLen},
+                              {expected, expected_body(Len, BodyAt, Alignment)}]}};
+                false ->
+                    PadBin = binary_part(Window, BodyAt + BodyLen, BodyPad),
+                    case first_nonzero(PadBin, BodyAt + BodyLen) of
+                        {some, At} ->
+                            {error, {ipc_pad_non_zero, [{at, At}]}};
+                        none ->
+                            fb_eos_gate(Window, Len, BodyAt, BodyLen,
+                                        Alignment, MetaPairs, SchemaGate)
+                    end
+            end
+    end.
+
+fb_eos_gate(Window, Len, BodyAt, BodyLen, Alignment, MetaPairs, SchemaGate) ->
+    EosAt = BodyAt + BodyLen + pad_to(BodyLen, Alignment),
+    case Len < EosAt + ?IPC_EOS_SIZE of
+        true ->
+            {error, {ipc_missing_eos, [{got, 0}]}};
+        false ->
+            <<_:EosAt/binary, Cont2:32/little, Tail:32/little>> = Window,
+            case Cont2 =:= ?IPC_CONTINUATION andalso Tail =:= ?IPC_EOS_WORD of
+                false ->
+                    {error, {ipc_missing_eos, [{got, Tail}]}};
+                true ->
+                    fb_schema_gate(SchemaGate, Window, BodyAt, BodyLen, MetaPairs)
+            end
+    end.
+
+%% The fb schema gate compares against the carried cgap:schema_blake3
+%% (the expected_schema seam on the fb era); an absent key never matches
+%% a pinned digest (typed mismatch, never a misread).
+fb_schema_gate({expect_schema, Expected}, Window, BodyAt, BodyLen, MetaPairs)
+  when byte_size(Expected) =:= 32 ->
+    case fb_meta_lookup(<<"cgap:schema_blake3">>, MetaPairs) of
+        {ok, Hex} ->
+            case fb_unhex32(Hex) of
+                {ok, Carried} ->
+                    case Carried =:= Expected of
+                        false ->
+                            {error, {ipc_schema_mismatch, [{got, lower_hex(Hex)}]}};
+                        true ->
+                            fb_presence_gates(Window, BodyAt, BodyLen, MetaPairs)
+                    end;
+                error ->
+                    {error, {ipc_schema_mismatch, [{got, lower_hex(Hex)}]}}
+            end;
+        error ->
+            {error, {ipc_schema_mismatch, [{got, <<>>}]}}
+    end;
+fb_schema_gate(_, Window, BodyAt, BodyLen, MetaPairs) ->
+    fb_presence_gates(Window, BodyAt, BodyLen, MetaPairs).
+
+%% Presence gates: cgap:body_blake3 (tamper tier; PRESENCE only on BEAM,
+%% verification is the export tier's law), then cgap:rows (decimal u64).
+fb_presence_gates(Window, BodyAt, BodyLen, MetaPairs) ->
+    case fb_meta_lookup(<<"cgap:body_blake3">>, MetaPairs) of
+        {ok, Hex} when byte_size(Hex) =:= 64 ->
+            case fb_unhex32(Hex) of
+                {ok, <<0:256>>} -> {error, {ipc_body_digest_missing, []}};
+                {ok, _} -> fb_rows_gate(Window, BodyAt, BodyLen, MetaPairs);
+                error -> {error, {ipc_body_digest_missing, []}}
+            end;
+        _ ->
+            {error, {ipc_body_digest_missing, []}}
+    end.
+
+fb_rows_gate(_Window, _BodyAt, BodyLen, MetaPairs) ->
+    case fb_meta_lookup(<<"cgap:rows">>, MetaPairs) of
+        {ok, Digits} ->
+            case fb_decimal_u64(Digits) of
+                {ok, Rows} ->
+                    SchemaHex =
+                        case fb_meta_lookup(<<"cgap:schema_blake3">>, MetaPairs) of
+                            {ok, SH} -> lower_hex(SH);
+                            error -> <<>>
+                        end,
+                    {ok, {Rows, SchemaHex, 0, BodyLen}};
+                error ->
+                    {error, {ipc_rows_carrier_missing, []}}
+            end;
+        error ->
+            {error, {ipc_rows_carrier_missing, []}}
+    end.
+
+fb_meta_lookup(Key, [{Key, V} | _]) -> {ok, V};
+fb_meta_lookup(Key, [_ | Rest]) -> fb_meta_lookup(Key, Rest);
+fb_meta_lookup(_, []) -> error.
+
+%% Strict decimal u64 (ASCII digits only); empty or any non-digit
+%% refuses.
+fb_decimal_u64(Digits) -> fb_decimal_u64(Digits, 0).
+
+fb_decimal_u64(<<>>, Acc) -> {ok, Acc};
+fb_decimal_u64(<<C, Rest/binary>>, Acc) when C >= $0, C =< $9 ->
+    fb_decimal_u64(Rest, Acc * 10 + (C - $0));
+fb_decimal_u64(_, _) -> error.
+
+fb_unhex32(Hex) -> fb_unhex32(Hex, <<>>).
+
+fb_unhex32(<<>>, Acc) -> {ok, Acc};
+fb_unhex32(<<H, L, Rest/binary>>, Acc) ->
+    case {fb_hexval(H), fb_hexval(L)} of
+        {error, _} -> error;
+        {_, error} -> error;
+        {Hi, Lo} -> fb_unhex32(Rest, <<Acc/binary, (Hi * 16 + Lo):8>>)
+    end;
+fb_unhex32(_, _) -> error.
+
+fb_hexval(C) when C >= $0, C =< $9 -> C - $0;
+fb_hexval(C) when C >= $a, C =< $f -> C - $a + 10;
+fb_hexval(C) when C >= $A, C =< $F -> C - $A + 10;
+fb_hexval(_) -> error.
+
+fb_alignment(MetaSpan) ->
+    case (8 + MetaSpan) rem 64 =:= 0 of true -> 64; false -> 8 end.
+
+%% -- minimal flatbuffer Message parser (read-only, bounds-checked) ------
+
+%% Parses the Message envelope: header_type MUST be Schema (1); returns
+%% {BodyLength, [{Key, Value}]} from the schema custom_metadata. Any
+%% structural violation raises and is caught as a typed refusal.
+fb_parse_message(Bin) ->
+    try {ok, fb_message(Bin)}
+    catch
+        _:_ -> {error, fb_parse_refused}
+    end.
+
+fb_message(Bin) ->
+    T = fb_table(Bin, fb_u32(Bin, 0)),
+    HeaderType = fb_scalar_u8(T, 1, 0),
+    case HeaderType =:= 1 of
+        false -> throw(fb_not_schema);
+        true -> ok
+    end,
+    BodyLen = fb_scalar_i64(T, 3, 0),
+    Header = fb_table_field(T, 2),
+    MetaPairs = fb_kv_vector(Header, 2),
+    {BodyLen, MetaPairs}.
+
+%% -- flatbuffer primitives (uoffset/soffset table law) -------------------
+
+fb_bin({Bin, _, _, _, _}) -> Bin.
+
+fb_u32(Bin, P) ->
+    <<V:32/little-unsigned>> = binary_part(Bin, P, 4),
+    V.
+
+fb_u16(Bin, P) ->
+    <<V:16/little-unsigned>> = binary_part(Bin, P, 2),
+    V.
+
+fb_i32(Bin, P) ->
+    <<V:32/little-signed>> = binary_part(Bin, P, 4),
+    V.
+
+fb_table(Bin, P) when is_binary(Bin), is_integer(P), P >= 0,
+                      P + 4 =< byte_size(Bin) ->
+    SOffset = fb_i32(Bin, P),
+    VtPos = P - SOffset,
+    VtSize = fb_u16(Bin, VtPos),
+    TblSize = fb_u16(Bin, VtPos + 2),
+    {Bin, P, VtPos, VtSize, TblSize}.
+
+fb_field({Bin, _, VtPos, VtSize, _}, I) ->
+    Voff = 4 + 2 * I,
+    case Voff + 2 =< VtSize of
+        false -> 0;
+        true -> fb_u16(Bin, VtPos + Voff)
+    end.
+
+fb_scalar_u8({Bin, P, _, _, _} = T, I, Default) ->
+    case fb_field(T, I) of
+        0 -> Default;
+        V -> binary:at(Bin, P + V)
+    end.
+
+fb_scalar_i64({Bin, P, _, _, _} = T, I, Default) ->
+    case fb_field(T, I) of
+        0 -> Default;
+        V ->
+            <<X:64/little-signed>> = binary_part(Bin, P + V, 8),
+            X
+    end.
+
+fb_indirect({Bin, P, _, _, _} = T, I) ->
+    case fb_field(T, I) of
+        0 -> throw(fb_absent);
+        V ->
+            U = fb_u32(Bin, P + V),
+            P + V + U
+    end.
+
+fb_table_field(T, I) ->
+    Pos = fb_indirect(T, I),
+    fb_table(fb_bin(T), Pos).
+
+fb_string_field(T, I) ->
+    Pos = fb_indirect(T, I),
+    Bin = fb_bin(T),
+    N = fb_u32(Bin, Pos),
+    binary_part(Bin, Pos + 4, N).
+
+fb_kv_vector(T, I) ->
+    case fb_field(T, I) of
+        0 -> [];
+        _ ->
+            Pos = fb_indirect(T, I),
+            Bin = fb_bin(T),
+            N = fb_u32(Bin, Pos),
+            ElemBase = Pos + 4,
+            [begin
+                 U = fb_u32(Bin, ElemBase + 4 * J),
+                 fb_kv(fb_table(Bin, ElemBase + 4 * J + U))
+             end || J <- lists:seq(0, N - 1)]
+    end.
+
+fb_kv(T) ->
+    {fb_string_field(T, 0), fb_string_field(T, 1)}.
 
 pad_to(N, A) -> ((N + A - 1) div A) * A.
 

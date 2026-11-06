@@ -1,3 +1,7 @@
+# ARCUS WIRE-COURT PARITY (v26.11.6): wire law pinned here is co-pinned by
+# /Users/sac/arcus/internal/dialect/azure/errors_blob.go.
+# This file remains the smalt-side pin; the arcus court is a counterpart,
+# not a successor. No KD flip implied.
 defmodule Smalt.Integration.BlobXmlErrorTest do
   # B-XML court: blob-face errors render the Azure Storage XML error envelope
   # (closes GAP(blob-error-envelope-json)), scoped to the blob face only.

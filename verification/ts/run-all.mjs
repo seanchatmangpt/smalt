@@ -12,7 +12,7 @@ const HERE = import.meta.dirname;
 const REPO = path.resolve(HERE, "../..");
 const WATCHDOG_MS = Number(process.env.SMALT_TS_WATCHDOG_MS || 600_000);
 const BLOCK = process.env.SMALT_TS_BLOCK || "v13";
-const PRIVATE_BLOCK = process.env.SMALT_TS_PRIVATE_BLOCK || "v14";
+const PRIVATE_BLOCK = process.env.SMALT_TS_PRIVATE_BLOCK || "v17";
 const CRED_MODE = process.env.SMALT_TS_CREDENTIAL || "smalt";
 
 const log = (...a) => console.log("[run-all]", ...a);

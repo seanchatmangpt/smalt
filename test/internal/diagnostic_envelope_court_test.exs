@@ -1,3 +1,7 @@
+# ARCUS WIRE-COURT PARITY (v26.11.6): wire law pinned here is co-pinned by
+# /Users/sac/arcus/internal/dialect/azure/errors_armwire.go.
+# This file remains the smalt-side pin; the arcus court is a counterpart,
+# not a successor. No KD flip implied.
 defmodule Smalt.Internal.DiagnosticEnvelopeCourtTest do
   @moduledoc """
   GAP-04 envelope validator court (pre-strip witness), v26.10.31.

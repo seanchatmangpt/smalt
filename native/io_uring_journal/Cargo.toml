@@ -1,0 +1,12 @@
+[package]
+name = "io_uring_journal"
+version = "0.1.0"
+edition = "2021"
+description = "Linux-only io_uring/O_DIRECT NVMe append journal with checksummed records; darwin builds keep a datasync fallback path and are gated, never claimed equivalent."
+
+[dependencies]
+crc32fast = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = "0.6"
+libc = "0.2"

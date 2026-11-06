@@ -14,9 +14,12 @@ defmodule Smalt.Aoq.Quic do
   - all waits are bounded INSIDE the NIF (DirtyIo, tokio timeouts in
     the cgap engine) - this module never sleeps, adds no timer.
 
-  Scope honesty: the landed cgap dylib surface is CLIENT-ROLE ONLY
-  (open/connect/send/recv, uni-stream). The server face is typed
-  UNSUPPORTED here until that surface lands (see `serve/2`).
+  Scope (2026-11-05): the L3 server role LANDED - the full face is
+  open/connect/send/recv (uni-stream client) PLUS serve/accept/
+  accept_bi/stream_open/stream_send/stream_recv/stream_close (bi-dir
+  server+client streams). ALPN is `aq/1`, REQUIRED server-side; the
+  SHIM-COURT mutation `AQ_MUTATE_ALPN_DROP=1` strips it client-side
+  and the handshake must refuse.
   """
 
   alias Smalt.Aoq.Quic.Nif
@@ -122,24 +125,107 @@ defmodule Smalt.Aoq.Quic do
   def recv(_conn, _timeout_ms), do: {:error, {:quic_refusal, :badarg}}
 
   @doc """
-  Server face - typed UNSUPPORTED until the cgap dylib lands the
-  server role (aq_quic.rs is client-role scaffolding). A typed
-  refusal, never a silent no-op.
+  Server face (L3 server role LANDED 2026-11-05): builds the rustls
+  ServerConfig (ALPN aq/1 REQUIRED server-side) and binds UDP `port`
+  on the engine thread. Takes the ENGINE resource from `open/2` plus
+  the leaf cert DER + key DER (PKCS8). `{:ok, listener}` | refusal.
   """
-  @spec serve(non_neg_integer(), keyword()) :: {:ok, reference()} | refusal()
-  def serve(_port, _opts) do
-    {:error, {:quic_refusal, {:unsupported, :server_role_not_in_nif_surface}}}
+  @spec serve(engine(), non_neg_integer(), binary(), binary()) ::
+          {:ok, reference()} | refusal()
+  def serve(engine, port, cert_der, key_der)
+      when is_reference(engine) and is_integer(port) and port >= 0 and
+             port <= 65_535 and is_binary(cert_der) and is_binary(key_der) do
+    case Nif.aq_quic_serve(engine, port, cert_der, key_der) do
+      ref when is_reference(ref) -> {:ok, ref}
+      :error -> {:error, {:quic_refusal, {:nif_serve_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
   end
 
-  @doc "Accept face - UNSUPPORTED, same receipt as `serve/2`."
-  @spec accept(reference()) :: {:ok, conn()} | refusal()
-  def accept(_server) do
-    {:error, {:quic_refusal, {:unsupported, :server_role_not_in_nif_surface}}}
+  def serve(_engine, _port, _cert_der, _key_der), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc "Bounded server-side accept of one inbound QUIC connection."
+  @spec accept(reference(), non_neg_integer()) :: {:ok, conn()} | refusal()
+  def accept(listener, timeout_ms)
+      when is_reference(listener) and is_integer(timeout_ms) and timeout_ms >= 0 and
+             timeout_ms <= 60_000 do
+    case Nif.aq_quic_accept(listener, timeout_ms) do
+      ref when is_reference(ref) -> {:ok, ref}
+      :error -> {:error, {:quic_refusal, {:nif_accept_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
   end
 
-  @doc "Stream-open face - UNSUPPORTED, same receipt as `serve/2`."
+  def accept(_listener, _timeout_ms), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc "Server side: accept a peer-initiated bi-directional stream."
+  @spec accept_bi(conn(), non_neg_integer()) :: {:ok, reference()} | refusal()
+  def accept_bi(conn, timeout_ms)
+      when is_reference(conn) and is_integer(timeout_ms) and timeout_ms >= 0 and
+             timeout_ms <= 60_000 do
+    case Nif.aq_quic_accept_bi(conn, timeout_ms) do
+      ref when is_reference(ref) -> {:ok, ref}
+      :error -> {:error, {:quic_refusal, {:nif_accept_bi_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
+  end
+
+  def accept_bi(_conn, _timeout_ms), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc "Client side: open one bi-directional stream."
   @spec stream_open(conn()) :: {:ok, reference()} | refusal()
-  def stream_open(_conn) do
-    {:error, {:quic_refusal, {:unsupported, :server_role_not_in_nif_surface}}}
+  def stream_open(conn) when is_reference(conn) do
+    case Nif.aq_quic_stream_open(conn) do
+      ref when is_reference(ref) -> {:ok, ref}
+      :error -> {:error, {:quic_refusal, {:nif_stream_open_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
   end
+
+  def stream_open(_conn), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc """
+  Sends on a bi-directional stream. The `Smalt.Aoq.Frame.encode/2`
+  iolist goes DIRECTLY into the NIF (enif_inspect_iolist_as_binary -
+  the dispatch's zero-concat egress premise, LANDED in the stream
+  path). write_all, no finish - bi streams persist for further frames.
+  """
+  @spec stream_send(reference(), iodata()) :: :ok | refusal()
+  def stream_send(stream, data)
+      when is_reference(stream) and (is_binary(data) or is_list(data)) do
+    case Nif.aq_quic_stream_send(stream, data) do
+      :ok -> :ok
+      :error -> {:error, {:quic_refusal, {:nif_stream_send_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
+  end
+
+  def stream_send(_stream, _data), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc "Bounded recv on a bi-directional stream (resource-binary out)."
+  @spec stream_recv(reference(), non_neg_integer()) :: {:ok, binary()} | refusal()
+  def stream_recv(stream, timeout_ms)
+      when is_reference(stream) and is_integer(timeout_ms) and timeout_ms >= 0 and
+             timeout_ms <= 60_000 do
+    case Nif.aq_quic_stream_recv(stream, timeout_ms) do
+      bin when is_binary(bin) -> {:ok, bin}
+      :error -> {:error, {:quic_refusal, {:nif_stream_recv_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
+  end
+
+  def stream_recv(_stream, _timeout_ms), do: {:error, {:quic_refusal, :badarg}}
+
+  @doc "Closes a bi-directional stream (recv STOP + send RESET)."
+  @spec stream_close(reference()) :: :ok | refusal()
+  def stream_close(stream) when is_reference(stream) do
+    case Nif.aq_quic_stream_close(stream) do
+      :ok -> :ok
+      :error -> {:error, {:quic_refusal, {:nif_stream_close_failed, Nif.load_status()}}}
+      other -> {:error, {:quic_refusal, {:nif_bad_return, other}}}
+    end
+  end
+
+  def stream_close(_stream), do: {:error, {:quic_refusal, :badarg}}
 end
+

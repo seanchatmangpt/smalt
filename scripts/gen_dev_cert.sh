@@ -59,7 +59,9 @@ ensure_quic_leaf() {
     return 0
   fi
   echo "[gen_dev_cert] minting ECDSA P-256 quic leaf $QUIC_CERT" >&2
-  openssl ecparam -name prime256v1 -genkey -noout -out "$QUIC_KEY" 2>/dev/null
+  openssl ecparam -name prime256v1 -genkey -noout -out "$CERT_DIR/quic-raw-key.pem" 2>/dev/null
+  openssl pkcs8 -topk8 -nocrypt -in "$CERT_DIR/quic-raw-key.pem" -out "$QUIC_KEY" 2>/dev/null
+  rm -f "$CERT_DIR/quic-raw-key.pem"
   openssl req -new -sha256 -key "$QUIC_KEY" \
     -subj "/CN=localhost" -out "$CERT_DIR/quic-csr.pem" 2>/dev/null
   openssl x509 -req -sha256 -days 800 \

@@ -28,13 +28,12 @@ main(Opts) ->
     Machine = machine_spec(),
     emit_results(Results, Machine),
     #{n := N2, errors := E, agg_wall_ms := W, ops_per_sec := OPS,
-      p50_ms := P50, p95_ms := P95, p99_ms := P99, reds_per_op := Reds,
-      heap_delta_words := Heap} =
+      reds_per_op := Reds, heap_delta_words := Heap} =
         Results,
     io:format("BENCH5 n=~b ok=~b errors=~b agg_wall_ms=~.1f ops_per_sec=~.1f~n"
-              "BENCH5 p50_ms=~.3f p95_ms=~.3f p99_ms=~.3f reds_per_op=~.1f heap_delta_words=~b~n"
+              "BENCH5 reds_per_op=~.1f heap_delta_words=~b~n"
               "BENCH5 machine=~0p~n",
-              [N2, N2 - E, E, W, OPS, P50, P95, P99, Reds, Heap, Machine]),
+              [N2, N2 - E, E, W, OPS, Reds, Heap, Machine]),
     case E of
         0 -> halt(0);
         _ -> halt(1)
@@ -42,34 +41,32 @@ main(Opts) ->
 
 measure(N) ->
     lists:foreach(fun(_) -> one_op() end, lists:seq(1, ?WARMUP)),
+    %% GC fence before the timed region (kept).
     erlang:garbage_collect(),
     {Reds0, Heap0} = self_stats(),
+    %% BATCH-timed region: the two timer calls are hoisted OUTSIDE the
+    %% per-op samples — per-op brackets previously paid 2 timer calls per
+    %% op into every sample (V10 finding). Reductions/heap sampled outside
+    %% the bracket too. Per-op percentile walls are therefore NOT
+    %% measurable without per-op timer calls; the aggregate wall carries
+    %% the claim (same treatment as bench_amqp_frame.erl).
     T0 = erlang:monotonic_time(microsecond),
-    PerOp =
-        [begin
-             T1 = erlang:monotonic_time(microsecond),
-             R = one_op(),
-             T2 = erlang:monotonic_time(microsecond),
-             {T2 - T1, R}
-         end
-         || _ <- lists:seq(1, N)],
+    Results = [one_op() || _ <- lists:seq(1, N)],
     T3 = erlang:monotonic_time(microsecond),
+    WallUs = T3 - T0,
+    %% Quantization guard: the region must span >= 10 ticks of the clock.
+    case WallUs >= 10 of
+        true -> ok;
+        false -> erlang:error({quantization_risk, wall_us, WallUs})
+    end,
+    %% GC fence after the timed region (kept).
     erlang:garbage_collect(),
     {Reds1, Heap1} = self_stats(),
-    {WallUs, Results} = lists:unzip(PerOp),
     Errors = length([R || R <- Results, element(1, R) =/= ok]),
-    Sorted = lists:sort(WallUs),
-    Len = length(Sorted),
     #{n => N,
       errors => Errors,
-      agg_wall_ms => (T3 - T0) / 1000,
-      wall_sum_ms => lists:sum(WallUs) / 1000,
-      ops_per_sec => N / ((T3 - T0) / 1_000_000),
-      p50_ms => nth_frac(Sorted, Len, 0.50) / 1000,
-      p95_ms => nth_frac(Sorted, Len, 0.95) / 1000,
-      p99_ms => nth_frac(Sorted, Len, 0.99) / 1000,
-      min_ms => hd(Sorted) / 1000,
-      max_ms => lists:last(Sorted) / 1000,
+      agg_wall_ms => WallUs / 1000,
+      ops_per_sec => N / (WallUs / 1_000_000),
       reds_total => Reds1 - Reds0,
       reds_per_op => (Reds1 - Reds0) / N,
       heap_before_words => Heap0,
@@ -83,10 +80,6 @@ self_stats() ->
     {Reds, _} = erlang:statistics(reductions),
     {total_heap_size, Heap} = erlang:process_info(self(), total_heap_size),
     {Reds, Heap}.
-
-nth_frac(Sorted, Len, Frac) ->
-    Idx = max(1, min(Len, erlang:round(Frac * Len))),
-    lists:nth(Idx, Sorted).
 
 machine_spec() ->
     Cpu = string:trim(os:cmd("sysctl -n machdep.cpu.brand_string")),
@@ -107,16 +100,10 @@ otp_int() ->
 emit_results(#{n := N,
                errors := E,
                ops_per_sec := OPS,
-               p50_ms := P50,
-               p95_ms := P95,
-               p99_ms := P99,
                agg_wall_ms := W,
-               wall_sum_ms := WS,
                reds_total := Reds,
                reds_per_op := RedsPerOp,
-               heap_delta_words := Heap,
-               min_ms := Min,
-               max_ms := Max},
+               heap_delta_words := Heap},
              Machine) ->
     File = "/Users/sac/smalt/tmp/bench/court_bench_powl.jsonl",
     ok = filelib:ensure_dir(File),
@@ -126,30 +113,18 @@ emit_results(#{n := N,
           integer_to_list(N),
           ",\"ops_per_sec\":",
           float_to_list(OPS, [{decimals, 1}]),
-          ",\"p50_ms\":",
-          float_to_list(P50, [{decimals, 3}]),
-          ",\"p95_ms\":",
-          float_to_list(P95, [{decimals, 3}]),
-          ",\"p99_ms\":",
-          float_to_list(P99, [{decimals, 3}]),
           ",\"errors\":",
           integer_to_list(E),
           ",\"machine\":",
           json_machine(Machine),
           ",\"agg_wall_ms\":",
           float_to_list(W, [{decimals, 1}]),
-          ",\"wall_sum_ms\":",
-          float_to_list(WS, [{decimals, 1}]),
           ",\"reds_total\":",
           integer_to_list(Reds),
           ",\"reds_per_op\":",
           float_to_list(RedsPerOp, [{decimals, 1}]),
           ",\"heap_delta_words\":",
           integer_to_list(Heap),
-          ",\"min_ms\":",
-          float_to_list(Min, [{decimals, 3}]),
-          ",\"max_ms\":",
-          float_to_list(Max, [{decimals, 3}]),
           ",\"warmup\":",
           integer_to_list(?WARMUP),
           "}\n"

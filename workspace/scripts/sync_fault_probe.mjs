@@ -79,9 +79,9 @@ function record(name, verdict, detail = '') {
 // ---- bounded poll on real observables (no fixed sleeps) ----------------------
 
 async function pollUntil(fn, { timeoutMs = 60_000, what } = {}) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let lastErr = 'never evaluated';
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     try {
       const ok = await fn();
       if (ok) return true;

@@ -22,14 +22,20 @@ health), never for the substrate's lifetime; the substrate is spawned
 
 ## Port-block formula
 
-Role order in every block (6 ports): `amqp eh arm egress tls mcp`.
+Role order: `amqp eh arm egress tls mcp` (6 ports) — v-blocks add a 7th
+slot, kafka. **Kafka is the v-face only**: front/b/c blocks never claim it
+(counter-case witnessed by the registry falsifier: b5/c5 stay 6 ports).
 
 | block | formula | example |
 |---|---|---|
 | `front`/`canonical` | fixed | 5672 5673 9443 8443 9444 9545 |
-| `bN` (N=1..99) | 39000+10N .. +5 | b1 = 39010–39015 |
-| `cN` (N=1..99) | 39200+10N .. +5 | c1 = 39210–39215 |
-| `vN` (N=1..99) | 39700+10N .. +5 | v1 = 39710–39715 |
+| `bN` (N=1..20) | 39000+10N .. +5 | b1 = 39010–39015 |
+| `cN` (N=1..48, c48 legacy-reserved) | 39200+10N .. +5 | c10 = 39300–39305 |
+| `vN` (N=1..29, v14/v15 LEGACY-FROZEN) | 39700+10N .. +6 | v3 = 39730–39736 |
+
+Port law authority: `docs/reference/port_law.md`; mechanical gate:
+`scripts/port_registry_check.py` (`--check` fail-closed, `--falsify`
+self-test corpus, `--report` census).
 
 ## fd-9 law
 
@@ -49,7 +55,8 @@ fd holds the lock + ports after the harness exits).
 ```json
 {"block": "b1", "ports": [39010, 39011, 39012, 39013, 39014, 39015],
  "pid": 84848, "auth": "anonymous", "booted": 1792428235,
- "log": "/tmp/smalt-substrate-state/logs/b1.log"}
+ "log": "/tmp/smalt-substrate-state/logs/b1.log",
+ "env_pin": "c552d32c42891dde…"}
 ```
 
 Reuse is lawful ONLY when ALL of:
@@ -57,9 +64,17 @@ Reuse is lawful ONLY when ALL of:
 - age `now - booted <= 3600s` (`SMALT_SB_MAX_REUSE_AGE`);
 - marker `pid` is in the lsof LISTEN set of the block's ARM port;
 - marker `auth` equals the requested auth (mismatch is logged as
-  `GUARD ... auth mismatch — sweep+fresh`, never silently adopted).
+  `GUARD ... auth mismatch — sweep+fresh`, never silently adopted);
+- marker `env_pin` equals `sb_env_pin` — the sha256 over the operator env
+  values this boot honors (`SMALT_ARM_RATE_LIMIT`, `SMALT_COSMOS_RU_LIMIT`,
+  `SMALT_SB_SHARED_KEY`; empty when unset, so pin/no-pin always differs).
+  An env-pin MISMATCH is a foreign incumbent: the caller refuses with
+  exit 3 and the incumbent beam is NEVER swept (a lane with a different
+  operator env may not kill another lane's substrate — the lock-manager
+  falsifier proves lane B exits 3 while lane A's beam survives). A marker
+  with no `env_pin` field (pre-law marker) is simply invalid (sweep+fresh).
 
-Anything else (missing/stale/foreign marker, wrong pid, wrong auth) =>
+Anything else (missing/stale marker, dead pid, wrong auth) =>
 beamish-only sweep (SIGTERM to mix/beam LISTENers on the block's ports;
 non-beam squatters are logged, NOT killed) + fresh boot. Sweep drain is
 deadline-bounded (10s, `SB_SWEEP_DRAIN`); ports still occupied after the

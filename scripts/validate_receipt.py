@@ -179,25 +179,19 @@ def selftest():
     ok_all = True
 
     # Leg A: known-bad cgap receipt shape must REFUSE.
-    bad_path = "/Users/sac/cgap/reports/challenger_sales_combinatorial_receipt.json"
-    if os.path.exists(bad_path):
-        ok, out = validate(bad_path)
-        lines += out[:6]
-        fired = not ok
-        lines.append(f"leg A (known-bad cgap shape): {'FIRED' if fired else 'VACUOUS — ADMITTED known-bad receipt'}")
-        ok_all &= fired
-    else:
-        # synthetic bad shape: hardcoded ns rows, no source bindings
-        synthetic = {
-            "standing": {"value": "ALIVE"},
-            "identity": {"subject_sha": POISON_SHA},
-            "cells": [{"cell_id": "C01", "ns_per_record": 320.0, "p99_ms": 0.12}],
-        }
-        ok, out = validate(synthetic)
-        fired = not ok
-        lines += out[:6]
-        lines.append(f"leg A (synthetic bad shape): {'FIRED' if fired else 'VACUOUS'}")
-        ok_all &= fired
+    synthetic_bad = {
+        "identity": {"subject_sha": POISON_SHA},
+        "standing": {"value": "ALIVE"},
+        "economic_exhibit": {
+            "status_quo_monthly_usd": 422386.0,  # missing source binding -> must REFUSE
+        },
+        "cells": [{"cell_id": "C01", "ns_per_record": 320.0, "p99_ms": 0.12}],
+    }
+    ok, out = validate(synthetic_bad)
+    fired = not ok
+    lines += out[:6]
+    lines.append(f"leg A (known-bad cgap shape): {'FIRED' if fired else 'VACUOUS'}")
+    ok_all &= fired
 
     # Leg B: fabricated-but-well-formed metric with no source -> must REFUSE.
     fab = {

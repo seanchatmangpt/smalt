@@ -52,8 +52,8 @@ function portFree(port) {
 }
 
 async function waitUp(url, deadlineMs, label) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < deadlineMs) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < deadlineMs) {
     try {
       const res = await fetch(url);
       if (res.status < 500) return true;

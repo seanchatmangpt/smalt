@@ -344,3 +344,82 @@ DELETE 202 shape, If-Match 412 + matched 201, WORM 409 ContainerLocked,
 legal hold header contract, pagination NextMarker.
 
 Result: `mix test test/compliance_test.exs` (compliance loader) → **157 tests, 0 failures (16 excluded)** (2026-10-18 re-measure; c4_blob register count fenced at 49 by the loader's inventory fence — 42 was the pre-lens-6/lens-5 count).
+
+## Arcus re-anchor appendix (P3-L4, 2026-11-05)
+
+Dual anchors per the C1-C7 re-anchoring plan (`docs/jira/v26.11.7/01-c1-c7-re-anchoring-plan.md`,
+anchor form section): the smalt half is a COUNTERPART, not a successor; arcus line numbers
+derived at execution time from the landed arcus tree. Per-anchor receipt:
+`docs/jira/v26.11.7/receipts/p3-l4-c4-reanchor.md`.
+
+| smalt locus (on-disk) | arcus counterpart (on-disk, real lines) | law |
+|---|---|---|
+| `lib/smalt/auth/bearer.ex:174-191` (SharedKey admit), `:198-209` (`shared_key_header?/1`) | `internal/dialect/azure/sharedkey.go:42-52` (`VerifySharedKey`), `:60-78` (`extract`), `:82-91` (`signatureOK`, constant-time) | SharedKey verification: `Authorization: SharedKey <acct>:<sig>` is a storage-client scheme; fail-closed; constant-time compare |
+| `lib/smalt/data_plane/blob/core.ex:1859-1878` (`request_id/0`, re-exported `blob_storage.ex:158`), `lib/smalt/egress_router.ex:2722-2740` (`generate_request_id/0`) | `internal/dialect/azure/blob_headers.go:37-53` (`BlobRequestID`, v4 bits `:44-45`, dashed format `:46-52`) | KD-152/F1: `x-ms-request-id` dashed-36 RFC 4122 v4 GUID |
+| `lib/smalt/data_plane/blob_service.ex:188-193` (`x-ms-version` emission) | `internal/dialect/azure/blob_headers.go:18-21` (`BlobVersionHeader`/`BlobAPIVersion` = `2021-12-02`), `:55-63` (`BlobBaseHeaders`) | every blob response carries x-ms-version: 2021-12-02 |
+| `lib/smalt/data_plane/conditional_headers.ex:13-34` (`evaluate/2`) | `internal/dialect/azure/conditional_headers.go:35-77` (`EvaluateConditional`) | RFC 7232 §6 precedence: If-Match first/independent, 412; If-None-Match match -> 304 (GET/HEAD) / 412 |
+| `lib/smalt/data_plane/conditional_headers.ex:50-62` (`etag_matches?/2`, `strip_quotes/1`) | `internal/dialect/azure/conditional_headers.go:79-101` (`etagListMatches`) | `*` / raw / quote-stripped candidate match over comma list |
+| `lib/smalt/data_plane/blob/core.ex:1124` (`x-ms-range || range` precedence), `:1212-1229` (`parse_page_range/1`), `lib/smalt/data_plane/blob/leases.ex:605-638` (`parse_range/2`, guard bounds) | `internal/dialect/azure/blob_blocks.go:221-257` (`ParsePageRange`, `CheckPageAlignment`) | x-ms-range parse + 400 code strings + 512-byte alignment; the x-ms-range-over-Range *selection* is caller-side (dialect counterpart-absent, see below) |
+| `lib/smalt/data_plane/blob/core.ex:405-430` (`check_block_id/1`, `block_key/4`) | `internal/dialect/azure/blob_blocks.go:41-70` (`ValidateBlockID`, `BlockKey`) | Put Block grammar: 1-64 bytes, base64, NUL-separated staged key |
+| `lib/smalt/egress_router.ex:2829-2896` (`blob_error/3`, `put_error_code_header`, `blob_error_message`) | `internal/dialect/azure/errors_armwire.go:70-90` (`BlobRender`, `SendBlobError`) | blob-face XML `<Error>` envelope + x-ms-request-id/x-ms-version/x-ms-error-code stamping |
+| `lib/smalt/data_plane/blob/core.ex:1583-1610` (`xml_escape/1`) | `internal/dialect/azure/errors_blob.go:9-48` (`XMLEscape`) | byte-exact XML escaping (control-byte drop, astral numeric refs) |
+| `lib/smalt/data_plane/blob/core.ex:282-313` (metadata name/value validation) | `internal/dialect/azure/blob_headers.go:74-104` (`ValidateBlobMetadata`, `InvalidMetadataMessage`) | KD-141: C#-identifier names, control-free values, 400 InvalidMetadata |
+| `lib/smalt/data_plane/blob_storage.ex:19-30` (per-blob immutability moduledoc), `lib/smalt/data_plane/blob/worm.ex:297-345` | `internal/dialect/azure/blob_headers.go:133-154` (`ParseWORMPolicyHeaders`) | mode-without-date 400, invalid date/mode 400 |
+| `lib/smalt/data_plane/blob_service.ex:82-110` (list containers XML render), `:160-193` (metadata PUT + ETag) | `internal/dialect/azure/etags.go:22-34` (`StorageETag`, `ContainerETag`), `internal/dialect/azure/storage_host.go:24` (`storageVersion`) | quoted `0x`-prefixed ETag derivation; version pin |
+| `lib/smalt/egress/storage_catch_all.ex` (batch grammar) | `internal/dialect/azure/blob_batch.go:40-190` (boundary/parts/sub-request/render law) | Put Blob Batch multipart grammar, 256 cap |
+| `lib/smalt/data_plane/blob/core.ex:866-1010` (snapshot + DeleteSnapshots) | `internal/dialect/azure/blob_batch.go:191-260` (`SnapshotBlobHeaders`, `ParseDeleteSnapshots`, `CheckSnapshotsOnDelete`) | snapshot wire law + 409 SnapshotsPresent gate |
+| `lib/smalt/egress_router.ex:2798-2814` (FEGS1 crash-fence fallback) | n/a — wire-layer crash fence stayed smalt-side; arcus dialect is pure functions | UNSUPPORTED(counterpart-absent), loud |
+
+### Byte-pin receipts (read from disk 2026-11-05)
+
+**x-ms-range precedence** — smalt `blob/core.ex:1124`:
+
+    range = header_value(headers, "x-ms-range") || header_value(headers, "range") || ""
+
+smalt `blob/leases.ex:608`: `Regex.run(~r/^bytes=(\d*)-(\d*)$/, String.trim(header))`.
+arcus `blob_blocks.go:228-246` (`ParsePageRange`) pins the same parse + 400 code strings
+(`MissingRequiredHeader` "x-ms-range is required for Put Page." /
+`InvalidHeaderValue` "The x-ms-range value is invalid."). The x-ms-range-over-Range
+*preference* is resolved engine-side in smalt (core.ex:1124); the arcus dialect exposes
+the resolved header string, so the preference law is
+UNSUPPORTED(counterpart-absent) at the dialect layer — loudly missing, not silently skipped.
+
+**request-id v4 regex** — smalt mint `blob/core.ex:1865-1878` /
+`egress_router.ex:2727-2740` (`~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b`, v4 bits
+`c4 = band(c, 0x0FFF) + 0x4000`, `d = bor(band(d, 0x3FFF), 0x8000)`). smalt fence regex
+`test/internal/kd_conf_court_test.exs:13`:
+`~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/`.
+arcus mint `blob_headers.go:39-53` (same v4 bit ops at `:44-45`); arcus fence
+`blob_headers_test.go:15`:
+`var dashed36 = regexp.MustCompile(`+"`"+`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`+"`"+`)`
+with explicit v4 bit assertions at `blob_headers_test.go:26` ("is not version 4").
+
+**verbatim body** — smalt `egress_router.ex:2858-2866` iolist envelope bytes:
+`"<?xml version=\"1.0\" encoding=\"utf-8\"?>" <> "<Error><Code>" <> code <>
+"</Code><Message>" <> ... <> "</Message></Error>"`. arcus `errors_armwire.go:75-78`
+`BlobRender` concatenates the identical byte string (XMLEscape on both slots). The
+FEGS1 fallback body (`egress_router.ex:2803`,
+`<?xml version="1.0"...><Error><Code>InternalServerError</Code><Message>Internal server error.</Message></Error>`)
+has no arcus counterpart (smalt-side crash fence).
+
+### Stale smalt-side anchors (disclosed, not rewritten — plan law)
+
+The C4_BLOB.md body anchors citing `blob_storage.ex:232-255 / 263-267 / 302-346 /
+410-428 / 479 / 999` pre-date the T09 blob split: `blob_storage.ex` is now a 161-line
+defdelegate facade and the cited law lives in `blob/core.ex`, `blob/leases.ex`,
+`blob/worm.ex` (e.g. `blob_storage.ex:999` request_id is now `blob/core.ex:1865-1878`,
+re-exported at `blob_storage.ex:158`). Per the plan ("the smalt anchor stays
+byte-identical; the arcus half is appended, never substituted") the body text was NOT
+rewritten; the on-disk loci above are the lawful re-anchor counterparts.
+
+### Gate receipt
+
+`go test ./internal/dialect/azure/` (arcus @ working tree 2026-11-05): **FAIL — 2
+pre-existing failures, session-introduced = 0** (this lane edited docs only):
+`TestFileShareListDir` (fileshare listing order) and `TestRoutingCourtAcrV2Route`
+(ACR v2 base-ping grammar); both in files outside the C4 anchor set
+(fileshare.go / routing). All blob/conditional/request-id/error-envelope laws PASS:
+`TestBlobHeadersBlobRequestIDIsDashed36RFC4122v4`, `TestConditionalDateHeaders` (10
+subtests), `TestConditionalNoLastModified`, `TestConditionalEmptyETag`, and the
+`SendBlobError` courts. Targeted run
+`-run 'TestBlobHeadersBlobRequestID|BlobError|ParsePageRange|Conditional'` → ok 0.285s.

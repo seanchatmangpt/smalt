@@ -191,3 +191,9 @@ priv/data/
 coverage/
 *.dets
 *.ets
+
+# v26.11.6/7 lane-session hygiene (GIT-SMALT lane)
+/dev/
+bench/tmp/
+.ggen-v2/lease/
+.ggen/freeze/

@@ -77,4 +77,36 @@ defmodule SmaltTest.Courts.OffsetJournalTest do
 
     GenServer.stop(new_pid)
   end
+
+  test "recovers cleanly from truncated/corrupted tail of offsets.journal under crash", %{pid: pid} do
+    # Commit valid records
+    :ok = OffsetJournal.commit(:kafka, "g1", "t1", 0, 42)
+    :ok = OffsetJournal.commit(:kinesis, "g2", "s1", 0, 84)
+
+    # Brutal kill
+    Process.unlink(pid)
+    Process.exit(pid, :kill)
+    refute Process.alive?(pid)
+
+    # Append corrupted / truncated partial frame to offsets.journal
+    journal_path = Path.join(@test_dir, "offsets.journal")
+    File.write!(journal_path, <<0x4F, 0x46, 0x46, 0x53, 0x00, 0x00, 0xFF, 0xFF, 0xDE, 0xAD>>, [:append])
+
+    # Re-open GenServer
+    if sup_pid = Process.whereis(OffsetJournal) do
+      try do
+        GenServer.stop(sup_pid)
+      catch
+        :exit, _ -> :ok
+      end
+    end
+
+    {:ok, new_pid} = OffsetJournal.start_link(data_dir: @test_dir)
+
+    # Verify that valid pre-corruption records were completely recovered
+    assert {:ok, 42} = OffsetJournal.fetch(:kafka, "g1", "t1", 0)
+    assert {:ok, 84} = OffsetJournal.fetch(:kinesis, "g2", "s1", 0)
+
+    GenServer.stop(new_pid)
+  end
 end

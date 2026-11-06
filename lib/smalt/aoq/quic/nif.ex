@@ -73,11 +73,38 @@ defmodule :cgap_beam do
 
   # ------------------------------------------------------------------
   # Surface (stub bodies below; replaced by the dylib's exports at
-  # load time). Stub law: named refusal log + the bare :error atom,
-  # mirroring the NIF's own error convention. stub_error/0 returns via
-  # binary_to_existing_atom so the success clauses in the wrapper are
-  # not statically-unreachable (the real dylib CAN return them).
+  # load time). OTP requires stub declarations for ALL entries declared
+  # in the dylib's ErlNifEntry (all 38 funcs), otherwise load_nif
+  # refuses with {:bad_lib, ~c"Function not found ..."}.
   # ------------------------------------------------------------------
+
+  def cgap_new(_n, _fill), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_new_fast(_n, _fill), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_len(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_get(_id, _idx), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_free(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_version(), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_new_i64(_n, _fill), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_get_i64(_id, _idx), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_stats(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_envelope_new(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_envelope_len(_handle), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_batch_binary(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def pointer_of(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_binary_data_pointer(_bin), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_dtor_stats(), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_alloc_stats(), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_flush_to_parquet(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_seal_to_packfile(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_receipt_query(_id), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_open(_path), do: :erlang.nif_error(:nif_not_loaded)
+  def cgap_scan(_id, _col, _val), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_open(_path), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_frame(_slab, _idx), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_window(_slab, _idx, _off, _len), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_stamp(_slab, _idx), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_lease(_slab, _mask), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_slab_sync(_slab), do: :erlang.nif_error(:nif_not_loaded)
 
   def aq_quic_open(_port, _ca_der) do
     stub_refusal(:aq_quic_open, 2)
@@ -98,6 +125,14 @@ defmodule :cgap_beam do
     stub_refusal(:aq_quic_recv, 2)
     stub_error()
   end
+
+  def aq_quic_serve(_engine, _port, _cert_der, _key_der), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_accept(_listener, _timeout_ms), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_accept_bi(_conn, _timeout_ms), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_stream_open(_conn), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_stream_send(_stream, _data), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_stream_recv(_stream, _timeout_ms), do: :erlang.nif_error(:nif_not_loaded)
+  def aq_quic_stream_close(_stream), do: :erlang.nif_error(:nif_not_loaded)
 
   # dynamic(): the stub must type as term so the wrapper's success
   # clauses (real-dylib returns) are not flagged unreachable.
@@ -129,4 +164,11 @@ defmodule Smalt.Aoq.Quic.Nif do
   defdelegate aq_quic_connect(engine, addr, server_name), to: :cgap_beam
   defdelegate aq_quic_send(conn, data), to: :cgap_beam
   defdelegate aq_quic_recv(conn, timeout_ms), to: :cgap_beam
+  defdelegate aq_quic_serve(engine, port, cert_der, key_der), to: :cgap_beam
+  defdelegate aq_quic_accept(listener, timeout_ms), to: :cgap_beam
+  defdelegate aq_quic_accept_bi(conn, timeout_ms), to: :cgap_beam
+  defdelegate aq_quic_stream_open(conn), to: :cgap_beam
+  defdelegate aq_quic_stream_send(stream, data), to: :cgap_beam
+  defdelegate aq_quic_stream_recv(stream, timeout_ms), to: :cgap_beam
+  defdelegate aq_quic_stream_close(stream), to: :cgap_beam
 end

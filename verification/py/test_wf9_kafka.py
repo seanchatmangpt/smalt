@@ -25,7 +25,70 @@ import time
 
 REPO = str(pathlib.Path(__file__).resolve().parents[2])
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from conftest import _kill, _port_open, _sweep  # noqa: E402
+# HR-I disclosure: conftest boot internals (_kill/_sweep) retired in the
+# substrate-ctl delegation migration — wf9 keeps LOCAL copies of these two
+# sweep/kill helpers (this file self-boots its own v9/v11 blocks with the
+# asdf toolchain and never used conftest's fixtures).
+import signal
+import subprocess
+
+
+def _port_open(port, timeout=1.0):
+    with socket.socket() as s:
+        s.settimeout(timeout)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _sweep(ports):
+    for p in ports:
+        for pid in _listener_pids(p):
+            if _is_beamish(pid):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if not any(_port_open(p) for p in ports):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _listener_pids(port):
+    try:
+        out = subprocess.run(["lsof", "-t", "-iTCP:%d" % port, "-sTCP:LISTEN"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except subprocess.SubprocessError:
+        return set()
+    return {int(p) for p in out.split() if p.isdigit()}
+
+
+def _is_beamish(pid):
+    try:
+        cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=5).stdout
+    except subprocess.SubprocessError:
+        return False
+    return "beam" in cmd or "mix" in cmd
+
+
+def _kill(proc):
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 VENV_PY = "/Users/sac/.claude/jobs/462babfd/tmp/hc-venv/venv/bin/python"
 
@@ -38,12 +101,6 @@ pathlib.Path("/tmp/smalt-substrate-state/locks").mkdir(parents=True, exist_ok=Tr
 LOG_DIR = "/tmp/smalt-substrate-state/logs"
 LOG_PLAIN = LOG_DIR + "/v9.log"
 LOG_SASL = LOG_DIR + "/v11.log"
-
-
-def _port_open(port, timeout=1.0):
-    with socket.socket() as s:
-        s.settimeout(timeout)
-        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _wait_ports(ports, label, deadline_s=120):

@@ -340,10 +340,10 @@ defmodule SmaltTest.KafkaWireTest do
 
   # -- KD-HC court legs (WP lane, v26.11.6) --------------------------------------
 
-  # KD-HC-3: ApiVersions answered with version-correct payloads. v0 is the
+  # KD-208: ApiVersions answered with version-correct payloads. v0 is the
   # bare {error_code, entries} shape; v1/v2 prepend the throttle_time_ms i32
   # head (KIP-511/183 posture; kafkajs misparsed the v0-shaped echo).
-  test "KD-HC-3: ApiVersions v0/v1/v2 payload shapes are version-correct" do
+  test "KD-208: ApiVersions v0/v1/v2 payload shapes are version-correct" do
     alias Smalt.Messaging.Kafka.Listener
 
     port = Listener.port()
@@ -359,34 +359,39 @@ defmodule SmaltTest.KafkaWireTest do
     assert n0 == entries
     assert byte_size(body0) == n0 * 6
 
-    # v1: corr | throttle_time_ms i32 | error_code i16 | array_len i32 | entries.
+    # v1: corr | error_code i16 | array_len i32 | entries | throttle_time_ms
+    # i32 TAIL (ApiVersions is the one API whose throttle lands last —
+    # protocol guide / KIP-183; kafkajs parses head-placed throttle as
+    # error_code and reads an empty array).
     :ok = :gen_tcp.send(sock, expl4_req(18, 1, <<>>))
 
-    assert {:ok,
-            <<_c1::signed-32, throttle1::signed-32, 0::signed-16, n1::signed-32,
-              body1::binary>>} = recv_resp(sock)
+    assert {:ok, <<_c1::signed-32, 0::signed-16, n1::signed-32, tail1::binary>>} =
+             recv_resp(sock)
 
-    assert throttle1 == 0
     assert n1 == entries
-    assert byte_size(body1) == n1 * 6
+    # entries + the throttle_time_ms i32 TAIL.
+    assert byte_size(tail1) == n1 * 6 + 4
+    assert binary_part(tail1, byte_size(tail1), -4) == <<0::signed-32>>
 
     # v2: wire-identical to v1 (flexible from v3, never served).
     :ok = :gen_tcp.send(sock, expl4_req(18, 2, <<>>))
 
-    assert {:ok,
-            <<_c2::signed-32, throttle2::signed-32, 0::signed-16, n2::signed-32,
-              body2::binary>>} = recv_resp(sock)
+    assert {:ok, <<_c2::signed-32, 0::signed-16, n2::signed-32, tail2::binary>>} =
+             recv_resp(sock)
 
-    assert throttle2 == 0
     assert n2 == entries
-    assert body2 == body1
+    assert byte_size(tail2) == n2 * 6 + 4
+    assert binary_part(tail2, byte_size(tail2), -4) == <<0::signed-32>>
+    assert binary_part(tail2, 0, byte_size(tail2) - 4) ==
+             binary_part(tail1, 0, byte_size(tail1) - 4)
+
     :gen_tcp.close(sock)
   end
 
-  # KD-HC-1: Metadata v3 named-topic request answered with the v3 shape —
+  # KD-206: Metadata v3 named-topic request answered with the v3 shape —
   # throttle head, then {brokers, cluster_id, controller_id, topics[] with
   # err/name/is_internal/partitions} — and the requested topic name echoed.
-  test "KD-HC-1: Metadata v3 named-topic response shape and byte order" do
+  test "KD-206: Metadata v3 named-topic response shape and byte order" do
     alias Smalt.Messaging.Kafka.Listener
 
     port = Listener.port()
@@ -401,7 +406,8 @@ defmodule SmaltTest.KafkaWireTest do
 
     assert {:ok,
             <<
-              _corr::signed-32, throttle::signed-32, 1::signed-32, 9::16, "127.0.0.1",
+              _corr::signed-32, throttle::signed-32, 1::signed-32, _node::signed-32,
+              9::16, "127.0.0.1",
               bport::signed-32, -1::signed-16, _cluster::signed-32, -1::signed-16,
               1::signed-32, 0::signed-16, 5::16, "kafka", internal::8, nparts::signed-32,
               tail::binary
@@ -411,15 +417,18 @@ defmodule SmaltTest.KafkaWireTest do
     assert internal == 0
     assert nparts == parts
     # Per-partition block: err i16 | partition i32 | leader i32 |
-    # replicas[1] | isr[1] = 22 bytes each.
-    assert byte_size(tail) == parts * 22
+    # replicas[count=1 + elem] | isr[count=1 + elem] = 26 bytes each.
+    # SLA-UNBLOCK (LANE-01, disclosed in both receipts): the authored 22
+    # bytes/block omitted the two array count fields (2 x 4B) — the protocol
+    # block is 26 bytes; 2 partitions -> 52.
+    assert byte_size(tail) == parts * 26
     assert bport == port
     :gen_tcp.close(sock)
   end
 
-  # KD-HC-1 flip side: the matrix no longer advertises Metadata v4, so a v4
+  # KD-206 flip side: the matrix no longer advertises Metadata v4, so a v4
   # request is the crash-only face — typed kill telemetry, never a parse guess.
-  test "KD-HC-1: Metadata v4 (unadvertised) is crash-only killed with telemetry" do
+  test "KD-206: Metadata v4 (unadvertised) is crash-only killed with telemetry" do
     alias Smalt.Messaging.Kafka.Listener
 
     parent = self()

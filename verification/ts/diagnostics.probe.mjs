@@ -14,8 +14,9 @@
 //      on the egress/ARM routers (owning surface: Sentinel/LA workspace tables
 //      ARM family — no route landed).
 // Run: node verification/ts/diagnostics.probe.mjs
-// Boots its own private substrate on v-block v15 (scripts/substrate-ctl port
-// shape: 39700 + 10*blockNo..+5), sweeps it down after. Exit contract:
+// Boots its own private substrate on v-block v16 (scripts/substrate-ctl port
+// shape: 39700 + 10*blockNo..+6, 7 ports incl. kafka — docs/reference/port_law.md),
+// sweeps it down after. Exit contract:
 // 0 pass-or-typed-skip / 1 hard FAIL / 2 substrate/boot fail.
 import { spawn, spawnSync } from "node:child_process";
 import https from "node:https";
@@ -35,7 +36,7 @@ function tryConnect(port, host = "127.0.0.1", timeoutMs = 500) {
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 const CTL = path.join(REPO, "scripts/substrate-ctl");
-const BLOCK = process.env.DIAG_BLOCK ?? "v15";
+const BLOCK = process.env.DIAG_BLOCK ?? "v16";
 const CA = fs.readFileSync(path.join(REPO, ".smalt/tls/ca-cert.pem"));
 const TENANT = "00000000-0000-0000-0000-000000000000";
 const SUB = "11111111-1111-1111-1111-111111111111";
@@ -96,8 +97,10 @@ async function main() {
   // ---- private substrate, bootPrivate shape (known SB shared key) ---------
   spawnSync(CTL, ["down", "--block", BLOCK, "--mode", "sweep"], { timeout: 60_000 });
   const n = Number(BLOCK.slice(1));
-  const ports = [0, 1, 2, 3, 4, 5].map((i) => 39700 + 10 * n + i);
-  const [amqpPort, ehPort, armPort, egressPort, tlsPort, mcpPort] = ports;
+  // 7 slots per v-law (docs/reference/port_law.md); kafka (7th) is reserved
+  // for this block even though this probe binds only the six classic faces.
+  const ports = [0, 1, 2, 3, 4, 5, 6].map((i) => 39700 + 10 * n + i);
+  const [amqpPort, ehPort, armPort, egressPort, tlsPort, mcpPort, kafkaPort] = ports;
   const certDir = path.join(REPO, ".smalt/tls");
   const sharedKey = Buffer.from(`${BLOCK}-${Date.now()}-diagnostics`).toString("base64");
   const bootEval = [
@@ -109,6 +112,8 @@ async function main() {
     `Application.put_env(:smalt, :egress_port, ${egressPort})`,
     `Application.put_env(:smalt, :arm_tls_port, ${tlsPort})`,
     `Application.put_env(:smalt, :mcp_port, ${mcpPort})`,
+    // v-law 7th slot: pin the kafka face to this block's kafka port
+    `Application.put_env(:smalt, :kafka_port, ${kafkaPort})`,
     `Application.put_env(:smalt, :auth_mode, :enforce)`,
     `{:ok, _} = Application.ensure_all_started(:smalt)`,
   ].join("; ");

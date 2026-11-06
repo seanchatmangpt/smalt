@@ -125,7 +125,7 @@ defmodule Smalt.Amqp.DeliveryEncoder do
   0001-01-01 00:00:00 UTC), the encoding Service Bus requires for
   `com.microsoft:locked-until-utc`.
 
-      filetime_from_ms(0)                      #=> 62_135_596_800_000_000
+      filetime_from_ms(0)                      #=> 621_355_968_000_000_000
       filetime_from_ms(1_791_936_000_000)      #=> 639_275_328_000_000_000
 
   Millisecond precision is preserved (the low 4 ticks of each ms are zero).

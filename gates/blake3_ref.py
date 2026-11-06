@@ -232,6 +232,42 @@ _KAT = [
      "68ebf20f48ebd70901488c8ee170ba6bba50b51d5fcf1d65076010ac79849a43"),
 ]
 
+# --- Shared fixture vectors (lane R7-I, smalt v26.11.6) ----------------------
+# The ivMod251 vectors from verification/blake3_vectors.json (canonical
+# mint: REAL cgap-blake3 @ cgap a216b486fe7d312ad982ff66b158c30ae493ec09;
+# agreement witnessed across cgap Rust, posh Go, arcus Go, Elixir, and this
+# Python ref). Rows < 2 MiB fence at import (~0.03s total). The 2 MiB+1
+# SIMD-witness row costs ~2.5s in pure Python, so it lives in
+# _SHARED_FIXTURE_HEAVY, asserted when the module is RUN as a script
+# (python3 gates/blake3_ref.py) -- NOT at import (a ~2.5s import tax on
+# every gate consumer is worse than a deferred heavy row).
+_KAT += [
+    (bytes(i % 251 for i in range(63)),
+     "e9bc37a594daad83be9470df7f7b3798297c3d834ce80ba85d6e207627b7db7b"),
+    (bytes(i % 251 for i in range(64)),
+     "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98"),
+    (bytes(i % 251 for i in range(65)),
+     "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee"),
+    (bytes(i % 251 for i in range(1023)),
+     "10108970eeda3eb932baac1428c7a2163b0e924c9a9e25b35bba72b28f70bd11"),
+    (bytes(i % 251 for i in range(1024)),
+     "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7"),
+    (bytes(i % 251 for i in range(1025)),
+     "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444"),
+    (bytes(i % 251 for i in range(2048)),
+     "e776b6028c7cd22a4d0ba182a8bf62205d2ef576467e838ed6f2529b85fba24a"),
+    (bytes(i % 251 for i in range(2049)),
+     "5f4d72f40d7a5f82b15ca2b2e44b1de3c2ef86c426c95c1af0b6879522563030"),
+    (bytes(i % 251 for i in range(4096)),
+     "015094013f57a5277b59d8475c0501042c0b642e531b0a1c8f58d2163229e969"),
+]
+
+# 2 MiB+1: spans 2049 chunks = >= 3 Merkle levels (the SIMD witness).
+_SHARED_FIXTURE_HEAVY = [
+    (bytes(i % 251 for i in range(2097153)),
+     "52dc212cb4cc61cb94d25bd7b1d47b256e4c3a6d68956df50c235c37a2aeacd7"),
+]
+
 
 def _run_kat():
     for data, expected in _KAT:
@@ -243,3 +279,13 @@ def _run_kat():
 
 
 _run_kat()
+
+if __name__ == "__main__":
+    for data, expected in _SHARED_FIXTURE_HEAVY:
+        got = blake3_hex(data)
+        if got != expected:
+            raise Blake3KatError(
+                "BLAKE3 shared-fixture mismatch for %d-byte input: got %s, "
+                "expected %s" % (len(data), got, expected))
+    print("blake3_ref fences PASS (%d import KAT rows, %d heavy rows)"
+          % (len(_KAT), len(_SHARED_FIXTURE_HEAVY)))

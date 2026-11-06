@@ -1,7 +1,11 @@
 package receipt
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -211,4 +215,53 @@ func TestOversizedInputPanics(t *testing.T) {
 		}
 	}()
 	h.pushChunkCV([8]uint32{1, 2, 3, 4, 5, 6, 7, 8}, 3)
+}
+
+// TestBlake3SharedVectors consumes the canonical BLAKE3 vector fixture
+// (lane R7-I): sha-pinned read of verification/blake3_vectors.json, minted
+// from REAL cgap-blake3 at cgap a216b486fe7d312ad982ff66b158c30ae493ec09
+// (generator_pin in the fixture itself). The posh twin is a vendored
+// variant of the canonical arcus adapter implementation -- documented delta
+// in BLAKE3_PIN.md (64 MiB turnstile cap, TurnstileReceipt prefix,
+// alloc-free style).
+func TestBlake3SharedVectors(t *testing.T) {
+	const path = "../../../verification/blake3_vectors.json"
+	const shaPin = "dbbcd0c57e177447dd502c24d3b40c841ae70798e906081cb0d7ce35cb617fc6"
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("canonical fixture unreadable: %v", err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(raw)); got != shaPin {
+		t.Fatalf("canonical fixture sha256 drift: got %s, want %s", got, shaPin)
+	}
+
+	var fixture struct {
+		Vectors []struct {
+			Name   string `json:"name"`
+			Size   int    `json:"size"`
+			Digest string `json:"digest"`
+		} `json:"vectors"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatalf("fixture parse: %v", err)
+	}
+	if len(fixture.Vectors) == 0 {
+		t.Fatal("fixture carries no vectors")
+	}
+	simdWitness := false
+	for _, v := range fixture.Vectors {
+		in := patternInput(v.Size)
+		got := Sum256(in)
+		gotHex := hex.EncodeToString(got[:])
+		if gotHex != v.Digest {
+			t.Errorf("%s (size=%d): digest mismatch\n  want: %s\n  got:  %s", v.Name, v.Size, v.Digest, gotHex)
+		}
+		if v.Size == 2097153 {
+			simdWitness = true
+		}
+	}
+	if !simdWitness {
+		t.Error("SIMD witness vector (size 2097153) missing from fixture")
+	}
 }

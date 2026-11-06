@@ -48,14 +48,6 @@ defmodule Smalt.Aoq.Quic.WrapperTest do
 
   alias Smalt.Aoq.Quic
 
-  test "server face is typed UNSUPPORTED (client-role NIF surface)" do
-    unsupported = {:quic_refusal, {:unsupported, :server_role_not_in_nif_surface}}
-
-    assert {:error, ^unsupported} = Quic.serve(0, [])
-    assert {:error, ^unsupported} = Quic.accept(make_ref())
-    assert {:error, ^unsupported} = Quic.stream_open(make_ref())
-  end
-
   test "badarg refusals" do
     assert {:error, {:quic_refusal, :badarg}} = Quic.open(-1, <<>>)
     assert {:error, {:quic_refusal, :badarg}} = Quic.open(70_000, <<>>)
@@ -63,5 +55,12 @@ defmodule Smalt.Aoq.Quic.WrapperTest do
     assert {:error, {:quic_refusal, :badarg}} = Quic.connect(make_ref(), :bad, "x")
     assert {:error, {:quic_refusal, :badarg}} = Quic.recv(make_ref(), -5)
     assert {:error, {:quic_refusal, :badarg}} = Quic.recv(make_ref(), 61_000)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.serve(make_ref(), -1, <<>>, <<>>)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.accept(make_ref(), -1)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.accept_bi(make_ref(), -1)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.stream_open(:not_a_conn)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.stream_send(:not_a_stream, 42)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.stream_recv(make_ref(), 61_000)
+    assert {:error, {:quic_refusal, :badarg}} = Quic.stream_close(:not_a_stream)
   end
 end

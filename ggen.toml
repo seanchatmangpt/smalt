@@ -29,3 +29,8 @@ dir = "templates"
 "kubernetes-workload-pack" = { path = "/Users/sac/ggen-marketplace/packs/kubernetes-workload-pack" }
 "smalt-k8s-pack" = { path = "packs/smalt-k8s-pack" }
 "posh-pack" = { path = "ggen-marketplace/packs/posh" }
+# kafka-wire-pack (lane R2-I, 2026-11-05): served version matrix + CRC domains
+# projected into Elixir (wire/records) + Markdown (version matrix doc).
+# servedMax values corrected per KD-190 / KD-HC-1 / KD-HC-3 — see pack
+# ontology.ttl comments. rs/go template families deferred (not consumed).
+"kafka-wire-pack" = { path = "/Users/sac/ggen-marketplace/packs/kafka-wire-pack" }

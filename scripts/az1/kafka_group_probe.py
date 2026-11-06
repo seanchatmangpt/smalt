@@ -127,21 +127,40 @@ def leg_b(port, group, expected_commit, tag):
 
 
 def leg_c(port, group, tag):
+    import threading
+
     c1 = consumer(port, group)
     c2 = consumer(port, group)
     c1.subscribe([TOPIC])
     c2.subscribe([TOPIC])
-    recs1 = poll_records(c1)
-    recs2 = poll_records(c2)
 
-    def step():
+    stop = threading.Event()
+    res = {}
+
+    def spin(name, c):
+        got = []
+        while not stop.is_set():
+            batch = c.poll(timeout_ms=500)
+            for _tp, recs in batch.items():
+                got.extend(recs)
+        res[name] = (got, c)
+
+    t1 = threading.Thread(target=spin, args=("c1", c1))
+    t2 = threading.Thread(target=spin, args=("c2", c2))
+    t1.start()
+    t2.start()
+    deadline = time.monotonic() + 40
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
         a1 = {tp.partition for tp in c1.assignment()}
         a2 = {tp.partition for tp in c2.assignment()}
         if a1 and a2 and not (a1 & a2) and (a1 | a2) == {0, 1}:
-            return (a1, a2)
-        return None
-
-    a1, a2 = bounded(step, 40)
+            break
+    stop.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+    assert a1 and a2 and not (a1 & a2) and (a1 | a2) == {0, 1}, \
+        f"pair assignment never converged: a1={a1} a2={a2}"
     print("PASS legC disjoint roundrobin a1=%s a2=%s" % (a1, a2))
     c1.close()
     c2.close()

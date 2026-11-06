@@ -126,8 +126,10 @@ declared in the `just` recipe, not in the harness.
   `mix run --no-start --no-halt -e "$BOOT_EVAL"` sets `:smalt` Application
   env via `Application.put_env/2`, then `Application.ensure_all_started(:smalt)`.
 - **vN port family.** Port blocks are versioned per lane so concurrent lanes
-  never collide: `vN = 39700 + 10N .. +5` (v1..v12; 39700 band verified free;
-  39826-39839 spare), alongside the fixed listener set (ARM 9443, TLS twin
+  never collide: `vN = 39700 + 10N .. +6` (7 ports, kafka = 7th slot — v-face
+  only; v1..v29, v14/v15 LEGACY-FROZEN; authority:
+  `docs/reference/port_law.md`, gate: `scripts/port_registry_check.py`;
+  39700 band verified free; 39826-39839 spare), alongside the fixed listener set (ARM 9443, TLS twin
   9444, egress/data 8443, AMQP 5672, EH 5673, MCP 9545).
 - **Throttle profile via boot-eval put_env.** Non-default traffic shapes are
   injected through the boot eval, never patched at runtime:

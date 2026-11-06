@@ -3,8 +3,16 @@
 %%
 %% run_benchmark/3: aggregate wall-clock timing (monotonic ns), reduction
 %% accounting via statistics(reductions), GC-stabilized heap delta.
+%% Sampling law: the AFTER heap sample is taken AFTER gc_stabilize() —
+%% both endpoints are GC-stabilized, never one raw / one collected.
+%% Driver-overhead disclosure: the bench loop itself (do_n recursion +
+%% retained last result) costs wall-time and reductions that are IN the
+%% timed region; the same driver is measured over a noop fun at the same
+%% N and disclosed in every row as driver_wall_ms + driver_reds_per_op,
+%% so per-op math is never silently attributed to the bench body.
 %% Receipts: one JSONL row per bench -> tmp/bench/court_bench_<ts>.jsonl
-%% Row fields: name, n, wall_ms, ops_sec, ns_per_op, reds_per_op, heap_delta.
+%% Row fields: name, n, wall_ms, ops_sec, ns_per_op, reds_per_op,
+%% heap_delta, driver_wall_ms, driver_reds_per_op.
 %%
 %% Dispatch table: real-plane targets register via add_target/3 (Name, Mod, Fun);
 %% follow-on lanes land their modules and add entries (run_registered/2).
@@ -14,7 +22,8 @@
          run_registered/2, list_targets/0, court_selftest/0, add_bc_targets/0]).
 
 -define(RECEIPT_DIR, "tmp/bench").
--define(FIELDS, [n, wall_ms, ops_sec, ns_per_op, reds_per_op, heap_delta]).
+-define(FIELDS, [n, wall_ms, ops_sec, ns_per_op, reds_per_op, heap_delta,
+                 driver_wall_ms, driver_reds_per_op]).
 
 %% ------------------------------------------------------------------
 %% Public API
@@ -24,13 +33,14 @@
 %% Runs Fun N times; the Fun must do ONE unit of bench work (the loop
 %% belongs to us, so reductions attribute to the bench, not a wrapper).
 run_benchmark(Name, Fun, N) when is_function(Fun, 0), is_integer(N), N > 0 ->
+    {DrvWallNs, DrvReds} = driver_overhead(N),
     gc_stabilize(),
     {HeapBefore, RedBefore} = heap_and_reds(),
     T0 = erlang:monotonic_time(nanosecond),
-    do_n(Fun, N),
+    _LastLive = do_n(Fun, N), %% held live through the after-sample (see do_n/2)
     T1 = erlang:monotonic_time(nanosecond),
-    {HeapAfter, RedAfter} = heap_and_reds(),
     gc_stabilize(),
+    {HeapAfter, RedAfter} = heap_and_reds(),
     WallNs = max(1, T1 - T0),
     Reds = max(0, RedAfter - RedBefore),
     #{name => to_bin(Name),
@@ -39,7 +49,9 @@ run_benchmark(Name, Fun, N) when is_function(Fun, 0), is_integer(N), N > 0 ->
       ops_sec => N * 1.0e9 / WallNs,
       ns_per_op => WallNs / N,
       reds_per_op => Reds / N,
-      heap_delta => (HeapAfter - HeapBefore) * erlang:system_info(wordsize)}.
+      heap_delta => (HeapAfter - HeapBefore) * erlang:system_info(wordsize),
+      driver_wall_ms => DrvWallNs / 1.0e6,
+      driver_reds_per_op => DrvReds / N}.
 
 %% Run a list of {Name, Fun, N} benches and emit one receipt file.
 run_all(Benches) ->
@@ -140,11 +152,26 @@ count(C, Bin) -> length(binary:matches(Bin, <<C>>)).
 %% Internal
 %% ------------------------------------------------------------------
 
-do_n(_Fun, 0) -> ok;
-do_n(Fun, N) -> _ = Fun(), do_n(Fun, N - 1).
+%% The loop keeps the LAST result live through the after-sample so the
+%% heap delta reflects a real allocation footprint for allocating benches
+%% (a fully-dropped result would read as 0 delta after GC stabilization).
+do_n(Fun, N) -> do_n(Fun, N, undefined).
+do_n(_Fun, 0, Last) -> Last;
+do_n(Fun, N, _Prev) -> do_n(Fun, N - 1, Fun()).
 
+%% The driver loop itself, measured over a noop fun at the same N.
+driver_overhead(N) ->
+    gc_stabilize(),
+    {_, Red0} = heap_and_reds(),
+    T0 = erlang:monotonic_time(nanosecond),
+    do_n(fun() -> ok end, N),
+    T1 = erlang:monotonic_time(nanosecond),
+    {_, Red1} = heap_and_reds(),
+    {max(1, T1 - T0), max(0, Red1 - Red0)}.
+
+%% A single full-sweep collect is the stabilization; the second collect
+%% was a no-op (nothing new to collect between two back-to-back sweeps).
 gc_stabilize() ->
-    erlang:garbage_collect(self()),
     erlang:garbage_collect(self()).
 
 heap_and_reds() ->

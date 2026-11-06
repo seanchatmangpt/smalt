@@ -113,3 +113,33 @@ signing, real `Plug.Parsers` form decoding), per
   but shuts down ("Application smalt exited: shutdown") under `mix run --no-halt`
   outside `mix test` — the Amqp sweeper crash loop terminates the app. The
   in-process court is the working gate.
+
+## Arcus dual anchors (P3-L6 re-anchor, 2026-11-05)
+
+The C6 behavior surface is re-anchored dual-repo: smalt loci (rows above cite
+`router.ex`/`bearer.ex`) map line-for-line onto the arcus Go membrane
+(`/Users/sac/arcus/internal/dialect/azure/`). NOTE on router.ex rows: the STS
+route family was extracted from `router.ex` into the route-family plug
+`lib/smalt/arm_gateway/plug/oidc_sts.ex` (T06, v26.10.29); every `router.ex:NNN`
+citerow above now resolves to the plug. Real verified lines (grep -n on
+2026-11-05):
+
+| smalt locus | behavior | arcus anchor (real lines) |
+|---|---|---|
+| `router.ex` token rows → `arm_gateway/plug/oidc_sts.ex:290-315` (routes `post "/oauth2/v2.0/token"` :290, `post "/:tenant_id/oauth2/v2.0/token"` :294; `handle_token/2` :30; `validate_token_request/1` :75; `issue_token/2` :121; `token_error/2` :58) | token endpoint, §5.2 validation, envelope mint | `oidc_sts.go:286` `HandleTenantToken`, `:220` `ValidateTokenRequest` (`invalid_request` :224/:226, `unsupported_grant_type` :228, `invalid_client` :230), `:236` `TokenClaims`, `:279` `writeTokenError`, `:432` `Router` mux |
+| `router.ex` discovery rows → `arm_gateway/plug/oidc_sts.ex:256-276` (`openid_envelope/2`: issuer :262, token_endpoint :262, jwks_uri :261, id_token_signing_alg :267, response_types :273, subject_types :274; `HandleOIDCDiscovery` :313, `HandleJWKS` :319, `HandleInstanceDiscovery` :331, tenant_discovery_endpoint :339-340) | OIDC discovery doc, JWKS, instance discovery | `oidc_discovery.go:24` `OAuthAuthServerMetadataDoc` (issuer :26, token_endpoint :28, jwks_uri :29, response_types :32), `:41` `HandleOAuthAuthServerMetadata`, `:51` `MatchOAuthAuthServerRoute`; `oidc_sts.go:256` `OIDCDiscoveryDoc` (issuer :258, token_endpoint :259, jwks_uri :261, id_token_signing :262, response_types :263, subject_types :264) |
+| `bearer.ex:683,719` (`challenge_value/2` :710, `send_challenge/2` :738) | RFC 6750 §3 `WWW-Authenticate: Bearer error="invalid_token"` challenge | `errors_aad.go:171` `ChallengeValue` (renders `Bearer authorization=… resource=… error="invalid_token"` :178), subcode vocabulary :24-25, code map :39-40; `oidc_authorize.go:224` `writeAuthorizeError` |
+| `identity/oidc_idp.ex:206` `handle_token`, `:213` `handle_code_grant` (PKCE :269-279, client check :245, redirect_uri :259; discovery `:315` `discovery_document`, auth-server metadata :337; token response :354; id-token mint :371) | interactive IdP: authorize-code + PKCE + id_token | `oidc_authorize.go:71` `validateAuthorize` (client_id :73, PKCE `code_challenge` :85, method :90), `:109` `checkClient` (`invalid_client` :117), `:124` `validateRedirectURI` (:126/:135/:138), `:152` `mintAuthorizeCode`, `:180` `TakeAuthorizeCode`, `:208` `redirectLocation` |
+
+P0 fence: the anchored smalt files are UNCHANGED this lane (P0 fence law).
+Corrected citation (2026-11-05, P3-L6 retry): the earlier plan cited
+`lib/smalt/identity/oidc_sts.ex`, which DOES NOT EXIST — smalt's identity
+plane has `oidc_idp.ex`, `oidc_authorize.ex`, `oidc_jwks.ex`,
+`oidc_code_store.ex`, `entra_*` (no `oidc_sts.ex`; the STS route family
+lives at `lib/smalt/arm_gateway/plug/oidc_sts.ex`). Fence over the files
+that actually exist, sha256 computed fresh 2026-11-05:
+
+- `arm_gateway/plug/oidc_sts.ex` `20867639168e334c927ac04d8622c0d8fd93f9156cbee145c265ec714e9e2ae6`
+- `identity/oidc_idp.ex` `8fc6ad22565a27e9d25899d98b1191cfbffe10288844c5934c7e67ed0b54e953`
+- `identity/oidc_authorize.ex` `ac1a600a1736446b07af52ff5699b90235023b86f7aaff37bc80cd752c4980e4`
+- `identity/oidc_jwks.ex` `971a6ec600da6169f09077b5aa2a7605c6a3f9930f48d76744b43cb16779eb91`

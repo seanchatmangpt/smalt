@@ -244,10 +244,10 @@ function terminated(child) {
 
 /** Bounded poll on a real observable — no fixed sleeps (no-sleep doctrine). */
 async function poll(deadlineMs, fn) {
-  const t0 = Date.now();
+  const t0 = performance.now();
   for (;;) {
     if (await fn()) return true;
-    if (Date.now() - t0 > deadlineMs) return false;
+    if (performance.now() - t0 > deadlineMs) return false;
     // POLL-STEP: bounded-poll backoff between observations of a real
     // observable; the claim under test is convergence within budget.
     await new Promise((r) => setTimeout(r, 100));

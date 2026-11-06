@@ -18,7 +18,10 @@ cd "$(dirname "$0")/.."
 
 # Match real binary-append `<>` — not `<<>>` (empty binary literal), not
 # `<<...>>` internals: `<>` not adjacent to another bracket.
-mapfile -t hits < <(rg -n -P '(?<![<])<>(?![>])' lib/smalt/aoq/ --glob '*.ex' --glob '*.exs' || true)
+hits=()
+while IFS= read -r line; do
+  [ -n "$line" ] && hits+=("$line")
+done < <(rg -n -P '(?<![<])<>(?![>])' lib/smalt/aoq/ --glob '*.ex' --glob '*.exs' || true)
 
 if [ "${#hits[@]}" -eq 0 ]; then
   echo "aoq_egress_fence: CLEAN — no <> occurrences in lib/smalt/aoq/"

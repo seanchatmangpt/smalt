@@ -11,6 +11,10 @@ defmodule Smalt.Aoq.Tables do
   - `{:aoq, :epochs}` — epoch id → `{key material reference, start
     offset}`, append-only per epoch (old epochs retained for late
     frames); written at boot and only on operator-driven rotation.
+    DEMOTED in v3 (R1-I): epoch admission is the closed
+    `Smalt.Aoq.Epoch` enum enforced inside the codec, so decode no
+    longer consults this table — it survives as a key-material
+    registry only.
   - `{:aoq, :arrow_schemas}` — schema id → compiled Arrow schema term
     (in v1 a plain term; the NIF resource form lands with NifHolder),
     written at boot from the schema bundle.
@@ -24,11 +28,12 @@ defmodule Smalt.Aoq.Tables do
   """
 
   @frame_types %{
-    # 0x01 data frame, 0x02 control/ack, 0x03 epoch-rotate, 0x7F reserved
-    0x01 => {Smalt.Aoq.Frame, :handle_data},
-    0x02 => {Smalt.Aoq.Frame, :handle_ack},
-    0x03 => {Smalt.Aoq.Frame, :handle_epoch_rotate},
-    0x7F => {Smalt.Aoq.Frame, :handle_reserved}
+    # v3 re-key (R1-I): the retired v2 type byte is gone; the table is
+    # keyed by the aoq:StreamType body prefix (landed ontology):
+    # 0 = stream-data, 1 = stream-control (epoch rotation), 2 = stream-eos.
+    0 => {Smalt.Aoq.Frame, :handle_data},
+    1 => {Smalt.Aoq.Frame, :handle_control},
+    2 => {Smalt.Aoq.Frame, :handle_eos}
   }
 
   @epochs %{}

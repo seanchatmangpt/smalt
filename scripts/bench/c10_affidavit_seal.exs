@@ -2,7 +2,11 @@
 # Run: MIX_BUILD_ROOT=_build-lane7 MIX_ENV=test mix run --no-start scripts/bench/c10_affidavit_seal.exs
 #
 # Conventions (scripts/bench/REGISTRY.md):
-#   * lane c10 -> port block 39250..39255 (c-law 39200 + 10*10 .. +5). The
+#   * lane c10 -> port block 39300..39305 (c-law 39200 + 10*10 .. +5; DRIFT
+#     FIX 2026-11-04: this comment previously said 39250..39255, which is c5
+#     — the formula, not the stale literal, is authoritative; gate:
+#     scripts/port_registry_check.py --falsify pins c10 = 39300 and refuses
+#     a 39250/39310 claim for c10). The
 #     engine boot in this lane binds NO listeners (in-process Wasmex host),
 #     so the block is reserved-but-unused; the lane never touches the b-band.
 #   * result file: tmp/bench/c10-affidavit-seal.jsonl (script underscore,

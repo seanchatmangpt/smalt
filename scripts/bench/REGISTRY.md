@@ -70,7 +70,7 @@ lane families must stay disjoint from that band:
 - Dual-instrument sub-lanes b2b/b3b share their parent lane's block
   (b2 39020..39025, b3 39030..39035) by design and write their own result
   files (b2b-blob-hdr.jsonl, b3b-cosmos-hdr.jsonl).
-- c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39250..39255; result affidavit-seal.jsonl (canonical: docs/jira/v26.10.16/bench/affidavit-seal.jsonl; the tmp/bench/ copy named at registration is no longer on disk — re-verified 2026-10-22, BK-BENCHREG).
+- c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39300..39305 (DRIFT FIX 2026-11-04: registered as 39250..39255, which is c5 — the c-law formula is authoritative; port_registry_check.py --falsify pins c10=39300); result affidavit-seal.jsonl (canonical: docs/jira/v26.10.16/bench/affidavit-seal.jsonl; the tmp/bench/ copy named at registration is no longer on disk — re-verified 2026-10-22, BK-BENCHREG).
 - b42 dataplane saturation lane (`docs/jira/v26.10.16/bench/b42-dataplane-saturation.jsonl`)
   — ports UNAUDITED: no port block registered for it in this file; register or
   retire before its next run.

@@ -1,0 +1,172 @@
+{
+  "canonical_query_vectors": [
+    {
+      "expected_canonical": "q=a%20b",
+      "name": "space",
+      "raw_query": "q=a%20b"
+    },
+    {
+      "expected_canonical": "q=tilde~x",
+      "name": "tilde",
+      "raw_query": "q=tilde~x"
+    },
+    {
+      "expected_canonical": "q=a%2Ab",
+      "name": "star",
+      "raw_query": "q=a%2Ab"
+    },
+    {
+      "expected_canonical": "q=a%2Fb",
+      "name": "slash",
+      "raw_query": "q=a%2Fb"
+    },
+    {
+      "expected_canonical": "q=p%2Bq",
+      "name": "plus",
+      "raw_query": "q=p%2Bq"
+    },
+    {
+      "expected_canonical": "a=0&a=1&b=2",
+      "name": "dup_keys",
+      "raw_query": "b=2&a=1&a=0"
+    },
+    {
+      "expected_canonical": "e=",
+      "name": "empty_value",
+      "raw_query": "e="
+    },
+    {
+      "expected_canonical": "",
+      "name": "empty_query",
+      "raw_query": ""
+    }
+  ],
+  "credentials": {
+    "access_key_id": "AKIDVECTOR",
+    "region": "us-east-1",
+    "secret_access_key": "vectorSecret123",
+    "service": "kinesis"
+  },
+  "date": "2026-11-04",
+  "generated_by": "one-shot :aws_signature script (smalt toolchain, asdf elixir 1.20.4-otp-29); oracle aws_signature ~> 0.4 sign_v4",
+  "rejection_vectors": [
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":25}",
+      "expected_error": "SignatureDoesNotMatch",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "75f8543c5244283cc994a8a3ee4fa99db5ffe7f5c575a9072a2380b5e09b4cb2",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "kind": "secret",
+      "method": "POST",
+      "name": "wrong_secret",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "content-type;host;x-amz-content-sha256;x-amz-date"
+    },
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request, SignedHeaders=x-amz-date;host;content-type;x-amz-content-sha256, Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":25}",
+      "expected_error": "SignedHeadersNotSorted",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "75f8543c5244283cc994a8a3ee4fa99db5ffe7f5c575a9072a2380b5e09b4cb2",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "kind": "signed_headers_order",
+      "method": "POST",
+      "name": "unsorted_signed_headers",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "x-amz-date;host;content-type;x-amz-content-sha256"
+    },
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":26}",
+      "expected_error": "SignatureDoesNotMatch",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "75f8543c5244283cc994a8a3ee4fa99db5ffe7f5c575a9072a2380b5e09b4cb2",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "kind": "body",
+      "method": "POST",
+      "name": "tampered_body",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "content-type;host;x-amz-content-sha256;x-amz-date"
+    },
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":25}",
+      "expected_error": "SignatureDoesNotMatch",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "kind": "drop_header",
+      "method": "POST",
+      "name": "dropped_signed_header",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "content-type;host;x-amz-content-sha256;x-amz-date"
+    },
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":25}",
+      "expected_error": "SignatureDoesNotMatch",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "75f8543c5244283cc994a8a3ee4fa99db5ffe7f5c575a9072a2380b5e09b4cb2",
+        "X-Amz-Date": "20260102T000000Z"
+      },
+      "kind": "scope_date",
+      "method": "POST",
+      "name": "scope_date_mismatch",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "content-type;host;x-amz-content-sha256;x-amz-date"
+    }
+  ],
+  "signature_vectors": [
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature=9aa06244ac8a64bc1b7c4dcead36c068201a12e6fe50701d874dd0bd914d5124",
+      "body": "",
+      "expected_signature": "9aa06244ac8a64bc1b7c4dcead36c068201a12e6fe50701d874dd0bd914d5124",
+      "headers": {
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "method": "GET",
+      "name": "get_query_edges",
+      "path": "/query-edges",
+      "raw_query": "limit=10&prefix=edge%20space&marker=tilde~x",
+      "signed_headers": "host;x-amz-content-sha256;x-amz-date"
+    },
+    {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIDVECTOR/20260101/us-east-1/kinesis/aws4_request,SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,Signature=724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "body": "{\"TableName\":\"edges\",\"Limit\":25}",
+      "expected_signature": "724e336e8c4bfff69e1fea5992b54251e030d10b2bc8e4fbd29a4a9f33f5880f",
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "Host": "localhost",
+        "X-Amz-Content-Sha256": "75f8543c5244283cc994a8a3ee4fa99db5ffe7f5c575a9072a2380b5e09b4cb2",
+        "X-Amz-Date": "20260101T000000Z"
+      },
+      "method": "POST",
+      "name": "post_body",
+      "path": "/",
+      "raw_query": "",
+      "signed_headers": "content-type;host;x-amz-content-sha256;x-amz-date"
+    }
+  ],
+  "x_amz_date": "20260101T000000Z"
+}

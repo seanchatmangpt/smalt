@@ -57,6 +57,26 @@ def receipt_dirs():
 
 COVERS_RE = re.compile(r"(?:#|//).*?KD-COVERS:[ \t]*([A-Za-z0-9_,\- \t]+)")
 KD_ROW_RE = re.compile(r"^\s*\|\s*(KD-\d+)\s*\|(.*)$")
+# Namespaced wave-register ids: KD-KIN-1, KD-SQ-2, KD-SIGV4-1 (KD-nn still
+# matches — the family group is optional).
+KD_NS_ROW_RE = re.compile(r"^\s*\|\s*(KD-(?:[A-Z]+-)?\d+)\s*\|(.*)$")
+
+
+def wave_register_path(root=None):
+    """Newest-wave-first discovery: the newest docs/jira/v*/ dir (parsed as a
+    version tuple, newest first) that carries a KNOWN_DIVERGENCES.md is the
+    WAVE register. The canonical register stays the ONLY flip target."""
+    root = root if root is not None else ROOT
+    best = None
+    for d in sorted((root / "docs/jira").glob("v*")):
+        m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", d.name)
+        if not m:
+            continue
+        ver = tuple(int(g) for g in m.groups())
+        p = d / "KNOWN_DIVERGENCES.md"
+        if p.is_file() and (best is None or ver > best[0]):
+            best = (ver, d, p)
+    return best  # (version_tuple, dir, path) or None
 
 
 def split_row(line):
@@ -75,10 +95,19 @@ def split_row(line):
 
 
 def load_register():
-    """KD id -> {line_no, parts, status, evidence}."""
+    """KD id -> {line_no, parts, status, evidence} (canonical register)."""
+    return load_rows(KD_PATH, namespaced=False)
+
+
+def load_rows(path, namespaced=False):
+    """Parse a register file into KD id -> {line_no, parts, status, evidence}.
+
+    `namespaced=True` also accepts wave-register family ids (KD-KIN-1,
+    KD-SIGV4-2, ...); the canonical parse stays plain KD-nn."""
     rows = {}
-    for i, line in enumerate(KD_PATH.read_text(errors="replace").splitlines(), 1):
-        m = KD_ROW_RE.match(line)
+    row_re = KD_NS_ROW_RE if namespaced else KD_ROW_RE
+    for i, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+        m = row_re.match(line)
         if not m:
             continue
         parts = split_row(line)
@@ -101,8 +130,160 @@ def load_register():
             "parts": parts,
             "status": status,
             "evidence": evidence,
+            "divergence": parts[3] if len(parts) > 3 else "",
         }
     return rows
+
+
+# --- KD-register unification (lane RU-I, v26.11.6 tool-side stages) ---
+
+FP_LEN = 160
+
+
+def norm_div(cell):
+    """Deterministic (not fuzzy) normalization: lowercase, collapse
+    whitespace, drop backticks and quote glyphs."""
+    t = cell.lower()
+    t = re.sub(r"[`\"']", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def div_fingerprint(cell):
+    return norm_div(cell)[:FP_LEN]
+
+
+def _div_equivalent(a_cell, b_cell):
+    """Two rows describe the same divergence iff their normalized divergence
+    cells are equal, prefix-160 equal, or one is an exact substring of the
+    other (the wave register frequently carries a truncated or
+    `file.ex now emits`-prefixed rewording of the canonical text — exact
+    containment, never fuzzy similarity)."""
+    a, b = norm_div(a_cell), norm_div(b_cell)
+    if not a or not b:
+        return False
+    return a == b or a[:FP_LEN] == b[:FP_LEN] or a in b or b in a
+
+
+def alias_collisions(canonical_rows, wave_rows):
+    """Cross-register collision census (KD-register unification).
+
+    Returns a list of (cls, detail):
+      SAME-ID-DIFFERENT-FINGERPRINT — an id parsed by both registers whose
+        normalized divergence cells are NOT equivalent (dual-mint class).
+      ALIAS-SAME-FINGERPRINT — two DIFFERENT ids (canonical vs wave) whose
+        divergence cells are equivalent (the KD-203≡206 / 204≡207 / 205≡208
+        dual-numbering class).
+    """
+    out = []
+    # same id, divergent text
+    for kid in sorted(set(canonical_rows) & set(wave_rows)):
+        c = canonical_rows[kid]["divergence"]
+        w = wave_rows[kid]["divergence"]
+        if not _div_equivalent(c, w):
+            out.append(("SAME-ID-DIFFERENT-FINGERPRINT", kid, kid,
+                        f"{kid} present in canonical and wave registers with "
+                        "divergent divergence cells (dual-mint); canonical "
+                        f"fp={div_fingerprint(c)!r} wave "
+                        f"fp={div_fingerprint(w)!r}"))
+    # alias: different ids, equivalent divergence text
+    canon_ids = sorted(canonical_rows)
+    for wid in sorted(wave_rows):
+        if wid in canonical_rows:
+            continue
+        for cid in canon_ids:
+            if _div_equivalent(wave_rows[wid]["divergence"],
+                               canonical_rows[cid]["divergence"]):
+                out.append(("ALIAS-SAME-FINGERPRINT", cid, wid,
+                            f"wave {wid} ≡ canonical {cid}: equivalent "
+                            "divergence cells across registers "
+                            f"(canonical fp={div_fingerprint(canonical_rows[cid]['divergence'])!r})"))
+                break
+    return out
+
+
+def backfill_plan(canonical_rows, wave_rows, wave_dir):
+    """--backfill-from-wave plan (dry-run returns the plan; --apply writes).
+
+    CLOSED-* wave rows -> canonical backfill rows (provenance
+    `migrated from wave register`, evidence path normalized to a ROOT-relative
+    docs/ path); OPEN / PROPOSE-ONLY wave rows stay wave-local; a wave row
+    equivalent to an existing canonical row (same id or alias) is
+    skip-as-migrated.
+    """
+    migrated, skipped, local = [], [], []
+    for wid, row in sorted(wave_rows.items()):
+        status = canonical_status_token(row["status"])
+        equiv = None
+        if wid in canonical_rows and _div_equivalent(
+                canonical_rows[wid]["divergence"], row["divergence"]):
+            equiv = wid
+        else:
+            for cid in sorted(canonical_rows):
+                if _div_equivalent(row["divergence"],
+                                   canonical_rows[cid]["divergence"]):
+                    equiv = cid
+                    break
+        if equiv is not None:
+            skipped.append((wid, equiv))
+            continue
+        if not status.startswith("CLOSED"):
+            local.append((wid, status or "<none>"))
+            continue
+        ev = row["evidence"]
+        rel = ev
+        m = re.match(r"^(\.\./)+(.*)$", ev.strip("` "))
+        if m:  # wave-register-relative `../vX/receipts/...` -> ROOT-relative
+            rel = "docs/" + m.group(2)
+        migrated.append({
+            "id": wid,
+            "parts": row["parts"],
+            "evidence": rel,
+            "wave_name": wave_dir.name,
+        })
+    return migrated, skipped, local
+
+
+def backfill_row_text(entry):
+    parts = list(entry["parts"])
+    parts[-1] = (f"CLOSED-WITH-EVIDENCE (migrated from wave register "
+                 f"{entry['wave_name']}, witness receipt at {entry['evidence']})")
+    return "| " + " | ".join(parts) + " |"
+
+
+def apply_backfill(canonical_rows, wave_rows, wave_dir, apply):
+    migrated, skipped, local = backfill_plan(canonical_rows, wave_rows, wave_dir)
+    for wid, cid in skipped:
+        print(f"  skip-as-migrated: wave {wid} ≡ canonical {cid}")
+    for wid, st in local:
+        print(f"  wave-local (left in wave register): {wid} [{st}]")
+    print(f"  backfill candidates (CLOSED-* wave rows): {len(migrated)}")
+    if not migrated:
+        return 0
+    for e in migrated:
+        print(f"    {e['id']} -> canonical (witness {e['evidence']})")
+    if not apply:
+        print("  dry-run: nothing written")
+        return 0
+    # canonical append after the last table row
+    clines = KD_PATH.read_text(errors="replace").splitlines()
+    insert_at = max(i for i, l in enumerate(clines) if l.startswith("|")) + 1
+    new_rows = [backfill_row_text(e) for e in migrated]
+    clines[insert_at:insert_at] = new_rows
+    KD_PATH.write_text("\n".join(clines) + "\n")
+    # wave register: flip migrated rows to MIRRORED (see canonical)
+    wlines = wave_dir.joinpath("KNOWN_DIVERGENCES.md").read_text(
+        errors="replace").splitlines()
+    by_line = {wave_rows[e["id"]]["line_no"] - 1: e["id"] for e in migrated}
+    for idx, kid in sorted(by_line.items()):
+        parts = split_row(wlines[idx])
+        parts[-1] = f"MIRRORED (see canonical {KD_PATH.parent.name})"
+        wlines[idx] = "| " + " | ".join(parts) + " |"
+    wave_dir.joinpath("KNOWN_DIVERGENCES.md").write_text(
+        "\n".join(wlines) + "\n")
+    print(f"  APPLIED: {len(migrated)} canonical row(s) backfilled, "
+          f"wave rows rewritten MIRRORED (see canonical)")
+    return 0
 
 
 def scan_covers(scan_roots):
@@ -468,13 +649,105 @@ def self_test():
             fails.append("bold standing: SUSPECT accepted as pass")
         else:
             print("  PASS bold non-ALIVE standing still refused")
+        # --- KD-register unification fixtures (lane RU-I, 2026-11-05) ---
+        # All fixtures live in the same /tmp tree; the real registers are
+        # never touched by self-test.
+        canon_text = (
+            "| KD-400 | CORE | surface A | the encoder prepended each group "
+            "then returned the list head-first, so any varint over 127 was "
+            "byte-reversed and the broker refused the batch with a "
+            "corrupt-message ack (witnessed on a 50-op produce probe) "
+            "| r400.md | (met) | CLOSED-WITH-EVIDENCE |\n"
+            "| KD-401 | CORE | surface B | unique canonical divergence text "
+            "for the four-fixture unification court (nothing else matches "
+            "this row) | r401.md | open condition | OPEN |\n")
+        KD_PATH.write_text(canon_text)
+        wave_dir_u = JIRA / "v2"
+        wave_dir_u.mkdir()
+        wave_path_u = wave_dir_u / "KNOWN_DIVERGENCES.md"
+        wave_path_u.write_text(
+            "| KD-500 | CORE | surface A | any varint over 127 was "
+            "byte-reversed and the broker refused the batch | ../v2/receipts/"
+            "w500.md | (met) | CLOSED-WITH-EVIDENCE |\n"
+            "| KD-600 | CORE | surface C | a distinct closed divergence "
+            "minted only in the wave register with its own receipt trail "
+            "for the backfill leg | ../v2/receipts/w600.md | (met) | "
+            "CLOSED-WITH-EVIDENCE |\n"
+            "| KD-KIN-9 | CORE | surface D | an open namespaced-family row "
+            "(Kinesis-class) that stays wave-local | ../v2/receipts/"
+            "wkin9.md | receipt pending | OPEN |\n")
+        creg = load_rows(KD_PATH)
+        wreg = load_rows(wave_path_u, namespaced=True)
+
+        # F1. namespaced ids parse without canonical demands
+        ns_ok = {"KD-KIN-9"} <= set(wreg) and "KD-KIN-9" not in creg
+        if not ns_ok:
+            fails.append(f"namespaced parse: wave ids {sorted(wreg)}")
+        else:
+            print("  PASS namespaced wave ids parse (KD-KIN-9), no canonical demand")
+
+        # F2. alias collision detected (=> --apply refused)
+        colls = alias_collisions(creg, wreg)
+        alias = [c for c in colls
+                 if c[0] == "ALIAS-SAME-FINGERPRINT"
+                 and {c[1], c[2]} == {"KD-400", "KD-500"}]
+        if not alias:
+            fails.append(f"alias collision: got {colls}")
+        else:
+            print("  PASS alias collision detected (KD-500 ≡ KD-400; "
+                  "any collision refuses --apply)")
+
+        # F3. wave-only KD-COVERS row -> WAVE-ROW-BACKFILL-REQUIRED
+        shim_fx = tmp / "shim_kin9.ex"
+        shim_fx.write_text("# KD-COVERS: KD-KIN-9\n")
+        covers_fx = scan_covers([tmp])
+        wave_only_fx = sorted(k for k in covers_fx
+                              if k not in creg and k in wreg)
+        ok = "KD-KIN-9" in wave_only_fx
+        if ok:
+            rc_dir = wave_dir_u / "receipts"
+            rc_dir.mkdir()
+            (rc_dir / "wkin9.md").write_text("KD-KIN-9 probe PASS\n")
+            try:
+                witness("KD-KIN-9", wreg["KD-KIN-9"]["evidence"],
+                        time.time() - 1)
+            except Exception as exc:  # evidence resolution must not crash
+                ok = False
+                fails.append(f"wave-only witness raised: {exc}")
+        if not ok:
+            fails.append(f"wave-only classification: {wave_only_fx}")
+        else:
+            print("  PASS wave-only KD-COVERS row classified "
+                  "WAVE-ROW-BACKFILL-REQUIRED (flip refused); "
+                  "evidence resolves via receipts without crashing")
+
+        # F4. backfill produces a canonical row carrying the wave receipt path
+        migrated, skipped, local = backfill_plan(creg, wreg, wave_dir_u)
+        ids = {e["id"] for e in migrated}
+        if ids != {"KD-600"} or ("KD-500", "KD-400") not in skipped \
+                or not any(st == "OPEN" for _, st in local):
+            fails.append(f"backfill plan: mig={ids} skip={skipped} local={local}")
+        else:
+            apply_backfill(creg, wreg, wave_dir_u, apply=True)
+            canon_after = KD_PATH.read_text()
+            wave_after = wave_path_u.read_text()
+            ok = ("KD-600" in canon_after
+                  and "migrated from wave register" in canon_after
+                  and "docs/v2/receipts/w600.md" in canon_after
+                  and "MIRRORED (see canonical" in wave_after
+                  and "MIRRORED" not in canon_after)
+            if not ok:
+                fails.append("backfill apply: canonical/wave content check failed")
+            else:
+                print("  PASS backfill: canonical row carries wave receipt "
+                      "path + provenance; wave row rewritten MIRRORED")
         if fails:
             for f in fails:
                 print(f"  FAIL {f}", file=sys.stderr)
             print("KD-FLIP SELF-TEST: VACUOUS", file=sys.stderr)
             sys.exit(1)
-        print("KD-FLIP self-test: witness pinning + bold-standing non-vacuous "
-              "(10 assertions)")
+        print("KD-FLIP self-test: witness pinning + bold-standing + "
+              "register-unification fixtures non-vacuous (14 assertions)")
     finally:
         ROOT, JIRA, KD_PATH, RESULTS_DIR = old
         shutil.rmtree(tmp, ignore_errors=True)
@@ -502,8 +775,16 @@ def main():
                     help="extra scan root (repeatable); default lib/ + workspace/lib")
     ap.add_argument("--sync-mirror", metavar="PATH", default=None,
                     help="sync a mirror register (e.g. docs/jira/v26.10.20/"
-                         "KNOWN_DIVERGENCES.md) status cells to the canonical "
-                         "register; combinable with --apply (flip first, then sync)")
+                         "KNOWN_DIVERGENCES.md or an explicit wave-register "
+                         "path) status cells to the canonical register; "
+                         "combinable with --apply (flip first, then sync)")
+    ap.add_argument("--backfill-from-wave", action="store_true",
+                    help="backfill CLOSED-* wave-register rows into the "
+                         "canonical register with `migrated from wave "
+                         "register` provenance (wave rows rewritten MIRRORED "
+                         "(see canonical)); OPEN/PROPOSE-ONLY rows stay "
+                         "wave-local; rows equivalent to an existing "
+                         "canonical row are skipped as already migrated")
     args = ap.parse_args()
 
     explicit_witnesses = {}
@@ -521,10 +802,43 @@ def main():
     register = load_register()
     covers = scan_covers(scan_roots)
 
-    unknown = sorted(k for k in covers if k not in register)
-    eligible, pending, ambiguous = [], [], []
+    # KD-register unification (lane RU-I, tool-side stages 1-2): wave
+    # register discovery + cross-register load + alias-collision census.
+    # The canonical register stays the ONLY flip target; the wave register
+    # is read-only in this lane (register migration is deferred to
+    # post-landing, L17-R commit D — no real register is edited here).
+    wave_info = wave_register_path()
+    wave_dir = wave_info[1] if wave_info else None  # None = fixtureless tree
+    wave_rows = load_rows(wave_info[2], namespaced=True) if wave_info else {}
+    wave_name = wave_dir.name if wave_dir else "<none>"
+    print(f"WAVE_JIRA: {wave_name} "
+          f"({len(wave_rows)} wave row(s) incl. namespaced families)")
+    collisions = alias_collisions(register, wave_rows)
+    if collisions:
+        print(f"\nALIAS-COLLISIONS: {len(collisions)} — register unification "
+              "required; flips REFUSED until migrated")
+        for cls, cid, wid, detail in collisions:
+            print(f"  {cls}: {detail}")
+
+    unknown = sorted(k for k in covers
+                     if k not in register and k not in wave_rows)
+    wave_only = sorted(k for k in covers
+                       if k not in register and k in wave_rows)
+    eligible, pending, ambiguous, wave_blocked = [], [], [], []
     for kid in sorted(covers):
         if kid in unknown:
+            continue
+        if kid in wave_only:
+            # wave-only row: evidence still resolves via receipt_dirs(), but
+            # flipping is refused until the row is backfilled into canonical
+            row = wave_rows[kid]
+            shim_mtime = max(covers[kid].values())
+            verdict, why = witness(kid, row["evidence"], shim_mtime,
+                                   explicit=explicit_witnesses.get(kid))
+            wave_blocked.append(
+                (kid, f"WAVE-ROW-BACKFILL-REQUIRED: {kid} lives only in the "
+                      f"wave register ({wave_name}); witness verdict {verdict} "
+                      f"({why}) — backfill to canonical before flipping"))
             continue
         row = register[kid]
         if row["status"] != "OPEN":
@@ -549,8 +863,19 @@ def main():
 
     for kid in sorted(covers):
         files = ", ".join(display(p) for p in covers[kid])
-        status = register[kid]["status"] if kid in register else "MISSING-FROM-REGISTER"
+        if kid in register:
+            status = register[kid]["status"]
+        elif kid in wave_rows:
+            status = f"WAVE-ONLY [{wave_rows[kid]['status']}]"
+        else:
+            status = "MISSING-FROM-REGISTER"
         print(f"  {kid}: [{status}] {files}")
+
+    if wave_blocked:
+        print(f"\nWAVE-ROW-BACKFILL-REQUIRED: {len(wave_blocked)} — flipping "
+              "refused; run --backfill-from-wave after unification:")
+        for kid, why in wave_blocked:
+            print(f"  {kid}: {why}")
 
     print(f"\nFLIP-ELIGIBLE: {len(eligible)}")
     for kid, why in eligible:
@@ -574,9 +899,38 @@ def main():
     # silently skipped the flip (a gate that accepted the invocation while
     # doing only half the work). Flags compose in this documented order or the
     # run refuses loudly -- never a silent skip of either action.
+    if args.backfill_from_wave:
+        if not wave_info:
+            print("--backfill-from-wave REFUSED: no wave register found", file=sys.stderr)
+            sys.exit(1)
+        if collisions:
+            print("\n--backfill-from-wave REFUSED: alias collisions present; "
+                  "resolve the dual-mint/alias rows in the registers first "
+                  "(this tool never deletes or merges rows).")
+            sys.exit(1)
+        rc = apply_backfill(register, wave_rows, wave_dir, apply=args.apply)
+        if args.sync_mirror:
+            rc2 = sync_mirror(Path(args.sync_mirror).resolve(),
+                              {**wave_rows, **load_register()}, apply=args.apply)
+            rc = rc or rc2
+        sys.exit(rc or (1 if unknown or wave_blocked or collisions else 0))
+
+    # Collision refusal outranks everything: a register with a dual-mint or
+    # alias pair must not admit flips (the id being flipped may be the stale
+    # half of the alias).
+    if collisions:
+        print("\n--apply REFUSED (exit 1): alias collisions present; "
+              "unify the registers (--backfill-from-wave after manual "
+              "dual-mint resolution) before flipping.")
+        sys.exit(1)
+
     if args.apply:
         if unknown:
             print("\n--apply REFUSED: unknown KD ids present; sync the register first.")
+            sys.exit(1)
+        if wave_blocked:
+            print("\n--apply REFUSED: wave-only KD-COVERS rows present "
+                  "(WAVE-ROW-BACKFILL-REQUIRED); backfill to canonical first.")
             sys.exit(1)
         eligible_ids = {k for k, _ in eligible}
         if args.only is not None:
@@ -628,9 +982,9 @@ def main():
     if args.sync_mirror:
         rc = sync_mirror(Path(args.sync_mirror).resolve(), register,
                          apply=args.apply)
-        sys.exit(rc if rc else (1 if unknown else 0))
+        sys.exit(rc if rc else (1 if unknown or wave_blocked else 0))
 
-    sys.exit(1 if unknown else 0)
+    sys.exit(1 if unknown or wave_blocked else 0)
 
 
 if __name__ == "__main__":

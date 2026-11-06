@@ -60,8 +60,8 @@ function ok(name, cond, detail) {
 }
 
 async function waitUp(url, deadlineMs) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < deadlineMs) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < deadlineMs) {
     try {
       await fetch(url);
       return true;
@@ -87,8 +87,8 @@ function portBusy(port) {
 }
 
 async function waitPortFree(port, deadlineMs) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < deadlineMs) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < deadlineMs) {
     if (!(await portBusy(port))) return true;
     await sleep(500);
   }
@@ -106,8 +106,8 @@ async function stsMint() {
   // print before the STS listener is accepting application traffic (witnessed
   // BK-92-F1: undici UND_ERR_SOCKET "other side closed" at leg 2).
   let lastErr = "no attempt";
-  const t0 = Date.now();
-  while (Date.now() - t0 < 60000) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < 60000) {
     try {
       const res = await fetch(url, { method: "POST", body });
       const json = await res.json();

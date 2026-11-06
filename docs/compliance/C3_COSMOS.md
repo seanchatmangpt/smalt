@@ -116,3 +116,33 @@ c1/c3/c4 were deleted in favor of this one implementation.
   a `put_new` backfill for pre-existing records only.
 - `x-ms-consistency-level` echo (row 15) verified, not redone (via landing
   105).
+## arcus re-anchors (P3-L3, 2026-11-05)
+
+Dual anchors per the C1-C7 re-anchoring plan
+(`docs/jira/v26.11.7/01-c1-c7-re-anchoring-plan.md`): the smalt halves above
+are byte-identical and unchanged; the arcus halves are appended here as a
+COUNTERPART (KD-212 language), never a substitution. Line numbers pinned from
+the landed arcus tree at `/Users/sac/arcus/internal/dialect/azure/`
+(cosmos_auth.go 58 lines, cosmos_query.go 323 lines), 2026-11-05.
+Per-anchor receipt: `docs/jira/v26.11.7/receipts/p3-l3-c3-reanchor.md`.
+
+| # | smalt anchor | arcus counterpart anchor | standing |
+|---|---|---|---|
+| R1 | `cosmos.ex:465-478` success_headers (row 1 required headers) | `cosmos_query.go:162-180` `CosmosSuccessHeaders` + `cosmosAltContentPath` (request-charge, session-token `ver#lsn`, lsn, alt-content-path; flat charge const at `:48-49`) | ANCHORED |
+| R2 | `cosmos.ex:480` `"1#lsn"`, durable counters `cosmos.ex:484-490` (row 12 session token) | `cosmos_query.go:51` `CosmosSessionTokenHeader`, `:68-69` `CosmosSessionTokenVersion = 1`, format law `:166` `fmt.Sprintf("%d#%d", ver, lsn)` | ANCHORED (counterpart carries format law only; durable per-plane LSN counters have no counterpart — that half is UNSUPPORTED(counterpart-absent)) |
+| R3 | `cosmos.ex` `db_rid/1` (8-char), `coll_rid/2` (db rid + 4) (row 4; row 3 doc rid) | `cosmos_query.go:144-152` `CollRID` + `RIDSegment` = base64url(sha256), db 8 + coll 4 — grammar matches | ANCHORED (container grammar; the 8-char DOC rid segment of row 3 has no counterpart — UNSUPPORTED(counterpart-absent)) |
+| R4 | `cosmos.ex:417-445` query engine; query POST contract (row 8) | `cosmos_query.go:107-129` `ParseCosmosQueryBody` (missing/non-string/blank query → typed 400 BadRequest), `:136-140` `CosmosQueryEnvelope {_rid, Documents, _count}`, `:20-40` query+json/isquery/force-query header consts, `:306-311` `CosmosQueryFeatureGate` | ANCHORED (wire law; the SQL evaluation engine itself has no counterpart — `cosmos_query.go:1-3` header states "NO SQL engine — wire law only"; see R9) |
+| R5 | `cosmos.ex:557` parse_continuation, `cosmos.ex:652-670` forged-token 400, `cosmos.ex:590-604` ORDER cursor, `@query_limit 100` (row 18) | `cosmos_query.go:186-189` `CosmosContinuationToken` (`1#<lsn>:<b64url(db/coll)>:<tail>`), `:199-222` `ParseCosmosContinuation` (forged/foreign/malformed → `ErrCosmosInvalidContinuation` typed 400, `:193`), `:72` `CosmosQueryLimit = 100` | ANCHORED (token grammar + forged-token refusal; the ORDER-based cursor ordering law itself has no counterpart — UNSUPPORTED(counterpart-absent)) |
+| R6 | `cosmos.ex` `gate/5` → `throttle/1` 429 law (row 13) | `cosmos_query.go:239-252` `CosmosThrottled` (429 envelope: TooManyRequests code/message, request-charge, `x-ms-retry-after-ms`, session token reset `1#0`, empty alt-content-path) | ANCHORED (envelope law; the 1s fixed-window ETS counter has no counterpart — UNSUPPORTED(counterpart-absent)) |
+| R7 | `cosmos.ex` `authorize/4` master-key law (row 14) | `cosmos_auth.go:19-22` `CosmosStringToSign` (`verb\ntype\nlink\nlowercase(x-ms-date)\n\n`), `:26-35` `CosmosMasterSig` (base64 HMAC-SHA256), `:43-48` `CosmosAuthorizationHeader` (`type%3dmaster%26ver%3d1.0%26sig%3d` byte-explicit), `:52-58` `CosmosBuildAuthorization` | ANCHORED |
+| R8 | `cosmos.ex` `echo_consistency/2` (row 15) | `cosmos_query.go:224-230` `CosmosEchoConsistency` | ANCHORED |
+| R9 | `cosmos_sql.ex` AST translator wired at `cosmos.ex:1356,1438` (Known-deviation note, doc lines 70-83) | NONE | UNSUPPORTED(counterpart-absent) — by design: `cosmos_query.go:2-3` declares "NO SQL engine — wire law only"; the 80/20 AST translator law did not travel. Loud, not silent. |
+| R10 | `partition_key.ex parse/1` + `enforce` (rows 5, 7: pk header law, pk 400 message, empty-paths) | NONE | UNSUPPORTED(counterpart-absent) — no Cosmos pk-header law exists in `internal/dialect/azure/` (only the unrelated `CosmosPartitionKeyRangeIDHeader` const, `cosmos_query.go:32-34`). Nearest neighbor `table_odata.go:50-70` `ExtractTableKeys` is the TABLE-storage pk/rk law (different dialect), not a counterpart — pinned as neighbor-only, never as an anchor. |
+| R11 | `cosmos.ex:519-521` quoted_sha256 `_etag`, `_ts` `cosmos.ex:213/221/307` (row 2); CRUD status contract `cosmos.ex:226-377` (row 6); 413/2MB (row 16); doc-id grammar (row 17); 409 insert_new (row 19); implicit-create divergence | NONE (per-locus) | UNSUPPORTED(counterpart-absent) — engine-owned law (etag CAS, status ladder, size/id/409 guards) did not travel to the wire-law-only counterpart. |
+
+Method: anchors derived from the landed arcus source read at execution time
+(plan rule: exact lines pinned in the receipt, not the plan). Every ANCHORED
+line range was verified against the on-disk file this session; UNSUPPORTED
+rows name the absence and the reason. This lane made NO edits to
+`egress_router.ex`, `cosmos.ex`, `partition_key.ex`, `cosmos_sql.ex`, or any
+arcus `.go` file — doc append only, per lane lease.

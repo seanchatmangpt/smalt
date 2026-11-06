@@ -57,23 +57,34 @@ defmodule SmaltTest.KafkaKd174CourtTest do
 
     # Layer 2: the produced (broker-stamped) batch bytes, read back through
     # our own records.ex reader, decode byte-identically to what was produced.
+    # The probe sends one produce (and therefore one RecordBatch) per value
+    # (`send().get()` per value, no linger coalescing), so the byte-exact
+    # law is per-value: every produced value decodes back from SOME batch,
+    # and every decoded batch verifies + parses clean.
     raw_batches =
       for p <- 0..(Log.partition_count() - 1),
           %{raw: raw} <- Log.fetch(@topic, p, 0),
           match?({:ok, 2}, Records.magic(raw)),
-          String.contains?(raw, hd(values)) do
+          String.contains?(raw, hd(values)) or Enum.any?(values, &String.contains?(raw, &1)) do
         raw
       end
 
     assert length(raw_batches) >= 1
 
+    decoded =
+      Enum.flat_map(raw_batches, fn raw ->
+        case Records.parse_records(raw) do
+          {:ok, recs} -> for %{value: v} <- recs, v in values, do: v
+          _ -> []
+        end
+      end)
+
+    assert Enum.all?(values, fn v -> v in decoded end),
+           "produced values not byte-identical in decoded batches"
+
     for raw <- raw_batches do
       assert Records.verify_batch(raw) == :ok
-      assert {:ok, recs} = Records.parse_records(raw)
-      got = Enum.map(recs, & &1.value)
-
-      assert Enum.all?(values, fn v -> v in got end),
-             "produced values not byte-identical in decoded batch"
+      assert match?({:ok, _recs}, Records.parse_records(raw))
     end
   end
 
@@ -111,8 +122,14 @@ defmodule SmaltTest.KafkaKd174CourtTest do
     # Produce message-set framing: {offset i64, size i32, batch bytes}.
     set = <<0::signed-integer-size(64), byte_size(batch)::unsigned-integer-size(32), batch::binary>>
 
+    # Produce v3 request schema: transactional_id null string BEFORE acks
+    # (Apache protocol guide; the vendored ProduceRequest_v3 carries it too).
+    # The hand-rolled body must carry the tid head or the wire parser reads
+    # acks as the tid length and the request is (correctly) killed as
+    # malformed.
     req_body = [
-      <<1::signed-integer-size(16), 30_000::signed-integer-size(32), 1::integer-size(32)>>,
+      <<-1::signed-integer-size(16), 1::signed-integer-size(16),
+        30_000::signed-integer-size(32), 1::integer-size(32)>>,
       <<byte_size(topic)::unsigned-integer-size(16), topic::binary, 1::integer-size(32)>>,
       <<0::signed-integer-size(32), byte_size(set)::signed-integer-size(32), set::binary>>
     ]
@@ -127,14 +144,15 @@ defmodule SmaltTest.KafkaKd174CourtTest do
 
     # Bounded poll on the real socket (no-sleep doctrine): read until the
     # response is framing-complete.
-    {:ok, resp} = recv_all(sock, 0)
+    {:ok, resp} = recv_all(sock, <<>>)
     :gen_tcp.close(sock)
 
     <<_size::unsigned-integer-size(32), 42::unsigned-integer-size(32),
       _nt::signed-integer-size(32), tlen::unsigned-integer-size(16),
       _topic::binary-size(tlen)-unit(8), _np::signed-integer-size(32),
       _p::signed-integer-size(32), err::signed-integer-size(16),
-      _base::signed-integer-size(64), _ts::signed-integer-size(64)>> = resp
+      _base::signed-integer-size(64), _ts::signed-integer-size(64),
+      _throttle::signed-integer-size(32)>> = resp
 
     assert err == 0
   end

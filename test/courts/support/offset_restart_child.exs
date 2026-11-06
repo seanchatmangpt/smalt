@@ -1,24 +1,24 @@
 # Offset-restart court child beam (court_offset_restart.exs harness).
 #
 # Spawned by the court as a real child OS beam (`MIX_ENV=test mix run
-# --no-start <script>`). Mode comes from env COURT_MODE:
+# --no-start <script>`). Mode from env COURT_MODE:
 #
 #   eh-checkpoint — real Smalt.Store + EH Server + DetsMirror; write
 #                   checkpoint offset 42 with a live claim, sync the
 #                   dets mirror, write the sentinel.
 #   eh-verify     — rebooted beam: same tables + mirror dir; DetsMirror
-#                   restore with the claim-stripping transform; assert
-#                   offset == 42 restored, claim stripped, stale-CAS
-#                   refused with {:error, :conflict}.
+#                   restore (repair: true — the kill -9 leaves torn dets)
+#                   with the claim-stripping transform; assert offset 42
+#                   restored, claim stripped, stale-CAS refused
+#                   {:error, :conflict}.
 #   aoq-push      — real JournalSink (matter scope "aoq") + CursorPersist;
-#                   note_release 2000 (> checkpoint_every 1024) + flush
-#                   + seal the scope + sentinel.
+#                   release_tail 2000 + note_release 2000 + flush + seal
+#                   the scope + sentinel.
 #   aoq-verify    — rebooted beam: JournalSink + CursorPersist boot fold;
 #                   assert Cursor.tail == 2000 (> 0).
 #
-# The child writes a JSON result file (env COURT_RESULT); the parent court
-# asserts on those real rebooted-beam values. Fail-closed: any child error
-# lands in the result file and the parent court fails loudly.
+# The child writes a JSON result file (env COURT_RESULT) and a park
+# sentinel; the parent court asserts on those real rebooted-beam values.
 defmodule Courts.OffsetRestartChild do
   @checkpoints :smalt_eh_checkpoints
 
@@ -35,10 +35,7 @@ defmodule Courts.OffsetRestartChild do
         %{"status" => "PASS", "observations" => run_mode(mode, dir)}
       rescue
         e ->
-          %{
-            "status" => "FAIL",
-            "error" => Exception.format(:error, e, __STACKTRACE__)
-          }
+          %{"status" => "FAIL", "error" => Exception.format(:error, e, __STACKTRACE__)}
       catch
         :exit, reason ->
           %{"status" => "FAIL", "error" => "exit: #{inspect(reason)}"}
@@ -47,8 +44,11 @@ defmodule Courts.OffsetRestartChild do
     File.write!(result, Jason.encode!(payload))
 
     # Park until the parent SIGKILLs this beam: the phase result is durable
-    # on disk; the process has nothing lawful left to do. SLEEP-CLASS:
+    # on disk; the process has nothing lawful left to do. The park sentinel
+    # is written FIRST so the parent's kill -9 provably lands on a live,
+    # parked beam (never a silently already-dead pid). SLEEP-CLASS:
     # SCHEDULING (parks until externally killed by the court harness).
+    File.write!(Path.join(dir, "parked-#{mode}.sentinel"), :os.getpid() |> List.to_string())
     Process.sleep(:infinity)
   end
 
@@ -89,10 +89,19 @@ defmodule Courts.OffsetRestartChild do
     stale_expect = %{"offset" => 42, "claim" => %{"owner" => "court-owner"}}
     cas = Smalt.Messaging.EventHubs.Checkpoints.compare_and_swap(group(), part(), stale_expect, %{"offset" => 43})
 
+    # The child asserts, fail-closed: the rebooted beam itself proves the
+    # restore. Under the FLIPPED registry (flip-back leg) the checkpoints
+    # table is not mirrored, so restored is nil and this raise IS the
+    # court flip the non-vacuity leg witnesses.
+    restored || raise(":checkpoint_row_not_restored")
+    42 = restored["offset"]
+    false = Map.has_key?(restored, "claim")
+    {:error, :conflict} = cas
+
     %{
       "phase" => "eh-verify",
-      "offset" => (restored && restored["offset"]),
-      "claim" => (restored && Map.has_key?(restored, "claim")),
+      "offset" => restored["offset"],
+      "claim" => false,
       "stale_cas" => inspect(cas)
     }
   end
@@ -103,18 +112,17 @@ defmodule Courts.OffsetRestartChild do
     {sink, cursor, persist} = aoq_boot!(dir)
     n = 2000
 
-    # note_release: at least one auto-checkpoint fires past `every`, plus
-    # an explicit flush frame; the scope is then SEALED so the bytes are
-    # durable before the kill -9 (an unsealed active segment is never
-    # read by the boot fold).
     # Real consumer behavior: release tail slots on the ring, THEN notify
     # the checkpoint surface (CursorPersist observes; it never owns the
-    # cursor).
+    # cursor). At least one auto-checkpoint fires past `every` (1024),
+    # plus an explicit flush frame; the scope is then SEALED so the bytes
+    # are durable before the kill -9 (an unsealed active segment is never
+    # read by the boot fold).
     Smalt.Aoq.Cursor.release_tail(cursor, n)
     Smalt.Aoq.CursorPersist.note_release(persist, n)
-    {:ok, _seq} = Smalt.Aoq.CursorPersist.flush(persist_name())
+    {:ok, _seq} = Smalt.Aoq.CursorPersist.flush(persist)
 
-    # seal/2 returns the sealed-segment meta map on success (or {:error, _}).
+    # seal/2 returns the sealed-segment meta map on success (or {:error,_}).
     case Smalt.Storage.JournalSink.seal(sink, matter_scope: "aoq") do
       m when is_map(m) -> :ok
       :ok -> :ok
@@ -124,7 +132,6 @@ defmodule Courts.OffsetRestartChild do
     %{
       "phase" => "aoq-push",
       "released" => n,
-      "persist" => inspect(persist),
       "tail_after_push" => Smalt.Aoq.Cursor.tail(cursor),
       "head_after_push" => Smalt.Aoq.Cursor.head(cursor)
     }
@@ -173,20 +180,16 @@ defmodule Courts.OffsetRestartChild do
     end
 
     # Store partitions materialize asynchronously after the supervisor
-    # returns — poll the checkpoint table into existence (bounded; the
-    # one audited poll idiom, inline).
+    # returns — poll the checkpoint table into existence (bounded, inline
+    # audited-poll idiom; no Process.sleep).
     wait_for_table(@checkpoints, System.monotonic_time(:millisecond) + 15_000)
   end
 
   defp wait_for_table(_table, deadline) do
-    if :ets.info(@checkpoints) != :undefined do
-      :ok
-    else
-      if System.monotonic_time(:millisecond) >= deadline do
-        raise ":store_tables_not_up"
-      end
-
-      :erlang.yield() |> then(fn _ -> wait_for_table(@checkpoints, deadline) end)
+    cond do
+      :ets.info(@checkpoints) != :undefined -> :ok
+      System.monotonic_time(:millisecond) >= deadline -> raise ":store_tables_not_up"
+      true -> :erlang.yield(); wait_for_table(@checkpoints, deadline)
     end
   end
 
@@ -195,8 +198,8 @@ defmodule Courts.OffsetRestartChild do
     File.mkdir_p!(dets_dir)
 
     # A rebooted mirror opens with repair: true — the kill -9 leg leaves the
-    # un-closed :dets files needing repair; a synced file survives the repair
-    # byte-exact (DetsMirror AZB-06 contract).
+    # un-closed :dets files needing repair; a synced file survives the
+    # repair byte-exact (DetsMirror AZB-06 contract).
     repair = System.get_env("COURT_MODE") == "eh-verify"
 
     case Smalt.Store.DetsMirror.start_link(dir: dets_dir, name: mirror_name(), repair: repair) do

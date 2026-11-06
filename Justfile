@@ -323,3 +323,5 @@ import 'justfile.d/62-bin-opt.just'
 import 'justfile.d/63-aoq.just'
 # 64-receipts — Gate 3 receipt-standing lint (v26.11.5 lane L24)
 import 'justfile.d/64-receipts.just'
+
+import 'justfile.d/65-ports.just'

@@ -24,7 +24,7 @@ export async function nextDev(wsRoot, port, envOverlay) {
   child.stderr.on('data', onLog);
 
   // Bounded poll on the real observable: any HTTP answer == server up.
-  const deadline = Date.now() + 180_000;
+  const deadline = performance.now() + 180_000;
   for (;;) {
     if (child.exitCode !== null) {
       throw new Error(`next dev :${port} exited ${child.exitCode}; log tail: ${log.slice(-1200)}`);
@@ -34,7 +34,7 @@ export async function nextDev(wsRoot, port, envOverlay) {
       await fetch(u, { signal: AbortSignal.timeout(2000) });
       break;
     } catch {
-      if (Date.now() > deadline) {
+      if (performance.now() > deadline) {
         try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
         throw new Error(`next dev :${port} not ready in 180s; log tail: ${log.slice(-1200)}`);
       }
@@ -46,13 +46,13 @@ export async function nextDev(wsRoot, port, envOverlay) {
     // Tree kill: `next dev` traps SIGTERM (graceful, children keep writing
     // briefly), so SIGKILL-escalate the process group, then bounded-wait exit.
     try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
-    const t0 = Date.now();
-    while (child.exitCode === null && Date.now() - t0 < 5_000) {
+    const t0 = performance.now();
+    while (child.exitCode === null && performance.now() - t0 < 5_000) {
       await new Promise((r) => setImmediate(r));
     }
     try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-    const deadline = Date.now() + 15_000;
-    while (child.exitCode === null && Date.now() < deadline) {
+    const deadline = performance.now() + 15_000;
+    while (child.exitCode === null && performance.now() < deadline) {
       await new Promise((r) => setImmediate(r));
     }
   };

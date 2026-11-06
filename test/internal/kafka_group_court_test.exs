@@ -61,8 +61,11 @@ defmodule SmaltTest.KafkaGroupCourtTest do
         buf = <<acc::binary, data::binary>>
 
         case buf do
-          <<size::unsigned-32, rest::binary>> when byte_size(rest) >= size - 4 -> buf
-          _ -> recv_frame(sock, buf)
+          <<size::unsigned-32, rest::binary>> when byte_size(rest) >= size - 4 ->
+            {:ok, buf}
+
+          _ ->
+            recv_frame(sock, buf)
         end
 
       other ->
@@ -143,7 +146,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
               _::unsigned-32, 7::unsigned-32, err0::signed-16,
               cid0::signed-32, hlen0::unsigned-16, host0::binary-size(hlen0)-unit(8),
               port0::signed-32
-            >>} = recv_frame(sock)
+            >>} = _skip = recv_frame(sock)
 
     assert err0 == 0
     assert host0 == "127.0.0.1"
@@ -158,7 +161,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
               _::unsigned-32, 8::unsigned-32, throttle::signed-32, err1::signed-16,
               -1::signed-16, cid1::signed-32, hlen1::unsigned-16,
               host1::binary-size(hlen1)-unit(8), port1::signed-32
-            >>} = recv_frame(sock)
+            >>} = _skip = recv_frame(sock)
 
     assert throttle == 0
     assert err1 == 0
@@ -190,7 +193,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     body = join_body("kd190-ptype", "", 30_000, "connect", [{"roundrobin", sub_meta([@topic])}])
     :ok = :gen_tcp.send(sock, req(11, 0, 2, body))
 
-    <<_::unsigned-32, 2::unsigned-32, err::signed-16, _::binary>> = recv_frame(sock)
+    {:ok, <<_::unsigned-32, 2::unsigned-32, err::signed-16, _::binary>>} = _skip = recv_frame(sock)
     assert err == 23
     :gen_tcp.close(sock)
   end
@@ -200,7 +203,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     body = join_body("kd190-coop", "", 30_000, "consumer", [{"cooperative-sticky", sub_meta([@topic])}])
     :ok = :gen_tcp.send(sock, req(11, 0, 3, body))
 
-    <<_::unsigned-32, 3::unsigned-32, g::signed-16, _::binary>> = recv_frame(sock)
+    {:ok, <<_::unsigned-32, 3::unsigned-32, g::signed-16, _::binary>>} = recv_frame(sock)
     assert g == 23
   end
 
@@ -215,7 +218,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
 
     :ok = :gen_tcp.send(sock1, req(11, 0, 10, jb.("")))
     # a lone first member completes immediately (real broker semantics)
-    frame1 = recv_frame(sock1)
+    {:ok, frame1} = recv_frame(sock1)
     assert <<_::unsigned-32, 10::unsigned-32, 0::signed-16, 1::signed-32, _::binary>> = frame1
 
     # second member triggers a fresh rebalance and PARKS until m1 rejoins
@@ -226,8 +229,8 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     m1 = member_id_from_join(frame1)
     :ok = :gen_tcp.send(sock1, req(11, 0, 12, jb.(m1)))
 
-    f1b = recv_frame(sock1)
-    f2 = recv_frame(sock2)
+    {:ok, f1b} = recv_frame(sock1)
+    {:ok, f2} = recv_frame(sock2)
 
     {gen2, err1b, nm1} = join_gen_err_nm(f1b)
     {gen2b, err2, nm2} = join_gen_err_nm(f2)
@@ -256,7 +259,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     end
 
     :ok = :gen_tcp.send(sock1, req(11, 0, 20, jb.("")))
-    frame1 = recv_frame(sock1)
+    {:ok, frame1} = recv_frame(sock1)
     m1 = member_id_from_join(frame1)
 
     :ok = :gen_tcp.send(sock2, req(11, 0, 21, jb.("")))
@@ -264,22 +267,24 @@ defmodule SmaltTest.KafkaGroupCourtTest do
 
     # m1 rejoins -> gen 2 completing; both join responses landed
     :ok = :gen_tcp.send(sock1, req(11, 0, 22, jb.(m1)))
-    f1b = recv_frame(sock1)
-    f2 = recv_frame(sock2)
+    {:ok, f1b} = recv_frame(sock1)
+    {:ok, f2} = recv_frame(sock2)
     m2 = member_id_from_join(f2)
 
     # leader (lexicographically-first member id) submits broker roundrobin:
     # empty group_assignment -> GroupManager computes it
     :ok = :gen_tcp.send(sock1, req(14, 0, 23, sync_body(group, 2, m1, [])))
-    <<_::unsigned-32, 23::unsigned-32, err::signed-16, alen::signed-32,
-      _a::binary-size(alen)-unit(8)>> = recv_frame(sock1)
+    {:ok,
+     <<_::unsigned-32, 23::unsigned-32, err::signed-16, alen::signed-32,
+       _a::binary-size(alen)-unit(8)>>} = recv_frame(sock1)
     assert err == 0
     assert alen > 0
 
     # follower's parked sync answered with its own assignment
     :ok = :gen_tcp.send(sock2, req(14, 0, 24, sync_body(group, 2, m2, [])))
-    <<_::unsigned-32, 24::unsigned-32, err2::signed-16, alen2::signed-32,
-      _a2::binary-size(alen2)-unit(8)>> = recv_frame(sock2)
+    {:ok,
+     <<_::unsigned-32, 24::unsigned-32, err2::signed-16, alen2::signed-32,
+       _a2::binary-size(alen2)-unit(8)>>} = recv_frame(sock2)
     assert err2 == 0 and alen2 > 0
 
     g = GroupManager.groups()[group]
@@ -294,17 +299,17 @@ defmodule SmaltTest.KafkaGroupCourtTest do
   test "layer1: heartbeat wrong generation -> 22; unknown member -> 25" do
     sock = connect()
     :ok = :gen_tcp.send(sock, req(12, 0, 30, hb_body("kd190-hb", 99, "ghost")))
-    <<_::unsigned-32, 30::unsigned-32, err::signed-16>> = recv_frame(sock)
+    {:ok, <<_::unsigned-32, 30::unsigned-32, err::signed-16>>} = recv_frame(sock)
     assert err == 25
 
     body = join_body("kd190-hb", "", 60_000, "consumer", [{"roundrobin", sub_meta([@topic])}])
     :ok = :gen_tcp.send(sock, req(11, 0, 31, body))
-    jf = recv_frame(sock)
+    {:ok, jf} = recv_frame(sock)
     mid = member_id_from_join(jf)
 
     sock2 = connect()
     :ok = :gen_tcp.send(sock2, req(12, 0, 32, hb_body("kd190-hb", 99, mid)))
-    <<_::unsigned-32, 32::unsigned-32, err2::signed-16>> = recv_frame(sock2)
+    {:ok, <<_::unsigned-32, 32::unsigned-32, err2::signed-16>>} = recv_frame(sock2)
     assert err2 == 22
 
     :gen_tcp.close(sock)
@@ -333,7 +338,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     topic = @topic
     body = join_body(group, "", 60_000, "consumer", [{"roundrobin", sub_meta([topic])}])
     :ok = :gen_tcp.send(sock, req(11, 0, 50, body))
-    jf = recv_frame(sock)
+    {:ok, jf} = recv_frame(sock)
     mid = member_id_from_join(jf)
     <<_::unsigned-32, _::unsigned-32, _::signed-16, gen::signed-32, _::binary>> = jf
 
@@ -349,7 +354,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     ]
 
     :ok = :gen_tcp.send(sock, req(8, 2, 51, commit_body))
-    <<_::unsigned-32, 51::unsigned-32, _tt::signed-32, nt::signed-32, _::binary>> = recv_frame(sock)
+    {:ok, <<_::unsigned-32, 51::unsigned-32, _tt::signed-32, nt::signed-32, _::binary>>} = recv_frame(sock)
     assert nt == 1
     assert GroupManager.offsets()[{group, topic, 0}] == 7
 
@@ -364,9 +369,10 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     ]
 
     :ok = :gen_tcp.send(sock, req(9, 1, 52, fetch_body))
-    <<_::unsigned-32, 52::unsigned-32, _n1::signed-32, tl::unsigned-16,
-      _t::binary-size(tl)-unit(8), _np::signed-32,
-      p::signed-32, off::signed-64, _ml::unsigned-16, _err::signed-16>> = recv_frame(sock)
+    {:ok,
+     <<_::unsigned-32, 52::unsigned-32, _n1::signed-32, tl::unsigned-16,
+       _t::binary-size(tl)-unit(8), _np::signed-32,
+       p::signed-32, off::signed-64, _ml::unsigned-16, _err::signed-16>>} = recv_frame(sock)
 
     assert p == 0 and off == 7
     :gen_tcp.close(sock)
@@ -378,7 +384,7 @@ defmodule SmaltTest.KafkaGroupCourtTest do
     topic = @topic
     body = join_body(group, "", 60_000, "consumer", [{"roundrobin", sub_meta([topic])}])
     :ok = :gen_tcp.send(sock, req(11, 0, 60, body))
-    jf = recv_frame(sock)
+    {:ok, jf} = recv_frame(sock)
     mid = member_id_from_join(jf)
     <<_::unsigned-32, _::unsigned-32, _::signed-16, gen::signed-32, _::binary>> = jf
     commit_body =

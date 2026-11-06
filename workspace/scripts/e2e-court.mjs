@@ -598,9 +598,9 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 } catch (e) {
   if (e.code !== 'ENOTEMPTY' && e.code !== 'EBUSY' && e.code !== 'EPERM') throw e;
-  const deadline = Date.now() + 10_000;
+  const deadline = performance.now() + 10_000;
   let cleaned = false;
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     try {
       fs.rmSync(tmp, { recursive: true, force: true });
       cleaned = true;

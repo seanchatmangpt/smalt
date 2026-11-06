@@ -21,6 +21,27 @@ ROW_RE = re.compile(r"^\|\s*(KD-[0-9]+)\b")
 # A cite the row itself declares not-yet-landed ("(in-flight, BK-nnn)") is a
 # loud SKIP, not a MISS: the row admits the receipt does not exist yet.
 INFLIGHT_RE = re.compile(r"\(in-flight")
+# Cross-repo resolution (KD-195, v26.11.6): a KD row may cite a receipt that
+# lives in a sibling canonical checkout (e.g. an arcus receipt pinned by a
+# smalt KD row). When the path does not resolve under the smalt root, try
+# these sibling roots relative to the smalt root; the resolved repo is named
+# in the output so the operator sees which repo satisfied the pin.
+# Fail-closed: a path that exists NOWHERE still exits 1.
+REPO_ROOTS = ["", "../arcus/", "../cgap/", "../ggen-marketplace/"]
+
+
+def resolve_cross_repo(path: str, primary: Path, root: Path):
+    """Resolve a cited receipt path. Tries `primary` first, then each sibling
+    repo root. Returns (full_path, repo_label) — repo_label is "smalt" for
+    the primary resolution or the sibling prefix (e.g. "../arcus/") that
+    satisfied the cite, or None when no root resolves it."""
+    if primary.exists():
+        return primary, "smalt"
+    for repo in REPO_ROOTS[1:]:
+        cand = (root / repo / path).resolve()
+        if cand.exists():
+            return cand, repo
+    return primary, None
 
 
 def registers(root: Path):
@@ -112,11 +133,16 @@ def main() -> int:
                 continue
             for path in RECEIPT_RE.findall(line):
                 p = Path(path)
-                full = (root / p) if path.startswith("docs/") else (reg_dir / p)
+                primary = (root / p) if path.startswith("docs/") else (reg_dir / p)
+                full, repo = resolve_cross_repo(path, primary, root)
                 checked += 1
-                if not full.exists():
-                    print(f"MISS  {row_id}  {reg.relative_to(root)}: {path}")
+                if repo is None:
+                    print(f"MISS  {row_id}  {reg.relative_to(root)}: {path}  "
+                          f"(checked smalt + {', '.join(REPO_ROOTS[1:])})")
                     rc = 1
+                elif repo != "smalt":
+                    print(f"OK-X {row_id}  {reg.relative_to(root)}: {path}  "
+                          f"-> resolved in sibling repo {repo}")
     for doc in pattern_docs(root):
         # Bare cites in a patterns/ subdir are milestone-root-relative
         # (same convention as KNOWN_DIVERGENCES.md), not subdir-relative.
@@ -124,9 +150,10 @@ def main() -> int:
         for line in doc.read_text(encoding="utf-8").splitlines():
             for path in RECEIPT_RE.findall(line):
                 p = Path(path)
-                full = (root / p) if path.startswith("docs/") else (doc_dir / p)
+                primary = (root / p) if path.startswith("docs/") else (doc_dir / p)
+                full, repo = resolve_cross_repo(path, primary, root)
                 checked += 1
-                if not full.exists():
+                if repo is None:
                     print(f"MISS  {doc.relative_to(root)}: {path}")
                     rc = 1
     m_checked, m_misses, m_skips = check_milestone_docs(root)

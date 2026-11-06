@@ -28,6 +28,44 @@
 
 -define(SCHEMA_A, binary:copy(<<16#AA>>, 32)).
 
+-define(FB_FIXTURE_HEX,
+    "ffffffff780200000c0000004152524f00000000fcffffff0c0016001a00230028002c000000000000000000"
+    "00000400000000000000000100000000120000000c00000000000000000000000000fcffffff0a0014001800"
+    "1e002600000000000000000000000000000000006c010000000000000400000003000000d400000048000000"
+    "04000000fcffffff0800100014001c0000000000000000001700000000000000070000000000000100000033"
+    "00000009000000636761703a726f77730000000000000000fcffffff0800100014001c000000000000000000"
+    "5800000000000000080000000000000040000000646630376634393034613763636232303364633933356461"
+    "6537626166346134633166306162393237396138363361363931303962653734663236303332656600000000"
+    "10000000636761703a626f64795f626c616b65330000000000000000fcffffff0800100014001c0000000000"
+    "0000000056000000000000000800000000000000400000003633663363386365663037633737653936376165"
+    "3633356165663939626462326634663539373761333461303833336166326431383562633739643338323763"
+    "000012000000636761703a736368656d615f626c616b65330000000000000000010000000800000000000000"
+    "fcffffff0c001400180023002b00300000000000000000003f00000000000000000000010000000000000002"
+    "0000000004000000fcffffff0800100014001f00000000000000000020000000000000000000000000000001"
+    "0000007600000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    "0000000000000000000000000000000000000000000000000100000002000000030000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    "000000000000000000000000ffffffff00000000").
+
+-define(FB_NO_ROWS_HEX,
+    "ffffffff380200000c0000004152524f00000000fcffffff0c0016001a00230028002c000000000000000000"
+    "00000400000000000000000100000000120000000c00000000000000000000000000fcffffff0a0014001800"
+    "1e002600000000000000000000000000000000002c0100000000000008000000000000000200000090000000"
+    "04000000fcffffff0800100014001c0000000000000000005800000000000000080000000000000040000000"
+    "6466303766343930346137636362323033646339333564616537626166346134633166306162393237396138"
+    "36336136393130396265373466323630333265660000000010000000636761703a626f64795f626c616b6533"
+    "0000000000000000fcffffff0800100014001c00000000000000000056000000000000000800000000000000"
+    "4000000036336633633863656630376337376539363761653633356165663939626462326634663539373761"
+    "333461303833336166326431383562633739643338323763000012000000636761703a736368656d615f626c"
+    "616b65330000000000000000010000000800000000000000fcffffff0c001400180023002b00300000000000"
+    "000000003f000000000000000000000100000000000000020000000004000000fcffffff0800100014001f00"
+    "0000000000000000200000000000000000000000000000010000007600000000000000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    "0000000001000000020000000300000000000000000000000000000000000000000000000000000000000000"
+    "000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00000000").
+
+-define(FB_SCHEMA_HEX, "63f3c8cef07c77e967ae635aef99bdb2f4f5977a34a0833af2d185bc79d3827c").
+
 %% -- CT boilerplate ----------------------------------------------------------
 
 init_per_suite(Config) ->
@@ -35,7 +73,14 @@ init_per_suite(Config) ->
     Dir = filename:join(filename:absname("tmp"), "lakehouse_ct_" ++ Unique),
     ok = filelib:ensure_dir(filename:join([Dir, "sealed", "x"])),
     Segs = build_fixture_mount(Dir),
-    [{mount_dir, Dir}, {segs, Segs} | Config].
+    FbDir = filename:join(Dir, "fb_root"),
+    write_fb_segment(FbDir, "seg-fb-00000000000000000001",
+                     fb_fixture_bin(?FB_FIXTURE_HEX)),
+    Fb2Dir = filename:join(Dir, "fb2_root"),
+    write_fb_segment(Fb2Dir, "seg-fb-00000000000000000002",
+                     fb_fixture_bin(?FB_NO_ROWS_HEX)),
+    [{mount_dir, Dir}, {segs, Segs},
+     {fb_dir, FbDir}, {fb2_dir, Fb2Dir} | Config].
 
 end_per_suite(Config) ->
     case proplists:get_value(mount_dir, Config) of
@@ -49,7 +94,8 @@ all() ->
      all_seq_regression, all_truncated_tail, all_ipc_gate_flips,
      all_ipc_gate_precedence, all_batch_query_sums_exactly,
      all_batch_refusal_zero_partial, all_andon_precedence_over_corruption,
-     all_legacy_form_unchanged, all_schema_gate_mismatch].
+     all_legacy_form_unchanged, all_schema_gate_mismatch,
+     all_fb_shared_fixture, all_fb_without_rows, all_fb_span_fuzz].
 
 %% -- fixtures ------------------------------------------------------------------
 
@@ -497,4 +543,82 @@ all_schema_gate_mismatch(Config) ->
         smalt_lakehouse_mount:execute_analytical_query(
           Dir, {dt_lakehouse_batch_query, OtherSchema, all}),
     ct:comment("schema gate mismatch refused typed"),
+    ok.
+
+%% ===========================================================================
+%% R4-I fb-era cases (repositioning wave): the shared cross-repo fixture
+%% (committed byte-for-byte on the cgap side,
+%% crates/cgap-arrow/tests/ipc_courts.rs f4_shared_fixture_identical_
+%% classification) classifies IDENTICALLY here. Any asymmetry = F4
+%% coordination violation.
+%% ===========================================================================
+
+
+% Decode a ?FB_FIXTURE_HEX-shaped hex macro to a binary.
+fb_fixture_bin(Mac) ->
+    Hex = list_to_binary(lists:flatten(Mac)),
+    << << (fb_hexval_hi(H) * 16 + fb_hexval_hi(L)):8 >>
+       || <<H, L>> <= Hex >>.
+
+fb_hexval_hi(C) when C >= $0, C =< $9 -> C - $0;
+fb_hexval_hi(C) when C >= $a, C =< $f -> C - $a + 10;
+fb_hexval_hi(C) when C >= $A, C =< $F -> C - $A + 10.
+
+fb_raw_schema() ->
+    Hex = list_to_binary(?FB_SCHEMA_HEX),
+    << << (fb_hexval_hi(H) * 16 + fb_hexval_hi(L)):8 >>
+       || <<H, L>> <= Hex >>.
+
+write_fb_segment(Dir, Name, Win) ->
+    Sealed = filename:join(Dir, "sealed"),
+    ok = filelib:ensure_dir(filename:join([Sealed, "x"])),
+    Seq = 1,
+    FrameBody = <<Seq:64, 1000:64/signed, 5:16, 7:16, 3:32, "seg",
+                  (byte_size(Win)):32, Win/binary>>,
+    Crc = erlang:crc32(FrameBody),
+    Frame = <<<<"SMAL">>/binary, (byte_size(FrameBody) + 4):32,
+              FrameBody/binary, Crc:32>>,
+    Path = filename:join(Sealed, Name ++ ".journal"),
+    ok = file:write_file(Path, Frame),
+    Meta = ["{\"sha256\": \"", sha256_hex(Frame), "\"}"],
+    ok = file:write_file(Path ++ ".meta.json", Meta),
+    ok = file:write_file(Path ++ ".seal", <<"sealed\n">>),
+    Path.
+
+
+all_fb_shared_fixture(Config) ->
+    Dir = proplists:get_value(fb_dir, Config),
+    {ok, #{segments := [Seg], quarantined := []}} =
+        smalt_lakehouse_mount:segment_census(Dir),
+    1 = maps:get(windows, Seg),
+    3 = maps:get(rows, Seg),
+    [SchemaHex] = maps:get(schema_digests, Seg),
+    true = binary_to_list(SchemaHex) =:= ?FB_SCHEMA_HEX,
+    %% batch query with the fb schema gate (expected = the carried
+    %% cgap:schema_blake3 raw bytes)
+    {ok, #{rows := 3}} =
+        smalt_lakehouse_mount:execute_analytical_query(
+          Dir, {dt_lakehouse_batch_query, fb_raw_schema(), all}),
+    ct:comment("shared fb fixture classified identically (F4 guard)"),
+    ok.
+
+all_fb_without_rows(Config) ->
+    Dir2 = proplists:get_value(fb2_dir, Config),
+    {error, {ipc_rows_carrier_missing, []}} =
+        smalt_lakehouse_mount:segment_census(Dir2),
+    %% window-level classification, same class as cgap IpcError::
+    %% RowsCarrierMissing (F4 coordination guard)
+    Win = fb_fixture_bin(?FB_NO_ROWS_HEX),
+    {error, {ipc_rows_carrier_missing, []}} =
+        smalt_lakehouse_mount:ipc_window_info(Win),
+    ct:comment("fb-without-rows refuses ipc_rows_carrier_missing"),
+    ok.
+
+all_fb_span_fuzz(_Config) ->
+    Win = fb_fixture_bin(?FB_FIXTURE_HEX),
+    <<Pre:4/binary, _OldSpan:4/binary, Post/binary>> = Win,
+    Bad = <<Pre/binary, 634:32/little, Post/binary>>,
+    {error, {ipc_bad_meta_size, _}} =
+        smalt_lakehouse_mount:ipc_window_info(Bad),
+    ct:comment("non-multiple-of-8 span refuses ipc_bad_meta_size"),
     ok.

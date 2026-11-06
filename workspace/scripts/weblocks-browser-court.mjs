@@ -140,11 +140,11 @@ function check(cond, leg, msg) {
 
 // Bounded observable poll (no-sleep doctrine): poll until pred, deadline-checked.
 async function pollUntil(page, predBody, deadlineMs, label) {
-  const start = Date.now();
+  const start = performance.now();
   for (;;) {
     const v = await page.evaluate(new Function("return (" + predBody + ")();"));
     if (v) return v;
-    if (Date.now() - start > deadlineMs) {
+    if (performance.now() - start > deadlineMs) {
       throw new Error(`poll deadline exceeded: ${label} (${deadlineMs}ms)`);
     }
     await new Promise((r) => setTimeout(r, 50));
@@ -259,7 +259,7 @@ check(
 );
 
 // ---- B4: release A -> B acquires ---------------------------------------------
-const tRelease = Date.now();
+const tRelease = performance.now();
 await pageA.evaluate(() => window.__wl.release());
 const resA = await pageA.evaluate(() => window.__wl.leaseP.then((r) => JSON.parse(JSON.stringify(r))));
 check(resA.ok === true && resA.mode === "web-locks", "B4a", "A body completed, mode=" + resA.mode);
@@ -268,7 +268,7 @@ check(snapA2.isMaster === true, "B4b", "page A isMaster=true after completing as
 check(snapA2.lastMode === "web-locks", "B4c", 'page A lastMode="web-locks" after completing (disclosed, not dropped)');
 
 await pollUntil(pageB, "() => window.__wl.bodyStarted", 10000, "B body started after A released");
-const tBStart = Date.now();
+const tBStart = performance.now();
 check(tBStart >= tRelease, "B4d", "B body started only after A released (release=" + tRelease + " <= bstart=" + tBStart + ")");
 await pageB.evaluate(() => window.__wl.releaseB());
 const resB = await pageB.evaluate(() => window.__wl.leaseB.then((r) => JSON.parse(JSON.stringify(r))));

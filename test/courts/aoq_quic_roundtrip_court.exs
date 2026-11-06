@@ -67,6 +67,11 @@ defmodule AoqQuicCourt do
     IO.puts("[court] openssl verify: #{String.trim_trailing(out)}")
   end
 
+  defp sha256(path) do
+    {out, 0} = System.cmd("shasum", ["-a", "256", path])
+    out |> String.split() |> hd()
+  end
+
   test "CERTS ARM: corrupted leaf DER -> open refuses typed; sha256 fail-closed restore" do
     ca = Path.join(@cert_dir, "ca-cert.pem")
     assert File.exists?(ca), "run SMALT_CERT_DIR=#{@cert_dir} scripts/gen_dev_cert.sh first"
@@ -107,23 +112,144 @@ defmodule AoqQuicCourt do
     assert sha256(sb_ca) == before, "restore failed - sha256 mismatch"
   end
 
-  test "ROUNDTRIP ARM: BLOCKED-HONEST (L3 server role not landed)" do
-    # The server face is typed UNSUPPORTED in the wrapper; the court
-    # asserts that law rather than faking a loopback pass.
-    assert {:error, {:quic_refusal, {:unsupported, :server_role_not_in_nif_surface}}} =
-             Quic.serve(0, [])
+  test "ROUNDTRIP ARM: serve -> connect -> bi-stream Frame byte-identity loopback" do
+    status = Quic.Nif.load_status()
+    IO.puts("[court] NIF load_status = #{inspect(status)}")
 
-    IO.puts(
-      "[BLOCKED-HONEST] roundtrip loopback (serve->accept->stream_open->send->recv->" <>
-        "Frame re-parse byte-identity; ALPN-drop and wrong-CA mutations) requires the " <>
-        "cgap server-role NIF surface - cited dependency: cgap lane L3, aq_quic.rs " <>
-        "server job variants, not landed when this court ran."
-    )
+    unless Quic.Nif.loaded?() do
+      # Loud skip, never a fake pass: the real-load arm needs the dylib.
+      assert {:error, {:quic_refusal, {:nif_open_failed, {:stub, _}}}} = Quic.open(0, <<1>>)
+      IO.puts("[SKIP-loud] dylib not loadable - roundtrip leg skipped (see receipt)")
+    else
+      assert {:ok, ca_der} = Certs.pem_to_der!(Path.join(@cert_dir, "ca-cert.pem"))
+      assert {:ok, cert_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-cert.pem"))
+      assert {:ok, key_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-key.pem"))
+
+      port = free_udp_port()
+
+      # SERVER engine: bind endpoint + serve with the ECDSA leaf.
+      assert {:ok, srv_engine} = Quic.open(0, ca_der)
+      assert {:ok, listener} = Quic.serve(srv_engine, port, cert_der, key_der)
+
+      # Server loop: accept -> accept_bi -> echo one frame back.
+      server =
+        Task.async(fn ->
+          assert {:ok, conn} = Quic.accept(listener, 10_000)
+          assert {:ok, stream} = Quic.accept_bi(conn, 10_000)
+          assert {:ok, frame_bytes} = Quic.stream_recv(stream, 10_000)
+          :ok = Quic.stream_send(stream, frame_bytes)
+          :ok = Quic.stream_close(stream)
+          :echoed
+        end)
+
+      # CLIENT engine: real TLS 1.3 QUIC handshake.
+      assert {:ok, cli_engine} = Quic.open(0, ca_der)
+      assert {:ok, conn} = Quic.connect(cli_engine, "127.0.0.1:#{port}", "localhost")
+      assert {:ok, stream} = Quic.stream_open(conn)
+
+      # Frame.encode iolist DIRECT into the NIF (no concat anywhere).
+      header = :crypto.strong_rand_bytes(64)
+      body = :crypto.strong_rand_bytes(256)
+      assert {:ok, frame_iolist} = Smalt.Aoq.Frame.encode(header, body)
+
+      assert :ok = Quic.stream_send(stream, frame_iolist)
+      assert {:ok, echo} = Quic.stream_recv(stream, 10_000)
+      assert byte_size(echo) == 320
+      assert echo == header <> body, "roundtrip byte-identity FAILED"
+
+      assert Task.await(server, 15_000) == :echoed
+      IO.puts("[court] ROUNDTRIP byte-identity ALIVE (#{byte_size(echo)} bytes loopback)")
+    end
   end
 
-  defp sha256(path) do
-    {out, 0} = System.cmd("shasum", ["-a", "256", path])
-    out |> String.split() |> hd()
+  test "ROUNDTRIP ARM: ALPN-drop mutation flips (AQ_MUTATE_ALPN_DROP=1)" do
+    if Quic.Nif.loaded?() do
+      assert {:ok, ca_der} = Certs.pem_to_der!(Path.join(@cert_dir, "ca-cert.pem"))
+      assert {:ok, cert_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-cert.pem"))
+      assert {:ok, key_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-key.pem"))
+      port = free_udp_port()
+
+      # Server-side mutation: AQ_MUTATE_ALPN_DROP=1 strips ALPN from server config
+      System.put_env("AQ_MUTATE_ALPN_DROP", "1")
+      assert {:ok, srv_engine} = Quic.open(0, ca_der)
+      assert {:ok, _listener} = Quic.serve(srv_engine, port, cert_der, key_der)
+      System.delete_env("AQ_MUTATE_ALPN_DROP")
+
+      assert {:ok, cli_engine} = Quic.open(0, ca_der)
+
+      # When server dropped ALPN and client offers aq/1, client handshake fails
+      # and server accept hits its deadline and refuses.
+      assert {:error, {:quic_refusal, {:nif_connect_failed, {:loaded, _}}}} =
+               Quic.connect(cli_engine, "127.0.0.1:#{port}", "localhost")
+
+      # BASELINE leg on a fresh port: normal server + normal client connect succeeds
+      port2 = free_udp_port()
+      assert {:ok, srv_engine2} = Quic.open(0, ca_der)
+      assert {:ok, listener2} = Quic.serve(srv_engine2, port2, cert_der, key_der)
+      assert {:ok, cli_engine2} = Quic.open(0, ca_der)
+      server = Task.async(fn -> Quic.accept(listener2, 10_000) end)
+      assert {:ok, _conn} = Quic.connect(cli_engine2, "127.0.0.1:#{port2}", "localhost")
+      assert {:ok, _srv_conn} = Task.await(server, 10_000)
+    else
+      assert {:error, {:quic_refusal, {:nif_open_failed, {:stub, _}}}} = Quic.open(0, <<1>>)
+      IO.puts("[SKIP-loud] ALPN-drop flip leg skipped - dylib not loadable")
+    end
   end
 
+  test "ROUNDTRIP ARM: wrong-CA refusal flips" do
+    if Quic.Nif.loaded?() do
+      assert {:ok, ca_der} = Certs.pem_to_der!(Path.join(@cert_dir, "ca-cert.pem"))
+      assert {:ok, cert_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-cert.pem"))
+      assert {:ok, key_der} = Certs.pem_to_der!(Path.join(@cert_dir, "quic-key.pem"))
+      port = free_udp_port()
+
+      assert {:ok, srv_engine} = Quic.open(0, ca_der)
+      assert {:ok, _listener} = Quic.serve(srv_engine, port, cert_der, key_der)
+
+      # WRONG anchor: the client trusts the wrong CA...
+      wrong_ca_pem = mint_wrong_ca_pem()
+      on_exit(fn -> File.rm(wrong_ca_pem) end)
+      assert {:ok, wrong_ca_der} = Certs.pem_to_der!(wrong_ca_pem)
+      assert {:ok, cli_engine} = Quic.open(0, wrong_ca_der)
+
+      assert {:error, {:quic_refusal, {:nif_connect_failed, {:loaded, _}}}} =
+               Quic.connect(cli_engine, "127.0.0.1:#{port}", "localhost")
+
+      # BASELINE leg on a fresh port: trusting the right CA connects.
+      port2 = free_udp_port()
+      assert {:ok, srv_engine2} = Quic.open(0, ca_der)
+      assert {:ok, listener2} = Quic.serve(srv_engine2, port2, cert_der, key_der)
+      assert {:ok, cli2} = Quic.open(0, ca_der)
+      server = Task.async(fn -> Quic.accept(listener2, 10_000) end)
+      assert {:ok, _conn} = Quic.connect(cli2, "127.0.0.1:#{port2}", "localhost")
+      assert {:ok, _srv_conn} = Task.await(server, 10_000)
+    else
+      assert {:error, {:quic_refusal, {:nif_open_failed, {:stub, _}}}} = Quic.open(0, <<1>>)
+      IO.puts("[SKIP-loud] wrong-CA flip leg skipped - dylib not loadable")
+    end
+  end
+
+  # ephemeral UDP port probe (gen_udp bind on 0, read, close - sandbox
+  # race acceptable, serve refusal on collision retries once)
+  defp free_udp_port do
+    {:ok, sock} = :gen_udp.open(0, mode: :binary)
+    {:ok, port} = :inet.port(sock)
+    :gen_udp.close(sock)
+    port
+  end
+
+  defp mint_wrong_ca_pem do
+    path = Path.join(System.tmp_dir(), "lane4-wrongca-\#{:erlang.unique_integer()}.pem")
+
+    {_, 0} =
+      System.cmd(
+        "openssl",
+        ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-sha256",
+         "-days", "30", "-nodes", "-keyout", path <> ".key", "-out", path,
+         "-subj", "/CN=lane4-wrong-ca"],
+        stderr_to_stdout: true
+      )
+
+    path
+  end
 end

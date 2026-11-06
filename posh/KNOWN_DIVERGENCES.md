@@ -88,6 +88,46 @@ claiming all of them).
 | KD-08 | resource:azurerm_federated_identity_credential, resource:azurerm_role_assignment | AMENDED 2026-11-04 (half-met): roleAssignments routes ARE mounted on the BEAM face — PUT/GET/GET-list/DELETE at subscription and resourceGroup scopes (`lib/smalt/arm_gateway/plug/resource_providers.ex:4392-4495`); federatedIdentityCredentials remains Registry shape admission only (no FIC routes). Original divergence (swallowed unsupported-route errors → fabricated/stale state, honesty-law fix 2026-10-30 lane C2) unchanged. | resource_remaining_v1.go FIC + role_assignment CRUD; resource_providers.ex:4392-4495 route mounts; `go test ./... -race` green; `TFPOSHT_LIVE=1` roundtrips green | BEAM face mounts the federatedIdentityCredentials routes (roleAssignments half is met). |
 | KD-09 | resource:azurerm_role_assignment | CLOSED 2026-11-04: the close condition is met — `lib/smalt/policy/assignments.ex:19-33` carries `@builtin_roles` with the real Azure built-in role definition GUIDs (Owner 8e3af657-a8ff-443c-a75c-2fe8c4bcb635, Contributor b24988ac-6180-42a0-ab88-20f7382dd24c, Reader acdd72a7-3385-48ef-bd42-f606fba81ae7) and `role_definition/2` resolves by name (case-insensitive) or GUID. Flip-law: witness receipt `docs/jira/v26.10.29/receipts/r10b-policy-split.md` (mtime 2026-10-29 23:12) postdates the fix (mtime 2026-10-29 21:59); fresh BEAM-side witness `docs/jira/v26.10.31/receipts/kd09-witness.md` (mix run -e real output, 2026-11-04). Prior divergence (uuid5 local-GUID mint, loud-warning diag) superseded on the BEAM face. | resolveRoleDefinitionInput (resource_remaining_v1.go); docs/jira/v26.10.29/receipts/r10b-policy-split.md; docs/jira/v26.10.31/receipts/kd09-witness.md | ~~smalt Policy face resolves built-in role names to real definition GUIDs~~ — met; no open remainder. |
 
+### 5.1 KD-RC recount 2026-11-05 (register audit lane; rows re-read live, no flips taken)
+
+Every row above was re-verified against the tree this session. No row flipped
+status: the two CLOSED rows' witnesses re-verified; the OPEN rows' subjects
+re-confirmed on disk. Findings (evidence-path class, not status flips):
+
+- **KD-RC-S1 (KD-04, KD-05, KD-06 evidence paths dangling)**: the cited
+  receipts `posh/receipts/posh009-traffic-update-only.md`,
+  `posh/receipts/posh009-numeric-memory.md`, and
+  `posh/receipts/posh009-api-version-ceilings.md` do not exist — a
+  repo-wide `find . -name "posh009-*"` (build dirs excluded) returns only
+  `docs/jira/posh/v26.10.30/receipts/parity/posh009-coverage-gate-{flip,green}.json`.
+  Per the register law ("a row with no evidence path is invalid") these three
+  rows carry invalid evidence cites until the receipts are located or re-minted.
+  Not flipped: the divergence subjects themselves re-confirmed live (see below),
+  so the rows stay REGISTERED/OPEN.
+- KD-02: no movement witnessed this session; row stands as written.
+- KD-03: stands — evidence receipt exists
+  (`docs/jira/posh/v26.10.30/gaps/23-secret-echo-staleness.md`, 2026-10-30).
+- KD-04: subject re-confirmed; evidence path dangling (KD-RC-S1).
+- KD-05: POSH-MEMBRANE half re-verified live
+  (`posh/internal/dialect/azure/family_translate.go:28` ParseMemoryGiB +
+  `family_translate_test.go:60` TestMutationKD05WrongTranslationFails — both
+  present); CORE half re-confirmed open — `grep -rn "GiB\|MiB" lib/smalt
+  --include="*.ex"` returns only unrelated transport caps, no memory
+  quantity parse. Evidence `posh009-numeric-memory.md` dangling (KD-RC-S1);
+  `kd09-witness.md` exists (mtime 2026-11-04 17:32).
+- KD-06: subject not re-probed this session; evidence path dangling (KD-RC-S1).
+- KD-07: honesty-law markers re-confirmed in
+  `adapters/terraform-provider-smalt/internal/provider/resource_container_app_environment.go`;
+  row stands.
+- KD-08: AMENDED row re-verified live — roleAssignments routes mounted
+  (`lib/smalt/arm_gateway/plug/resource_providers.ex:4432,4444,4463`);
+  `grep federatedIdentityCredentials` over the plug = 0 hits (no FIC routes).
+  Row stands OPEN on the FIC half.
+- KD-09: CLOSED re-verified live — builtin GUIDs present at
+  `lib/smalt/policy/assignments.ex:21-25`; both witness receipts exist with
+  the claimed mtimes.
+- KD-01: CLOSED (in §6); §4.1 PASS-ledger cell stands.
+
 ## 6. Closed rows (no longer active divergences)
 
 - KD-01 CLOSED 2026-10-30 (v26.10.30 lane C1): the smalt ARM face mounts

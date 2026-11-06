@@ -280,8 +280,8 @@ async function sseLeg(port, expectRetry = 'retry: 1000') {
     try {
       const decoder = new TextDecoder();
       let acc = '';
-      const deadline = Date.now() + 1500;
-      while (Date.now() < deadline) {
+      const deadline = performance.now() + 1500;
+      while (performance.now() < deadline) {
         const chunk = await reader.read();
         if (chunk.done) break;
         acc += decoder.decode(chunk.value, { stream: true });
@@ -328,10 +328,10 @@ async function mutationLeg() {
       // Hot-recompile readiness: bounded poll until the mutant is observable
       // (SSE leg FAILs because the first frame now carries retry: 1701), or
       // the deadline expires -> "court did not flip".
-      const deadline = Date.now() + 90_000;
+      const deadline = performance.now() + 90_000;
       let flipped = false;
       let last = '';
-      while (Date.now() < deadline) {
+      while (performance.now() < deadline) {
         const r = await sseLeg(PORT_MUTANT, 'retry: 1000'); // demand the ORIGINAL
         last = r.detail;
         if (!r.ok) { // mutant live: the original retry frame is gone
@@ -370,7 +370,7 @@ async function mutationLeg() {
 // Main: three sequential boots, then the verdict
 // ---------------------------------------------------------------------------
 
-const t0 = Date.now();
+const t0 = performance.now();
 
 // boot1: plain — pages + ungated handlers + SSE
 {
@@ -402,7 +402,7 @@ const t0 = Date.now();
 // boot3: mutation leg
 await mutationLeg();
 
-const dt = ((Date.now() - t0) / 1000).toFixed(1);
+const dt = ((performance.now() - t0) / 1000).toFixed(1);
 const fails = results.filter((r) => r.verdict === 'FAIL');
 const passes = results.filter((r) => r.verdict === 'PASS');
 const skips = results.filter((r) => r.verdict === 'SKIP');

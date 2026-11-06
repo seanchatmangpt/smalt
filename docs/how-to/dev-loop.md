@@ -128,9 +128,11 @@ a file on disk is known-O, not O*. Receipt paths follow the lane pattern
 ## Private port allocation (v-law, post-reset)
 
 Local harnesses must not contend the front-door ports (5672/9443/8443/9444)
-or each other. Post-reset port law (`scripts/bench/REGISTRY.md` v-law,
-v26.10.19): verification-surface lanes take **vN blocks: `39700 + 10N .. +5`**
-(v1 39710..39715, v2 39720..39725, ...); spare block `39826..39839` is
+or each other. Port law (`docs/reference/port_law.md`, mechanical gate
+`scripts/port_registry_check.py`): verification-surface lanes take **vN
+blocks: `39700 + 10N .. +6`** (7 ports — the 7th slot is the kafka face,
+v-face only; v1 39710..39716, v2 39720..39726, ...; v14/v15 LEGACY-FROZEN);
+spare block `39826..39839` is
 reserved for ad hoc probes. Lane blocks are leased through
 `scripts/substrate-ctl` (`up --block v<N>`) — `scripts/lib/substrate_boot_registry.md`
 documents the fd-9 lock law, marker/identity guard, and the exit contract

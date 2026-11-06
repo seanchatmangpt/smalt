@@ -126,7 +126,7 @@ defmodule Smalt.Aoq.IovecCourtTest do
     assert {:error, {:transport_refusal, :short_header}} =
              Transport.send_batch(sock, [{"short", <<"x">>}])
 
-    assert {:error, {:transport_refusal, :empty_payload}} =
+    assert {:error, {:transport_refusal, :empty_body}} =
              Transport.send_batch(sock, [{:binary.copy(<<0>>, 64), <<>>}])
 
     assert {:error, {:transport_refusal, {:bad_frame, :atom}}} =

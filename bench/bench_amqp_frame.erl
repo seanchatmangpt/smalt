@@ -47,12 +47,22 @@ run() ->
 one_run(_I, Frame) ->
     lists:min(
       [begin
+           %% Reductions sampled OUTSIDE the timed bracket (before T0 /
+           %% after T1) — timer calls must never inflate the reductions
+           %% sample. Wall clock stays ms-resolution: ?N=100k frames per
+           %% round is lawful aggregation (>> 10 ticks of a ms clock),
+           %% guarded below so that premise cannot rot silently.
            {R0, _} = erlang:statistics(reductions),
            T0 = erlang:monotonic_time(millisecond),
            ok = decode_loop(?N, Frame),
            T1 = erlang:monotonic_time(millisecond),
            {R1, _} = erlang:statistics(reductions),
-           {T1 - T0, R1 - R0}
+           WallMs = T1 - T0,
+           case WallMs >= 10 of
+               true -> ok;
+               false -> erlang:error({quantization_risk, wall_ms, WallMs})
+           end,
+           {WallMs, R1 - R0}
        end || _ <- lists:seq(1, ?ROUNDS_PER_RUN)]).
 
 decode_loop(0, _Frame) -> ok;

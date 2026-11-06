@@ -12,9 +12,9 @@ run() -> run(?NS).
 run(Ns) ->
     S = erlang:system_info(schedulers_online),
     L = erlang:system_info(logical_processors_available),
-    {T0, _} = statistics(reductions),
+    {reductions, R0} = process_info(self(), reductions),
     Rows = [bench(N) || N <- Ns],
-    {T1, _} = statistics(reductions),
+    {reductions, R1} = process_info(self(), reductions),
     Meta = [
         {kind, meta},
         {module, atom_to_list(?MODULE)},
@@ -22,7 +22,7 @@ run(Ns) ->
         {otp, erlang:system_info(otp_release)},
         {schedulers, S},
         {logical, L},
-        {sweep_self_reds, T1 - T0}
+        {sweep_self_reds, R1 - R0}
     ],
     ok = filelib:ensure_dir(?OUT),
     {ok, Fd} = file:open(?OUT, [append]),
@@ -38,19 +38,47 @@ bench(N) ->
     Rounds = rounds_for(N),
     Ref = make_ref(),
     roundtrip(Pids, Ref, 1),          % warm: page in mailboxes, settle spawns
-    {_, _} = statistics(reductions),
-    T = erlang:monotonic_time(millisecond),
+    %% Per-process reductions ONLY (node-global statistics(reductions)
+    %% counts every scheduler — banned per BENCH-ERLANG AR-BENCH; see
+    %% bench_aq_boundary_alloc.erl, the strict exemplar).
+    {reductions, Reds0} = process_info(self(), reductions),
+    %% Nanosecond monotonic clock: ms resolution over 10-50 roundtrips
+    %% repeats the quantization bug documented at kafka_vs_aoq_court.erl:264.
+    T0 = erlang:monotonic_time(nanosecond),
     roundtrip(Pids, Ref, Rounds),
-    Wall = erlang:monotonic_time(millisecond) - T,
-    {Total, _} = statistics(reductions),
+    T1 = erlang:monotonic_time(nanosecond),
+    WallNs = T1 - T0,
+    quantization_guard(WallNs, timer_resolution_ns()),
+    {reductions, Reds1} = process_info(self(), reductions),
+    Total = Reds1 - Reds0,
     RT = N * Rounds,
     [
         {kind, row}, {n, N}, {rounds, Rounds}, {round_trips, RT},
-        {wall_ms, Wall},
-        {usec_per_roundtrip, (Wall * 1000.0) / RT},
+        {wall_ns, WallNs},
+        {wall_ms, WallNs / 1.0e6},
+        {usec_per_roundtrip, WallNs / 1000.0 / RT},
         {reds_per_roundtrip, Total / RT},
-        {ops_per_sec, case Wall of 0 -> null; _ -> RT * 1000 / Wall end}
+        {ops_per_sec, RT * 1.0e9 / WallNs}
     ].
+
+%% Structural guard: the measured region must span >= 10 ticks of the
+%% clock, else the sample is quantization noise (V10 bug class).
+quantization_guard(RegionNs, ResNs) when RegionNs >= ResNs * 10 -> ok;
+quantization_guard(RegionNs, ResNs) ->
+    erlang:error({quantization_risk, RegionNs, ResNs}).
+
+timer_resolution_ns() ->
+    %% os_monotonic_time_source reports `resolution` in parts per second
+    %% (Hz); one tick in ns = 1e9 / resolution. Conservative 1us fallback.
+    case erlang:system_info(os_monotonic_time_source) of
+        Src when is_list(Src) ->
+            case lists:keyfind(resolution, 1, Src) of
+                {resolution, R} when is_integer(R), R > 0 ->
+                    erlang:max(1, 1_000_000_000 div R);
+                _ -> 1000
+            end;
+        _ -> 1000
+    end.
 
 rounds_for(32000) -> 10;
 rounds_for(16000) -> 20;

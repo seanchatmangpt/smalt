@@ -51,13 +51,20 @@ SB_SWEEP_DRAIN=10
 #
 # Canonical (front door): amqp=5672 eh=5673 arm=9443 egress=8443 tls=9444
 # mcp=9545.
-# Lane blocks, 6 ports each, same role order:
-#   bN = 39000+10N .. +5   (N=1..99)   e.g. b1 = 39010-39015
-#   cN = 39200+10N .. +5   (N=1..99)   e.g. c1 = 39210-39215
-#   vN = 39700+10N .. +5   (N=1..99)   e.g. v1 = 39710-39715
+# Lane blocks, same role order (amqp eh arm egress tls mcp [kafka]):
+#   bN = 39000+10N .. +5   (N=1..20)   6 ports   e.g. b1 = 39010-39015
+#   cN = 39200+10N .. +5   (N=1..48)   6 ports   e.g. c1 = 39210-39215
+#   vN = 39700+10N .. +6   (N=1..29)   7 ports   e.g. v1 = 39710-39716
+#                          (7th slot = kafka; kafka is the v-face only;
+#                           v14/v15 LEGACY-FROZEN; c48 legacy-reserved)
+# Port law authority: docs/reference/port_law.md (gate:
+# scripts/port_registry_check.py).
 # ---------------------------------------------------------------------------
 
-# sb_block_ports <block> -> prints 6 ports: amqp eh arm egress tls mcp
+# sb_block_ports <block> -> prints ports: amqp eh arm egress tls mcp [kafka]
+# 6 ports for front/b/c; 7 ports (kafka = 7th slot) for v-blocks — kafka is
+# the v-face only. Port law: docs/reference/port_law.md; mechanical gate:
+# scripts/port_registry_check.py.
 # Returns 1 on an unknown block name (caller refuses, exit 1/64).
 sb_block_ports() {
   local block="$1" n
@@ -66,24 +73,41 @@ sb_block_ports() {
       printf '5672 5673 9443 8443 9444 9545'; return 0 ;;
     b[0-9]|b[1-9][0-9])
       n="${block#b}"
-      (( n >= 1 && n <= 99 )) || return 1
+      (( n >= 1 && n <= 20 )) || return 1
       printf '%d %d %d %d %d %d' \
         $((39000 + 10 * n)) $((39001 + 10 * n)) $((39002 + 10 * n)) \
         $((39003 + 10 * n)) $((39004 + 10 * n)) $((39005 + 10 * n)) ;;
     c[0-9]|c[1-9][0-9])
       n="${block#c}"
-      (( n >= 1 && n <= 99 )) || return 1
+      (( n >= 1 && n <= 48 )) || return 1
+      (( n == 48 )) && return 1  # c48 legacy-reserved (legacy-c3)
       printf '%d %d %d %d %d %d' \
         $((39200 + 10 * n)) $((39201 + 10 * n)) $((39202 + 10 * n)) \
         $((39203 + 10 * n)) $((39204 + 10 * n)) $((39205 + 10 * n)) ;;
     v[0-9]|v[1-9][0-9])
       n="${block#v}"
-      (( n >= 1 && n <= 99 )) || return 1
-      printf '%d %d %d %d %d %d' \
+      (( n >= 1 && n <= 29 )) || return 1
+      (( n == 14 || n == 15 )) && return 1  # v14/v15 LEGACY-FROZEN
+      printf '%d %d %d %d %d %d %d' \
         $((39700 + 10 * n)) $((39701 + 10 * n)) $((39702 + 10 * n)) \
-        $((39703 + 10 * n)) $((39704 + 10 * n)) $((39705 + 10 * n)) ;;
+        $((39703 + 10 * n)) $((39704 + 10 * n)) $((39705 + 10 * n)) \
+        $((39700 + 10 * n + 6)) ;;
     *) return 1 ;;
   esac
+}
+
+# sb_env_pin — sha256 over the operator env values this boot honors
+# (SMALT_ARM_RATE_LIMIT, SMALT_COSMOS_RU_LIMIT, SMALT_SB_SHARED_KEY — the
+# same set sb_spawn_substrate bridges into app env). Empty when unset, so
+# pin/no-pin and different pins always produce different pins.
+# -> _SB_ENV_PIN
+sb_env_pin() {
+  local v val pin_input=""
+  for v in ARM_RATE_LIMIT COSMOS_RU_LIMIT SB_SHARED_KEY; do
+    eval "val=\"\${SMALT_${v}:-}\""
+    pin_input+="$v=$val;"
+  done
+  _SB_ENV_PIN="$(printf '%s' "$pin_input" | shasum -a 256 | cut -d' ' -f1)"
 }
 
 # sb_block_lock <block> -> lock path for the block (front door for canonical)
@@ -167,9 +191,13 @@ sb_sweep_block() {
 sb_marker_path() { printf '%s/%s.boot.json' "$SB_MARKERS_DIR" "$1"; }
 
 # sb_marker_valid <block> <arm_port> <auth> -> 0 iff marker present, fresh,
-# pid is a live ARM-port listener, and auth matches.
+# pid is a live ARM-port listener, auth matches, AND the marker's env_pin
+# equals the pin of the CURRENT operator env (sha256 over the honored
+# SMALT_* values — see sb_env_pin). Returns 2 specifically on env-pin
+# mismatch: an incumbent booted under a different operator env is a
+# foreign identity — the caller must refuse (exit 3), never sweep it.
 sb_marker_valid() {
-  local block="$1" arm_port="$2" auth="$3" mp now pid marker_auth booted
+  local block="$1" arm_port="$2" auth="$3" mp now pid marker_auth booted marker_pin
   mp="$(sb_marker_path "$block")"
   [ -r "$mp" ] || return 1
   sb_now_epoch
@@ -184,6 +212,12 @@ sb_marker_valid() {
   [ $(( now - ${booted:-0} )) -le "$SB_MAX_REUSE_AGE" ] || return 1
   case "$marker_auth" in anonymous|enforce) ;; *) return 1 ;; esac
   [ "$marker_auth" = "$auth" ] || { sb_log "GUARD" "$block auth mismatch: marker=$marker_auth requested=$auth — sweep+fresh"; return 1; }
+  sb_env_pin
+  marker_pin="$(sb_marker_field "$mp" env_pin >/dev/null 2>&1 && printf '%s' "$_SB_FIELD" || true)"
+  if [ -n "$marker_pin" ] && [ "$marker_pin" != "$_SB_ENV_PIN" ]; then
+    sb_log "GUARD" "$block env-pin mismatch: marker=$marker_pin requested=$_SB_ENV_PIN — incumbent is foreign, refusing to sweep"
+    return 2
+  fi
   sb_pid_listens_on "$pid" "$arm_port"
 }
 
@@ -282,11 +316,16 @@ sb_tls_gate() {
 # Boot
 # ---------------------------------------------------------------------------
 
-# sb_spawn_substrate <block> <auth> <amqp> <eh> <arm> <egress> <tls> <mcp> <log>
+# sb_spawn_substrate <block> <auth> <log> <amqp> <eh> <arm> <egress> <tls> <mcp> [kafka]
+# log is FIXED at position 3 (port count varies by family: 6 for front/b/c,
+# 7 for v-blocks); kafka (position 10) is "" for front/b/c and the block's
+# kafka port for v-blocks (7-port v-face).
 # Boot-eval shape lifted from ts-run.mjs: put_envs then
 # `{:ok,_} = Application.ensure_all_started(:smalt)`.
 sb_spawn_substrate() {
-  local block="$1" auth="$2" amqp="$3" eh="$4" arm="$5" egress="$6" tls="$7" mcp="$8" log="$9"
+  local block="$1" auth="$2" log="$3"
+  shift 3
+  local amqp="$1" eh="$2" arm="$3" egress="$4" tls="$5" mcp="$6" kafka="${7:-}"
   local shared_key
   # Honor an operator-pinned shared key (examples/ harnesses pass it so SAS
   # auth matches); else generate a per-boot random key (existing behavior).
@@ -318,13 +357,20 @@ Application.put_env(:smalt, :arm_port, ${arm});
 Application.put_env(:smalt, :egress_port, ${egress});
 Application.put_env(:smalt, :arm_tls_port, ${tls});
 Application.put_env(:smalt, :mcp_port, ${mcp});
+${kafka:+Application.put_env(:smalt, :kafka_port, ${kafka});}
 Application.put_env(:smalt, :auth_mode, :${auth});
 $SB_RATE_LIMIT_PUTENVS{:ok, _} = Application.ensure_all_started(:smalt)
 EOE
 )"
   mkdir -p "$SB_LOGS_DIR"
   : >"$log"
-  ( cd "$SB_REPO_DIR" && MIX_ENV=test exec mix run --no-start --no-halt -e "$boot_eval" ) \
+  # SMALT_SB_MIX_NO_DEPS_CHECK=1 skips the mix deps-check stage — witness:
+  # under a heavy multi-lane compile storm the deps-check serializes on a
+  # machine-global lock and a boot stalls indefinitely pre-compile (HR-I,
+  # 2026-11-04); deps are the harness's business, the ctl boot only runs.
+  local no_deps=""
+  case "${SMALT_SB_MIX_NO_DEPS_CHECK:-}" in 1|true|yes) no_deps="--no-deps-check" ;; esac
+  ( cd "$SB_REPO_DIR" && MIX_ENV=test exec mix run --no-start --no-halt $no_deps -e "$boot_eval" ) \
     9>&- >>"$log" 2>&1 &
   _SB_SPAWN_PID=$!
   # Lock fd 9 explicitly closed at spawn; the driver survives the parent
@@ -381,11 +427,18 @@ sb_up() {
   marker="$(sb_marker_path "$block")"
   log="$SB_LOGS_DIR/$block.log"
 
-  if [ -z "$fresh" ] && sb_marker_valid "$block" "$arm" "$auth" && sb_ports_all_listening "${ports[@]}"; then
-    sb_marker_field "$marker" pid || true
-    pid=$_SB_FIELD
-    _sb_receipt "$block" "${ports[*]}" "$pid" true "$marker" "$auth"
-    return 0
+  local mrc=0
+  if [ -z "$fresh" ]; then
+    sb_marker_valid "$block" "$arm" "$auth"; mrc=$?
+    if [ "$mrc" -eq 2 ]; then
+      return 3
+    fi
+    if [ "$mrc" -eq 0 ] && sb_ports_all_listening "${ports[@]}"; then
+      sb_marker_field "$marker" pid || true
+      pid=$_SB_FIELD
+      _sb_receipt "$block" "${ports[*]}" "$pid" true "$marker" "$auth"
+      return 0
+    fi
   fi
 
   sb_lock_acquire "$lock"
@@ -395,12 +448,20 @@ sb_up() {
     return 1
   fi
   # Re-check identity under the lock (another lane may have just booted it).
-  if [ -z "$fresh" ] && sb_marker_valid "$block" "$arm" "$auth" && sb_ports_all_listening "${ports[@]}"; then
-    sb_marker_field "$marker" pid || true
-    pid=$_SB_FIELD
-    sb_lock_release
-    _sb_receipt "$block" "${ports[*]}" "$pid" true "$marker" "$auth"
-    return 0
+  mrc=0
+  if [ -z "$fresh" ]; then
+    sb_marker_valid "$block" "$arm" "$auth"; mrc=$?
+    if [ "$mrc" -eq 2 ]; then
+      sb_lock_release
+      return 3
+    fi
+    if [ "$mrc" -eq 0 ] && sb_ports_all_listening "${ports[@]}"; then
+      sb_marker_field "$marker" pid || true
+      pid=$_SB_FIELD
+      sb_lock_release
+      _sb_receipt "$block" "${ports[*]}" "$pid" true "$marker" "$auth"
+      return 0
+    fi
   fi
   # Identity unverifiable or --fresh: sweep beamish squatters, fail closed
   # if any port stays occupied.
@@ -414,7 +475,12 @@ sb_up() {
 
   sb_tls_gate || { sb_lock_release; return 1; }
 
-  sb_spawn_substrate "$block" "$auth" "${ports[@]}" "$log"
+  local kafka=""
+  # v-law: 7-port blocks, 7th slot = kafka (v-face only).
+  if [ "$(sb_block_ports "$block" | wc -w | tr -d ' ')" -eq 7 ]; then
+    kafka="${ports[6]}"
+  fi
+  sb_spawn_substrate "$block" "$auth" "$log" "${ports[@]}" "$kafka"
   pid=$_SB_SPAWN_PID
   sb_wait_health "$arm" "$pid" "$log" "${ports[@]}"
   local hrc=$?
@@ -444,10 +510,11 @@ sb_ports_any_open() {
 sb_write_marker() {
   local block="$1" ports="$2" pid="$3" auth="$4" log="$5" shared_key="${6:-}"
   sb_now_epoch
+  sb_env_pin
   local sk_json=""
   [ -n "$shared_key" ] && sk_json=$(printf ', "shared_key": "%s"' "$shared_key")
-  ( umask 077; printf '{"block": "%s", "ports": [%s], "pid": %s, "auth": "%s", "booted": %s, "log": "%s"%s}\n' \
-    "$block" "$(sb_ports_json_array "$ports")" "$pid" "$auth" "$_SB_NOW" "$log" "$sk_json" >"$(sb_marker_path "$block")" )
+  ( umask 077; printf '{"block": "%s", "ports": [%s], "pid": %s, "auth": "%s", "booted": %s, "log": "%s", "env_pin": "%s"%s}\n' \
+    "$block" "$(sb_ports_json_array "$ports")" "$pid" "$auth" "$_SB_NOW" "$log" "$_SB_ENV_PIN" "$sk_json" >"$(sb_marker_path "$block")" )
 }
 
 _sb_receipt() {

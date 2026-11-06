@@ -90,6 +90,35 @@ Cross-links: row C7-2c ↔ `GAP(eventhubs-partition-metadata-absent)`;
 `GAP(eventhubs-consumer-group-enumeration-absent)`; item 3 ↔
 `GAP(kql-datetime-dynamic-types-absent)`.
 
+## Arcus dual anchors (P3-L7 re-anchor, 2026-11-05)
+
+Per `docs/jira/v26.11.7/01-c1-c7-re-anchoring-plan.md` (dual-anchor form per
+KD-212: counterpart, not successor — no KD flip implied). Smalt pins above are
+byte-identical; the arcus half is appended here only. Counterpart file hashes
+at pin time are in the receipt
+`docs/jira/v26.11.7/receipts/p3-l7-c7-reanchor.md`.
+
+| C7 row | smalt anchor (unchanged) | arcus counterpart |
+|---|---|---|
+| C7-1a (row 16) structured mode + 200-empty | `lib/smalt/egress_router.ex` route + `event_stream.ex` | `internal/dialect/azure/event_grid.go:131-181` (`BuildEnvelope`), `:202` (`DefaultRetryPolicy`) |
+| C7-1c (row 18) binary-mode `ce-*` headers | `binary_mode_headers?/1` in `lib/smalt/egress_router.ex` | `internal/dialect/azure/webpubsub_faces.go:241-257` (`WebPubSubCloudEventHeaders`) |
+| C7-1d (row 19) REQUIRED attrs + UUID stamp | `event_stream.ex:30-47`, `:131` | `internal/dialect/azure/event_grid.go:25-37` (`ValidateSchema`), `:131-181` (`BuildEnvelope`) |
+| C7-2a/b (rows 21-22) EH sequence / receive | `event_hubs.ex:62`, `:89`, `:118` | `internal/dialect/azure/eh_rest.go:88-127` (`EhSASHeader`/`EhVerifySAS`), `:128-142` (`EhPartitionKey`), `:171-202` (`EhEventCount`/`EhPKPartition`/`EhStoragePartition`), `:276-349` (`EhHandler.ServeHTTP`) |
+| C7-2c (row 23) partition naming | `event_hubs.ex:62` | `internal/dialect/azure/eh_rest.go:186-203` (`EhPKPartition`, `EhStoragePartition`) |
+| C7-3a (row 24) DCR ingest 204 + request-id | `lib/smalt/data_plane/sentinel.ex` `ingest/4` + `egress_router.ex:1841-1844` | `internal/dialect/azure/sentinel_purview.go:99-104` (`SentinelIngestPath`), `:732-767` (`SentinelRowAugment`) |
+| C7-3b (row 25) KQL PrimaryResult envelope | `sentinel.ex` `column_type/2`, `project_columns/1` | `internal/dialect/azure/sentinel_purview.go:327` (`NewSentinelQueryEnvelope`), `:781` (`SentinelColumnarTypeFor`) |
+| C7-5a (row 28) entity POST envelope | `purview_atlas.ex:22-36` | `internal/dialect/azure/sentinel_purview.go:386-390` (`AtlasEntityGUIDPath`), `:438-455` (`AtlasBadRequest`) |
+| C7-5b (row 29) bulk limit 100 | `purview_atlas.ex:53-79`, `@max_bulk` at `:14` | `internal/dialect/azure/sentinel_purview.go:456-461` (`AtlasBulkLimitMessage`) |
+| C7-5c (row 30) lineage relations | `purview_atlas.ex` lineage | `internal/dialect/azure/sentinel_purview.go:391-397` (`AtlasLineagePath`) |
+| Auth faces (C7 publish/ingress) | `lib/smalt/egress_router.ex` bearer gate | `internal/dialect/azure/webpubsub_token.go:49-72` (`MintWebPubSubToken`), `:73-129` (`VerifyWebPubSubToken`); `internal/dialect/azure/sb_rest.go:173-210` (`IsSbAuthFace`) |
+| GAP cross-link (line 69) `handle_cg_list/4` | `arm_gateway/router.ex:1199` | `internal/dialect/azure/sb_rest.go:133-155` (`ClassifySbRoute`) |
+
+Provenance re-point (eg_topic_events): the readback merge
+`lib/smalt/egress_router.ex:1824` (`eg_topic_events(topic)`) re-points to
+`internal/dialect/azure/event_grid.go:47-48,160-169` (`EventGridEvent` /
+`EventGridSchema` case) as the arcus owner of the EG1 topic-events face. Full
+row in the receipt.
+
 ## Replay
 
 ```sh

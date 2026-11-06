@@ -305,9 +305,9 @@ const shaclOk = (conforms) => ({
     terminate() {},
   };
   const g = new Guard(() => silentWorker, 60); // 60ms court bound
-  const t0 = Date.now();
+  const t0 = performance.now();
   const v = await g.init(new TextEncoder().encode("reticle"));
-  const dt = Date.now() - t0;
+  const dt = performance.now() - t0;
   check(
     "k  silent worker -> typed GUARD_TIMEOUT within the bound",
     v.status === 2 && v.detail.startsWith("GUARD_TIMEOUT") && dt < 5_000,

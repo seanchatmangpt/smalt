@@ -196,9 +196,9 @@ function installFakeLocks() {
     await new Promise((r) => setTimeout(r, 200));
   });
   await new Promise((r) => setTimeout(r, 10)); // let the holder take the lock
-  const t0 = Date.now();
+  const t0 = performance.now();
   const e = await withWalLease(() => Promise.resolve("never"), { timeoutMs: 40 });
-  const dt = Date.now() - t0;
+  const dt = performance.now() - t0;
   check(
     "held lease + timeoutMs refuses LEASE_TIMEOUT",
     !e.ok && e.error.code === "LEASE_TIMEOUT" && e.error.timeoutMs === 40 && dt < 150,
