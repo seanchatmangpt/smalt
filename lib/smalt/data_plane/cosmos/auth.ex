@@ -70,7 +70,9 @@ defmodule Smalt.DataPlane.Cosmos.Auth do
 
   def string_to_sign(verb, resource_type, resource_link, headers) do
     date = ConditionalHeaders.header(headers || %{}, "x-ms-date") || ""
-    "#{Atom.to_string(verb)}\n#{resource_type}\n#{resource_link}\n#{String.downcase(date)}\n\n"
+    # Real Azure Cosmos signs the UPPERCASE verb as transmitted on the wire
+    # (KD-G19); the call sites pass lowercase atoms (:get/:post), so upcase here.
+    "#{verb |> Atom.to_string() |> String.upcase()}\n#{resource_type}\n#{resource_link}\n#{String.downcase(date)}\n\n"
   end
 
   def valid_master_sig?(verb, resource_type, resource_link, headers, sig, key) do
