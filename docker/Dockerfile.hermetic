@@ -112,7 +112,7 @@ RUN for d in /app/_release/releases/*/; do mkdir -p "$d/env" \
 #   ncurses-libs               ERTS link dep
 #   libstdc++ / libgcc         rust NIF (wasmex, explorer) link deps
 #   zlib                       compression NIF link deps
-FROM alpine:3.20.9@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805 AS runtime
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 
 # Re-declare in this stage: build-args do not cross FROM boundaries, so the
 # subject label + receipt env here would otherwise be an UndefinedVar (the
