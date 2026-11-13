@@ -183,7 +183,7 @@ defmodule Smalt.MixProject do
       # WASM engine (lane 601, v26.10.16): pin mirrors ash_a2a mix.exs:522
       # ("~> 0.15.1") so graphlaw and affidavit share one wasmex identity.
       # Fail-closed host: {:error, :engine_unavailable} when artifact absent.
-      {:wasmex, "~> 0.15.1"}
+      {:wasmex, "~> 0.16.0"}
     ]
   end
 end
