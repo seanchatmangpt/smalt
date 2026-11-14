@@ -22,10 +22,8 @@ defmodule Smalt.Egress.Sqs.SqsRoutes do
   `Version=2012-11-05` (SqsQuery). Responses `text/xml` (SqsXml). Errors are
   typed SQS ErrorResponse envelopes.
 
-  Auth note (disclosed, KD-SQ2): the SigV4 signature is NOT verified — any
-  well-formed SigV4 header admits. Real AWS verifies; the emulator face
-  accepts the signed shape and lets real boto3 (which cannot send unsigned)
-  falsify the wire format on every request.
+  Auth (KD-SQ2 CLOSED): `Smalt.AWS.SigV4.verify/3` runs on every claimed
+  request; a bad signature answers 403 SignatureDoesNotMatch.
   """
 
   alias Smalt.Egress.Sqs.SqsActions
@@ -34,12 +32,46 @@ defmodule Smalt.Egress.Sqs.SqsRoutes do
 
   def init(opts), do: opts
 
-  def call(conn, _opts) do
+  def call(conn, opts) do
     if sqs_face?(conn) do
-      handle(conn)
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      case verify_sig(conn, body, opts) do
+        {:ok, _akid} -> handle(conn, body)
+        {:error, reason} -> auth_error(conn, reason)
+      end
     else
       conn
     end
+  end
+
+  # KD-SQ2 closed: the SigV4 signature is re-derived and compared.
+  # opts: `:verify` (default true), `:creds` (map | 1-arity fun; default
+  # `Application.get_env(:smalt, :aws_creds, ...)`, same as the egress router).
+  defp verify_sig(conn, body, opts) do
+    if Keyword.get(opts, :verify, true) do
+      creds =
+        Keyword.get_lazy(opts, :creds, fn ->
+          Application.get_env(:smalt, :aws_creds, %{"AKIDLOCAL" => "secretLocal"})
+        end)
+
+      Smalt.AWS.SigV4.verify(conn, body, creds)
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp auth_error(conn, :mismatch),
+    do: auth_respond(conn, 403, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided.")
+
+  defp auth_error(conn, :unknown_key),
+    do: auth_respond(conn, 403, "InvalidClientTokenId", "The security token included in the request is invalid.")
+
+  defp auth_error(conn, _),
+    do: auth_respond(conn, 403, "IncompleteSignature", "Request is missing or has a malformed SigV4 signature.")
+
+  defp auth_respond(conn, status, code, msg) do
+    if x_amz_target?(conn), do: json_error(conn, status, code, msg), else: error(conn, status, code, msg)
   end
 
   defp sqs_face?(conn) do
@@ -54,9 +86,7 @@ defmodule Smalt.Egress.Sqs.SqsRoutes do
   # application/x-amz-json-1.0, X-Amz-Target: AmazonSQS.<Action>). Modern
   # botocore (>=1.34) speaks JSON-with-query-mode for SQS — witnessed on the
   # wire in the wf9 court boot; the form face stays for AWS CLI/older SDKs.
-  defp handle(conn) do
-    {:ok, body, conn} = Plug.Conn.read_body(conn)
-
+  defp handle(conn, body) do
     cond do
       x_amz_target?(conn) ->
         params = SqsQuery.json_params(body, action_from_target(conn))

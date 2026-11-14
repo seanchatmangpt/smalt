@@ -55,6 +55,11 @@ exit=0
 
 Two consecutive plain runs produce byte-identical eval output (verified).
 
+## Hosting (smalt.fnox.io)
+
+Standing BLOCKED as of 2026-11-14: DNS A record answers, `/health` does not return 200. See
+`docs/verification/smalt-hosting-witness.md` for outputs and the witness probe.
+
 ## See Also
 
 `scripts/dev_env.sh`, `scripts/gen_dev_cert.sh`, `scripts/doctor.py`

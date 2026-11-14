@@ -1,5 +1,7 @@
+# syntax=docker/dockerfile:1
 # ============================================================================
 # Dockerfile.smalt — production-honest substrate image (lane BK-IMG, v26.10.22)
+# syntax=docker/dockerfile:1
 # ============================================================================
 # Multi-stage substrate image that boots the SAME boot path as `just up`
 # (`mix run --no-halt` in the project tree), with SMALT_* env configurable
@@ -22,6 +24,7 @@
 # declared path deps (ash_r2rml / ash_graphlaw / ggen_igniter — all
 # optional, dev/test-only) even in MIX_ENV=prod; they are symlinked at
 # their declared ../NAME locations and NOT compiled in prod scope.
+# syntax=docker/dockerfile:1
 # ============================================================================
 
 # Multi-arch index digest for hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9

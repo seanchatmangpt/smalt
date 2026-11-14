@@ -75,3 +75,8 @@ with_shim \
 just shim-court arm          # one court; lists available names if unknown
 just shim-courts             # aggregate: run all present courts, summarize
 ```
+
+| Court | Subject | Shim | Witness |
+|---|---|---|---|
+| `sigv4` | `lib/smalt/aws/sigv4.ex`, `s3_router.ex` | verify/3 always `:ok`; router claims all scopes | test/aws green, then red |
+| `gcp_auth` | `lib/smalt/gcp/identity.ex` | verify/1 skips JWS signature check | test/gcp green, then red |

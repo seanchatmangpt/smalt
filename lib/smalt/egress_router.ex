@@ -119,8 +119,14 @@ defmodule Smalt.EgressRouter do
   # 401-challenge (non-Bearer token). Mounted BEFORE Bearer — each face's
   # own SigV4 gate is the admission law. Both claim only their own request
   # shape (X-Amz-Target / Action= on POST /) and pass through un-halted.
+  # SW6: AWS plane (S3/DynamoDB/KMS/STS/SNS/SecretsManager) mounted BEFORE the
+  # kinesis/sqs faces; each router claims only its SigV4 credential-scope service.
+  plug(:aws_plane)
   plug(:kinesis_rest_face)
   plug(:sqs_query_face)
+  # SW2: GCP dialect plane — mounted BEFORE Bearer and body parsing (GCP routers
+  # read their own bodies and own their auth). Claims only GCP path shapes.
+  plug(:gcp_plane)
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
 
@@ -204,6 +210,33 @@ defmodule Smalt.EgressRouter do
     Smalt.Apim.gateway(conn, [])
   end
 
+  # SW6: AWS dispatch. Claims ONLY `Authorization: AWS4-HMAC-SHA256 ...` conns;
+  # each router parses the credential scope and halts only for its own service
+  # (s3 | dynamodb,kms,sts | sns | secretsmanager); sqs/kinesis/other scopes pass
+  # through un-halted to the existing faces. No header -> byte-unchanged for Azure/GCP.
+  defp aws_plane(conn, _opts) do
+    with false <- conn.halted or conn.state in [:sent, :chunked],
+         ["AWS4-HMAC-SHA256" <> _] <- Plug.Conn.get_req_header(conn, "authorization") do
+      creds = Application.get_env(:smalt, :aws_creds, %{"AKIDLOCAL" => "secretLocal"})
+
+      conn
+      |> Smalt.AWS.S3.Router.call(server: Smalt.AWS.S3.Default, creds: creds)
+      |> aws_next(&Smalt.AWS.DynamoDB.Router.call(&1, creds: creds))
+      |> aws_next(&Smalt.AWS.SNS.Router.call(&1, server: Smalt.AWS.SNS.Default, creds: creds))
+      |> aws_next(
+        &Smalt.AWS.SecretsManager.Router.call(&1,
+          server: Smalt.AWS.SecretsManager.Default,
+          creds: creds
+        )
+      )
+    else
+      _ -> conn
+    end
+  end
+
+  defp aws_next(%Plug.Conn{halted: true} = conn, _f), do: conn
+  defp aws_next(conn, f), do: f.(conn)
+
   # KINESIS lane mount (see plug comment above): delegator with the same
   # sent/halted end-of-chain law as w6r_fallthrough.
   defp kinesis_rest_face(conn, _opts) do
@@ -222,6 +255,116 @@ defmodule Smalt.EgressRouter do
       Smalt.Egress.Sqs.SqsRoutes.call(conn, [])
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # SW2: GCP dialect dispatch. Order (first claim wins; non-claims pass through
+  # un-halted so Azure routes are byte-unchanged):
+  #   1. GCS: host-style (*.storage.googleapis.com), /storage/v1/*, /upload/*
+  #      (before the blob splat, which would otherwise take /{account}/{container})
+  #   2. /v1/projects/{p}/{coll}/...  discriminated on {coll} (the 4th segment):
+  #      topics|subscriptions|snapshots -> Pub/Sub (route/1 -> nil on miss)
+  #      databases -> Firestore (forward /v1); secrets -> Secret Manager;
+  #      locations/{l}/keyRings -> Cloud KMS
+  #   3. /v2/projects/{p}/locations/{l}/(services|operations) and
+  #      /v2/entries:write|list -> Cloud Run / Logging (Smalt.GCP.RunLoggingRouter)
+  # Azure /v1/workspaces, /v1.0/*, /v2/track never match (segment 2 differs).
+  # ---------------------------------------------------------------------------
+  defp gcp_plane(conn, _opts) do
+    if conn.halted or conn.state in [:sent, :chunked] do
+      conn
+    else
+      case gcp_family(conn) do
+        nil -> conn
+        fam -> gcp_serve(fam, conn)
+      end
+    end
+  end
+
+  defp gcp_family(%Plug.Conn{path_info: pi, host: host}) do
+    cond do
+      is_binary(host) and String.ends_with?(host, "storage.googleapis.com") -> :gcs
+      match?(["storage", "v1" | _], pi) -> :gcs
+      match?(["upload", "storage" | _], pi) -> :gcs
+      match?(["upload", "resumable" | _], pi) -> :gcs
+      match?(["v1", "projects", _, c | _] when c in ["topics", "subscriptions", "snapshots"], pi) -> :pubsub
+      match?(["v1", "projects", _, "databases" | _], pi) -> :firestore
+      match?(["v1", "projects", _, "secrets" | _], pi) -> :secrets
+      match?(["v1", "projects", _, "locations", _, "keyRings" | _], pi) -> :kms
+      match?(["v2", "projects", _, "locations", _, s | _] when s in ["services", "operations"], pi) -> :run
+      match?(["v2", "projects", _, "sinks" | _], pi) -> :run
+      match?(["v2", "entries:write"], pi) -> :run
+      match?(["v2", "entries:list"], pi) -> :run
+      true -> nil
+    end
+  end
+
+  defp gcp_serve(:gcs, conn),
+    do: gcp_call(conn, Smalt.GCP.Storage.Router, fn c -> Smalt.GCP.Storage.Router.call(c, []) end)
+
+  defp gcp_serve(:pubsub, conn) do
+    gcp_call(conn, Smalt.Gcp.PubSubRouter, fn c -> Smalt.Gcp.PubSubRouter.route(c) end)
+  end
+
+  # Firestore's Plug.Router is mounted `forward "/v1"`: strip the segment the
+  # way Plug.Router.forward does (path_info/script_name), restore afterwards.
+  defp gcp_serve(:firestore, %Plug.Conn{path_info: ["v1" | rest]} = conn) do
+    gcp_call(conn, Smalt.GCP.Firestore.Router, fn c ->
+      inner = %{c | path_info: rest, script_name: c.script_name ++ ["v1"]}
+      out = Smalt.GCP.Firestore.Router.call(inner, Smalt.GCP.Firestore.Router.init([]))
+      %{out | path_info: c.path_info, script_name: c.script_name}
+    end)
+  end
+
+  defp gcp_serve(:secrets, conn), do: gcp_agent_family(conn, Smalt.GCP.SecretManager)
+  defp gcp_serve(:kms, conn), do: gcp_agent_family(conn, Smalt.GCP.KMS)
+
+  defp gcp_serve(:run, conn),
+    do: gcp_call(conn, Smalt.GCP.RunLoggingRouter, fn c -> Smalt.GCP.RunLoggingRouter.route(c) end)
+
+  # Missing/uncompiled module fails closed 503 (never 200-empty); a nil return
+  # (route miss) passes the conn through un-halted.
+  defp gcp_call(conn, mod, fun) do
+    if Code.ensure_loaded?(mod) do
+      case fun.(conn) do
+        nil -> conn
+        %Plug.Conn{} = out -> Plug.Conn.halt(out)
+      end
+    else
+      route_not_ready(conn) |> Plug.Conn.halt()
+    end
+  end
+
+  # Secret Manager / KMS engines are pid-addressed Agents with handle/5 ->
+  # {status, map}. One long-lived instance per engine, parked in an unlinked
+  # owner process (start_link inside a request process would die with it).
+  defp gcp_agent_family(conn, mod) do
+    gcp_call(conn, mod, fn c ->
+      c = fetch_query_params(c)
+      {body, c} = gcp_json_body(c)
+      pid = gcp_engine(mod)
+      {status, map} = mod.handle(pid, c.method, c.request_path, c.query_params, body)
+
+      c
+      |> put_resp_content_type("application/json")
+      |> send_resp(status, Jason.encode!(map))
+    end)
+  end
+
+  defp gcp_json_body(conn) do
+    case Plug.Conn.read_body(conn) do
+      {:ok, raw, conn} ->
+        case Jason.decode(raw) do
+          {:ok, %{} = m} -> {m, conn}
+          _ -> {%{}, conn}
+        end
+
+      {_, _, conn} ->
+        {%{}, conn}
+    end
+  end
+
+  # The app supervisor owns these Agents under their module name (application.ex gcp_children/0).
+  defp gcp_engine(mod), do: mod
 
   defp w6r_fallthrough(conn, _opts) do
     mods = [

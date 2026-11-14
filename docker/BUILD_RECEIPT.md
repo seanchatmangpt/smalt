@@ -34,3 +34,10 @@ Full command output, layer-cache evidence, anti-vacuity mutation, and disclosure
 - Warm deps layer: `mix.exs`+`mix.lock` → `deps.get` → `MIX_ENV=test`/`prod`
   `deps.compile` before any `lib/` copy; a `lib/`-only delta leaves all deps
   steps CACHED; any `mix.lock` byte move invalidates the layer (witnessed).
+
+## Refresh 2026-11-14 (smalt-18)
+
+The 2026-10-18 facts above predate `lib/smalt/gcp` and `lib/smalt/aws`. The refreshed build
+receipt (digest, git SHA, health 200) lives at
+`docs/jira/v26.11.14/receipts/smalt-18-image.md`; standing UNVERIFIED until the coordinator
+runs the release-target command and fills it.

@@ -38,6 +38,10 @@ defmodule Smalt.ArmGateway.Router do
   # X-ARR-ClientCert mTLS gateway termination (WO-2 G2). No-op by default
   # (config :smalt, :x_arr_cert, require: false) — byte-identical when off.
   plug(Smalt.Auth.XArrCert)
+  # SW3 (GS5 wiring): host-based GCP dialect router. Non-GCP hosts return the
+  # conn UNCHANGED (dialect/1 -> :none); GCP hosts are answered and halted
+  # here, above ReceiptTurnstile and Bearer (GCP carries its own ya29. auth).
+  plug(Smalt.GCP.Router)
   # DoD Gate 4: turnstile receipt headers on every membrane-served ARM
   # response (posh-court stage 5 asserts presence, fail-closed). Mounted
   # ABOVE Bearer (X1/C7) so pre-membrane 401/400 rejections also carry

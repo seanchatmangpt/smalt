@@ -25,7 +25,7 @@ defmodule Smalt.Application do
           Smalt.Apim,
           Smalt.Telemetry.RollingCounters,
           Smalt.Monitor.Metrics
-        ] ++ mcp_tail ++ virtual_hw_child() ++ journal_sink_child() ++ cluster_child() ++
+        ] ++ gcp_children() ++ aws_children() ++ mcp_tail ++ virtual_hw_child() ++ journal_sink_child() ++ cluster_child() ++
              posh_child()
 
     # SBKEY: a configured :sb_shared_key below SasVerifier's 32-byte floor is a
@@ -49,6 +49,29 @@ defmodule Smalt.Application do
 
     opts = [strategy: :one_for_one, name: Smalt.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # SW1 (GS1/GS2/GS4): GCP dialect state processes. GS3 Firestore (rides
+  # Smalt.Store), GS5 identity/IAM (stateless) and GS6 CloudRun/Logging
+  # (engines over :smalt_resources) need no children. SecretManager and KMS
+  # are unnamed Agents (start_link/0), so they get explicit child ids.
+  defp gcp_children do
+    [
+      Smalt.GCP.Storage.Server,
+      Smalt.Gcp.PubSub,
+      %{id: Smalt.GCP.SecretManager, start: {Smalt.GCP.SecretManager, :start_link, []}},
+      %{id: Smalt.GCP.KMS, start: {Smalt.GCP.KMS, :start_link, []}}
+    ]
+  end
+
+  # SW6: AWS stateful modules (names match the egress_router aws_plane mount).
+  # DynamoDB/KMS/STS ride Smalt.Store (no children).
+  defp aws_children do
+    [
+      {Smalt.AWS.S3.Server, name: Smalt.AWS.S3.Default},
+      {Smalt.AWS.SNS, name: Smalt.AWS.SNS.Default},
+      {Smalt.AWS.SecretsManager, name: Smalt.AWS.SecretsManager.Default}
+    ]
   end
 
   # SJ-4: config-gated journal sink (default OFF — nil config starts no child,

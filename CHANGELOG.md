@@ -8,6 +8,23 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [26.11.14] - 2026-11-14 GCP and AWS emulator surfaces
+
+Standing: UNVERIFIED. Tickets `docs/jira/v26.11.14/smalt-13.md`,
+`smalt-14.md`, `smalt-15.md` (receipts, when landed, under
+`docs/jira/v26.11.14/receipts/`; none cited here is a gate result).
+
+### Added
+
+- GCP emulator surface (`lib/smalt/gcp`, tests in `test/gcp`).
+- AWS emulator surface (`lib/smalt/aws`, tests in `test/aws`).
+
+### Changed
+
+- `mix.exs` version bumped from 26.10.31 to 26.11.14.
+
+## [26.10.28] - Azure-parity + KQL window
+
 Azure-parity + KQL window (v26.10.28 lanes; receipts
 `docs/jira/v26.10.28/receipts/`).
 

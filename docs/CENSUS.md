@@ -73,3 +73,14 @@ window via the 2s `lockDuration` path).
 All probes PASS, or the broker is not a Service Bus-compatible court.
 Zero skips is part of the contract: any probe that cannot run fails the run
 (fail-closed), it is never silently skipped.
+
+Live replacement: see docs/verification/azure-gate-2026-11-14.md (existence + per-file run table); sb_census_replay.sh is retired.
+
+## Live successor
+
+Live census: `/Users/sac/smalt/verification/ts/census.test.cjs` (via
+`verification/ts/run-all.mjs`).
+
+Live run result (2026-11-14): NOT OBSERVED this lane (no substrate boot permitted to the lane).
+Standing: UNVERIFIED. Coordinator command: `node --test verification/ts/census.test.cjs`
+against a booted substrate; paste the pass/fail summary here.
