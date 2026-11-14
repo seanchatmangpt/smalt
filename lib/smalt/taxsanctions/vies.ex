@@ -2,9 +2,9 @@ defmodule Smalt.TaxSanctions.Vies do
   @moduledoc "VIES VAT number check (format + registry) and DAC7 platform report shape."
 
   @formats %{
-    "DE" => ~r/^\d{9}$/, "FR" => ~r/^[A-Z0-9]{2}\d{9}$/, "NL" => ~r/^\d{9}B\d{2}$/,
-    "IT" => ~r/^\d{11}$/, "ES" => ~r/^[A-Z0-9]\d{7}[A-Z0-9]$/, "BE" => ~r/^[01]\d{9}$/,
-    "IE" => ~r/^\d[A-Z0-9+*]\d{5}[A-Z]{1,2}$/, "PL" => ~r/^\d{10}$/, "AT" => ~r/^U\d{8}$/
+    "DE" => ~r/^\d{9}\z/, "FR" => ~r/^[A-Z0-9]{2}\d{9}\z/, "NL" => ~r/^\d{9}B\d{2}\z/,
+    "IT" => ~r/^\d{11}\z/, "ES" => ~r/^[A-Z0-9]\d{7}[A-Z0-9]\z/, "BE" => ~r/^[01]\d{9}\z/,
+    "IE" => ~r/^\d[A-Z0-9+*]\d{5}[A-Z]{1,2}\z/, "PL" => ~r/^\d{10}\z/, "AT" => ~r/^U\d{8}\z/
   }
 
   @doc "registry: MapSet of active 'CCNUMBER' strings."
