@@ -434,6 +434,10 @@ defmodule Smalt.DataPlane.Blob.Worm do
       legal_hold?(policy) -> true
       expired?(container_meta, now) -> false
       locked_policy?(policy) -> true
+      # KD-135: a container EXPLICITLY created immutable (x-ms-immutable-policy:
+      # true -> record "immutable" == true) still enforces WORM while retention
+      # is live. Default containers record immutable=false and stay mutable.
+      Map.get(container_meta, "immutable") == true -> true
       # Azure parity (parity lane 2026-10-28, receipted against Azurite): a
       # container with NO legal hold and NO immutability policy is MUTABLE.
       # The removed legacy clause (`immutable == true and no policy`) locked

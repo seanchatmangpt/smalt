@@ -1080,7 +1080,7 @@ defmodule Smalt.Egress.StorageCatchAll do
           end
 
         true ->
-          opts = %{"immutable" => get_req_header(conn, "x-ms-immutable-policy") != ["false"]}
+          opts = %{"immutable" => get_req_header(conn, "x-ms-immutable-policy") == ["true"]}
 
           # Azure parity: x-ms-meta-* on Put Container SETS metadata at
           # create. Validated BEFORE the create — a refused create must not
@@ -1534,7 +1534,23 @@ defmodule Smalt.Egress.StorageCatchAll do
                 end
               end
             else
-              case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+              case put_blob_read_body(conn) do
+                :missing_blob_type ->
+                  blob_error_xml(
+                    conn,
+                    400,
+                    "MissingRequiredHeader",
+                    "An HTTP header that's mandatory for this request is not specified (x-ms-blob-type)."
+                  )
+
+                :missing_content_length ->
+                  blob_error_xml(
+                    conn,
+                    411,
+                    "MissingContentLengthHeader",
+                    "The Content-Length header was not specified."
+                  )
+
                 {:ok, raw_body, conn} ->
                   case BlobStorage.put_blob(
                          account,
@@ -1544,13 +1560,24 @@ defmodule Smalt.Egress.StorageCatchAll do
                          header_map(conn)
                        ) do
                     {:ok, blob} ->
-                      # Metadata-only body: raw "content" (arbitrary bytes, frequently
-                      # invalid UTF-8) must never reach Jason — a metadata projection
-                      # is total over binary content.
+                      # KD-COVERS: KD-145 — real Azure answers Put Blob 201 with an
+                      # EMPTY body; ETag/Last-Modified/Content-MD5 ride as headers.
+                      {:ok, lm_dt, _} = DateTime.from_iso8601(blob["last_modified"])
+
                       conn
                       |> put_resp_header("etag", blob["etag"])
-                      |> put_resp_content_type("application/json")
-                      |> send_resp(201, Jason.encode!(BlobStorage.blob_metadata(blob)))
+                      |> put_resp_header(
+                        "last-modified",
+                        Calendar.strftime(lm_dt, "%a, %d %b %Y %H:%M:%S GMT")
+                      )
+                      |> put_resp_header(
+                        "content-md5",
+                        Base.encode64(:crypto.hash(:md5, blob["content"]))
+                      )
+                      |> put_resp_header("x-ms-request-id", generate_request_id())
+                      |> put_resp_header("x-ms-version", "2021-12-02")
+                      |> put_resp_header("x-ms-request-server-encrypted", "true")
+                      |> send_resp(201, "")
 
                     {:error, :worm_locked, msg} ->
                       blob_error(conn, 409, %{
@@ -1729,21 +1756,16 @@ defmodule Smalt.Egress.StorageCatchAll do
                         (last - first + 1) |> Integer.to_string()
                       )
                       |> put_resp_content_type(stored_content_type(blob))
+                      |> put_range_md5(body)
                       |> send_resp(206, body)
 
                     {:error, :range_not_satisfiable, total} ->
                       conn
                       |> put_resp_header("content-range", "bytes */#{total}")
-                      |> put_resp_content_type("application/json")
-                      |> send_resp(
+                      |> blob_error_xml(
                         416,
-                        Jason.encode!(%{
-                          "error" => %{
-                            "code" => "InvalidRange",
-                            "message" =>
-                              "The range specified is invalid for a blob of #{total} bytes."
-                          }
-                        })
+                        "InvalidRange",
+                        "The range specified is invalid for a blob of #{total} bytes."
                       )
 
                     :error ->
@@ -1882,15 +1904,10 @@ defmodule Smalt.Egress.StorageCatchAll do
               {:error, :range_not_satisfiable, total} ->
                 conn
                 |> put_resp_header("content-range", "bytes */#{total}")
-                |> put_resp_content_type("application/json")
-                |> send_resp(
+                |> blob_error_xml(
                   416,
-                  Jason.encode!(%{
-                    "error" => %{
-                      "code" => "InvalidRange",
-                      "message" => "The range specified is invalid for a blob of #{total} bytes."
-                    }
-                  })
+                  "InvalidRange",
+                  "The range specified is invalid for a blob of #{total} bytes."
                 )
 
               :error ->
@@ -1899,6 +1916,19 @@ defmodule Smalt.Egress.StorageCatchAll do
         end
       end
     end)
+  end
+
+  # KD-66: x-ms-range-get-content-md5: true on a ranged GET -> Content-MD5 of the slice.
+  defp put_range_md5(conn, body) do
+    case get_req_header(conn, "x-ms-range-get-content-md5") do
+      [v | _] ->
+        if String.downcase(v) == "true",
+          do: put_resp_header(conn, "content-md5", Base.encode64(:crypto.hash(:md5, body))),
+          else: conn
+
+      _ ->
+        conn
+    end
   end
 
   delete "/:account/:container" do
@@ -2197,9 +2227,40 @@ defmodule Smalt.Egress.StorageCatchAll do
   # non-empty, non-blank plausible version value; fail closed with the same
   # typed MissingXMsVersion envelope. SHIM-COURT: this predicate is the
   # mutation surface for the egress-version shim court.
+  # KD-139: Put Blob requires a non-blank x-ms-blob-type (copy-source writes
+  # are Copy Blob and exempt). Real Azure: 400 MissingRequiredHeader.
+  # Synthetic Plug.Test conns carry no transport headers: harness artifact, not wire.
+  defp test_adapter?(%Plug.Conn{adapter: {Plug.Adapters.Test.Conn, _}}), do: true
+  defp test_adapter?(_), do: false
+
+  defp put_blob_read_body(conn) do
+    blob_type =
+      case get_req_header(conn, "x-ms-blob-type") do
+        [v] when is_binary(v) -> String.trim(v)
+        _ -> ""
+      end
+
+    copy? = get_req_header(conn, "x-ms-copy-source") != []
+
+    cond do
+      blob_type == "" and not copy? ->
+        :missing_blob_type
+
+      # KD-140: Put Blob requires Content-Length; absent (or chunked) is a typed
+      # 411 MissingContentLengthHeader, never a silent 0-byte 201.
+      not copy? and get_req_header(conn, "content-length") == [] and
+          not test_adapter?(conn) ->
+        :missing_content_length
+
+      true ->
+        Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000)
+    end
+  end
+
   defp plausible_x_ms_version?(conn) do
     case get_req_header(conn, "x-ms-version") do
-      [value] when is_binary(value) -> String.trim(value) != ""
+      # KD-67: grammar is YYYY-MM-DD (Azure x-ms-version format).
+      [value] when is_binary(value) -> Regex.match?(~r/\A\d{4}-\d{2}-\d{2}\z/, value)
       _ -> false
     end
   end

@@ -17,6 +17,21 @@ defmodule Smalt.Test.Internal.TlsBlobDispatchTest do
   @blob_version "2023-11-03"
   @token_key :w13d_twin_sts_token
 
+  # WO-32 cordon removed the BEAM-bound 9444 twin listener (posh owns the
+  # wire), so nothing listens on :arm_tls_port under test (curl exit 7 ->
+  # MatchError). The premise rotted, not the dispatch: mount the real
+  # TlsTwinDispatch plug on a real Bandit https listener at :arm_tls_port.
+  setup_all do
+    port = Application.fetch_env!(:smalt, :arm_tls_port)
+
+    start_supervised!(
+      {Bandit,
+       Smalt.TLS.bandit_opts(Smalt.Application.TlsTwinDispatch, port) ++ [ip: {127, 0, 0, 1}]}
+    )
+
+    :ok
+  end
+
   test "blob PUT/GET ride the TLS twin through the flipped dispatch (201/200, byte-equal)" do
     {base, cert} = twin()
     ts = System.system_time(:millisecond)
@@ -26,7 +41,7 @@ defmodule Smalt.Test.Internal.TlsBlobDispatchTest do
     # Create the container first (real Azure: PUT blob into a missing
     # container is 404 ContainerNotFound — same here).
     assert 201 ==
-             authed(:put, base, cert, "/w13dlane/cont-#{ts}", nil, [
+             authed(:put, base, cert, "/w13dlane/cont-#{ts}?restype=container", nil, [
                "x-ms-version: #{@blob_version}"
              ])
 

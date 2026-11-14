@@ -134,10 +134,22 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
 
     registry = MapSet.new(Smalt.StoreTables.all_tables() |> Enum.map(&to_string/1))
 
+    # Premise rot (R4): the regex also sweeps :smalt_* atoms that are NOT ETS
+    # tables: typed refusal reasons (admission_gate/shacl_admission), a Plug
+    # conn.private key, and the `:smalt_q_*` wildcard in a comment.
+    non_table_atoms =
+      MapSet.new(~w(smalt_q_ smalt_engine_drift smalt_graphlaw_engine_absent
+        smalt_graphlaw_engine_error smalt_graphlaw_engine_unpinned smalt_json_stream_acc
+        smalt_json_stream_count smalt_json_stream_mode smalt_json_stream_values
+        smalt_no_receipt smalt_oversize smalt_payload_mismatch
+        smalt_projector_engine_absent smalt_receipt_invalid smalt_receipt_replay_fail
+        smalt_shacl_violation smalt_shapes_unreadable smalt_turnstile_refused))
+
     uncovered =
       referenced
       |> MapSet.new(fn {a, _path} -> String.trim_leading(a, ":") end)
       |> MapSet.difference(registry)
+      |> MapSet.difference(non_table_atoms)
 
     assert MapSet.size(uncovered) == 0, """
     coverage FAILURE: #{MapSet.size(uncovered)} :smalt_ atom(s) referenced in lib/ \
@@ -149,9 +161,10 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
     """
 
     # The registry must not be trivially empty either (anti-vacuity on this
-    # test itself): the census is 54 atoms (35 owned + 19 shadow).
+    # test itself): the census is 116 atoms (35 owned + 81 shadow; v26.11.14 registered the 62
+    # previously unowned shadow atoms that the coverage sweep above lists).
     assert length(Smalt.StoreTables.table_names()) == 35
-    assert length(Smalt.StoreTables.shadow_tables()) == 19
+    assert length(Smalt.StoreTables.shadow_tables()) == 81
   end
 
   test "generated lists equal the hand-written lists they replaced (step 7 witness)" do

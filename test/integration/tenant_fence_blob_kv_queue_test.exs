@@ -23,6 +23,23 @@ defmodule Smalt.Integration.TenantFenceBlobKvQueueTest do
   @acct "az5g5"
   @token_cache :g5_tenant_tokens
 
+  # Premise rot (WO-32 cordon): the BEAM no longer binds the arm_tls_port
+  # twin at boot, so this court mounts the real TlsTwinDispatch plug itself
+  # on the test's ephemeral arm_tls_port (same real TLS/plug, no double).
+  setup_all do
+    port = Application.fetch_env!(:smalt, :arm_tls_port)
+
+    start_supervised!(
+      Supervisor.child_spec(
+        {Bandit,
+         Smalt.TLS.bandit_opts(Smalt.Application.TlsTwinDispatch, port) ++ [ip: {127, 0, 0, 1}]},
+        id: :g5_fence_tls_twin
+      )
+    )
+
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # KV secrets plane
   # ---------------------------------------------------------------------------
