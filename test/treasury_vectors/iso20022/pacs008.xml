@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-20261114-0001</MsgId>
+      <CreDtTm>2026-11-14T09:30:00Z</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <SttlmInf><SttlmMtd>CLRG</SttlmMtd></SttlmInf>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId><UETR>97ed4827-7b6f-4491-a06f-b548d5a7512d</UETR></PmtId>
+      <IntrBkSttlmAmt Ccy="USD">1250.00</IntrBkSttlmAmt>
+      <IntrBkSttlmDt>2026-11-14</IntrBkSttlmDt>
+      <ChrgBr>SHAR</ChrgBr>
+      <Dbtr><Nm>Debtor Corp</Nm></Dbtr>
+      <DbtrAgt><FinInstnId><BICFI>BOFAUS3NXXX</BICFI></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><BICFI>CHASUS33XXX</BICFI></FinInstnId></CdtrAgt>
+      <Cdtr><Nm>Creditor LLC</Nm></Cdtr>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

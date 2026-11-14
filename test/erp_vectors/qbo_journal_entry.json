@@ -1,0 +1,7 @@
+{"source":"QuickBooks Online Accounting API: JournalEntry (developer.intuit.com)",
+ "JournalEntry":{"DocNumber":"JE-1001","TxnDate":"2026-11-01","PrivateNote":"Accrual","Adjustment":false,
+  "Line":[
+   {"Id":"0","Description":"Office rent","Amount":500.00,"DetailType":"JournalEntryLineDetail",
+    "JournalEntryLineDetail":{"PostingType":"Debit","AccountRef":{"value":"61","name":"Rent Expense"}}},
+   {"Id":"1","Description":"Office rent","Amount":500.00,"DetailType":"JournalEntryLineDetail",
+    "JournalEntryLineDetail":{"PostingType":"Credit","AccountRef":{"value":"33","name":"Accrued Liabilities"}}}]}}

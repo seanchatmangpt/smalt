@@ -1,0 +1,5 @@
+{"source":"Xero Accounting API: ManualJournals (developer.xero.com)",
+ "ManualJournals":[{"Narration":"Accrued rent","Date":"2026-11-01","Status":"POSTED","LineAmountTypes":"NoTax",
+  "JournalLines":[
+   {"LineAmount":500.00,"AccountCode":"400","Description":"Rent"},
+   {"LineAmount":-500.00,"AccountCode":"820","Description":"Accrued liabilities"}]}]}

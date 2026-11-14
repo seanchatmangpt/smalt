@@ -1,0 +1,5 @@
+{"source":"NetSuite SuiteTalk REST record: journalentry (schema browser)",
+ "journalentry":{"tranDate":"2026-11-01","memo":"Accrued rent","subsidiary":{"id":"1"},"currency":{"id":"1"},
+  "line":{"items":[
+   {"account":{"id":"61"},"debit":500.00,"memo":"Rent"},
+   {"account":{"id":"33"},"credit":500.00,"memo":"Accrued liabilities"}]}}}
