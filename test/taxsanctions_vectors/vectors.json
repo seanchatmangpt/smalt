@@ -1,6 +1,6 @@
 {
  "irs_tin_match": {"codes": {"0":"name_tin_match","1":"missing_or_not_9_digits","2":"tin_not_issued","3":"name_tin_mismatch","4":"invalid_request","5":"duplicate_request","6":"match_ssn","7":"match_ein","8":"match_ssn_and_ein"}, "match_codes":[0,6,7,8]},
  "pub1220_b_record": {"record_length":750, "fields":{"record_type":[1,1],"payment_year":[2,5],"corrected_return_indicator":[6,6],"name_control":[7,10],"type_of_tin":[11,11],"payee_tin":[12,20],"payer_account_number":[21,40],"payer_office_code":[41,44],"payment_amount_1":[55,66]}, "record_types":["T","A","B","C","K","F"], "type_of_tin":{"1":"EIN","2":"SSN"}},
- "vies_check_vat": {"required_keys":["countryCode","vatNumber","requestDate","valid"],"optional_keys":["name","address"],"sample":{"countryCode":"DE","vatNumber":"123456789","requestDate":"2026-11-14","valid":false}},
- "ofac_sdn": {"columns":["ent_num","SDN_Name","SDN_Type","Program","Title","Call_Sign","Vess_type","Tonnage","GRT","Vess_flag","Vess_owner","Remarks"],"sample":"36,\"AEROCARIBBEAN AIRLINES\",\"-0-\",\"CUBA\",\"-0-\",\"-0-\",\"-0-\",\"-0-\",\"-0-\",\"-0-\",\"-0-\",\"-0-\""}
+ "vies_check_vat": {"required_keys":["countryCode","vatNumber","requestDate","valid"],"optional_keys":["name","address"],"sample":{"countryCode":"DE","vatNumber":"123456789","requestDate":"2026-11-14T22:45:10.815Z","valid":false}},
+ "ofac_sdn": {"columns":["ent_num","SDN_Name","SDN_Type","Program","Title","Call_Sign","Vess_type","Tonnage","GRT","Vess_flag","Vess_owner","Remarks"],"sample":"36,\"AEROCARIBBEAN AIRLINES\",-0- ,\"CUBA\",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- "}
 }
