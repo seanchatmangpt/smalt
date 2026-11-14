@@ -70,4 +70,28 @@ defmodule Smalt.ErpTest do
     xe = %{"JournalLines" => [%{"AccountCode" => "9", "LineAmount" => 1}, %{"AccountCode" => "1000", "LineAmount" => -1}]}
     assert post("/xero/api.xro/2.0/ManualJournals", xe).status == 400
   end
+
+  test "all-zero journal entry refused as empty_entry" do
+    r = post(@qbo, qbo(0, 0))
+    assert r.status == 400
+    assert %{"error" => ":empty_entry"} = Jason.decode!(r.resp_body)
+    assert Ledger.entries(:qbo) == []
+  end
+
+  test "malformed asOf on a report returns 400, not 500" do
+    r = get("/qbo/v3/company/1/reports/AgedReceivables?asOf=not-a-date")
+    assert r.status == 400
+    assert %{"error" => "bad_as_of"} = Jason.decode!(r.resp_body)
+    assert get("/qbo/v3/company/1/reports/AgedReceivables?asOf=2026-13-45").status == 400
+  end
+
+  test "ledger agent outlives the process that started it" do
+    if pid = Process.whereis(Ledger), do: Agent.stop(pid)
+    t = Task.async(fn -> Ledger.ensure_started() end)
+    assert :ok = Task.await(t)
+    pid = Process.whereis(Ledger)
+    assert is_pid(pid) and Process.alive?(pid)
+    assert :ok = Ledger.ensure_started()
+    assert Process.whereis(Ledger) == pid
+  end
 end

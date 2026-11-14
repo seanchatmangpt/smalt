@@ -7,7 +7,7 @@ defmodule Smalt.TwilioExt.SilentNetworkAuth do
   def create("VA" <> hex = svc, %{"To" => to} = p) when byte_size(hex) == 32 do
     cond do
       Map.get(p, "Channel", "sna") != "sna" -> err(60200, "Invalid parameter `Channel`", 400)
-      to == "+15005550001" or not Regex.match?(~r/^\+[1-9]\d{7,14}$/, to) ->
+      not is_binary(to) or to == "+15005550001" or not Regex.match?(~r/\A\+[1-9]\d{7,14}\z/, to) ->
         err(60200, "Invalid parameter `To`: #{to}", 400)
       String.ends_with?(to, "0") -> err(60605, "Silent network auth unsupported for carrier", 400)
       true ->

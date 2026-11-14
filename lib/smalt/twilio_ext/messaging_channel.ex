@@ -13,8 +13,9 @@ defmodule Smalt.TwilioExt.MessagingChannel do
   def build(_), do: {:error, %{"code" => 21604, "message" => "Missing To/From", "status" => 400}}
 
   def channel("whatsapp:+" <> n),
-    do: if(Regex.match?(~r/^[1-9]\d{7,14}$/, n), do: {:ok, "whatsapp"}, else: {:error, "bad whatsapp number"})
-  def channel("rcs:" <> a) when a != "", do: {:ok, "rcs"}
+    do: if(Regex.match?(~r/\A[1-9]\d{7,14}\z/, n), do: {:ok, "whatsapp"}, else: {:error, "bad whatsapp number"})
+  def channel("rcs:" <> a) when a != "",
+    do: if(Regex.match?(~r/[[:cntrl:]]/u, a), do: {:error, "bad rcs agent id"}, else: {:ok, "rcs"})
   def channel(x), do: {:error, "unsupported channel address #{inspect(x)}"}
 
   defp same(a, a), do: :ok

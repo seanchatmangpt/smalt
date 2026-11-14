@@ -23,10 +23,20 @@ defmodule Smalt.Rates.AbsPool do
     %{"type" => "PoolBackedSecurity", "pool_id" => id, "principal_cents" => principal_cents, "receivables" => recs}
   end
 
-  def balanced?(%{"principal_cents" => p, "receivables" => r}),
-    do: Enum.sum(Enum.map(r, & &1["principal_cents"])) == p
+  def balanced?(%{"principal_cents" => p, "receivables" => r}) when is_integer(p) and is_list(r) do
+    Enum.all?(r, &(is_map(&1) and is_integer(&1["principal_cents"]))) and
+      Enum.sum(Enum.map(r, & &1["principal_cents"])) == p
+  end
 
-  @doc "Tranches: list of {name, share_bps, spread_bps}; shares must total 10_000."
+  def balanced?(_), do: false
+
+  @doc """
+  Tranches: list of {name, share_bps, spread_bps}; shares must total 10_000.
+
+  Interest rule: pool-level interest = floor(sum(amt_i * coupon_i) / 120_000).
+  Each tranche but the last gets floor(amt_i * coupon_i / 120_000); the LAST tranche
+  receives the remainder cents, so tranche interest sums exactly to pool-level interest.
+  """
   def price(pool, tranches, sofr_bps \\ NyFed.latest_bps(:sofr)) do
     if Enum.sum(for {_, s, _} <- tranches, do: s) != 10_000,
       do: raise(ArgumentError, "shares must sum to 10000 bps")
@@ -49,6 +59,11 @@ defmodule Smalt.Rates.AbsPool do
          }, acc + amt}
       end)
 
-    rows
+    pool_interest =
+      div(Enum.sum(for r <- rows, do: r["principal_cents"] * r["coupon_bps"]), 10_000 * 12)
+
+    {init, [final]} = Enum.split(rows, -1)
+    assigned = Enum.sum(for r <- init, do: r["monthly_interest_cents"])
+    init ++ [Map.put(final, "monthly_interest_cents", pool_interest - assigned)]
   end
 end

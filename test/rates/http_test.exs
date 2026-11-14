@@ -61,4 +61,50 @@ defmodule Smalt.Rates.HttpTest do
 
     assert {422, _} = post_json("/abs/pool", %{"n" => 0})
   end
+
+  describe "/abs/price validation" do
+    @tr [
+      %{"name" => "A", "share_bps" => 8000, "spread_bps" => 100},
+      %{"name" => "B", "share_bps" => 2000, "spread_bps" => 300}
+    ]
+    defp pool_of(p, recs), do: %{"principal_cents" => p, "receivables" => recs}
+
+    test "negative principal_cents refused" do
+      pool = pool_of(-100, [%{"principal_cents" => -100}])
+      assert {422, _} = post_json("/abs/price", %{"pool" => pool, "tranches" => @tr})
+    end
+
+    test "shares [15000,-5000] refused" do
+      pool = pool_of(100, [%{"principal_cents" => 100}])
+
+      trs = [
+        %{"name" => "A", "share_bps" => 15000, "spread_bps" => 1},
+        %{"name" => "B", "share_bps" => -5000, "spread_bps" => 1}
+      ]
+
+      assert {422, _} = post_json("/abs/price", %{"pool" => pool, "tranches" => trs})
+    end
+
+    test "unbalanced pool (100 vs receivables 50) refused" do
+      pool = pool_of(100, [%{"principal_cents" => 50}])
+      assert {422, _} = post_json("/abs/price", %{"pool" => pool, "tranches" => @tr})
+    end
+
+    test "malformed input is 422 not 500" do
+      for body <- [%{}, %{"pool" => "x"}, %{"pool" => %{"principal_cents" => 1}},
+                   %{"pool" => pool_of(1, "x"), "tranches" => @tr},
+                   %{"pool" => pool_of(1, [1]), "tranches" => @tr},
+                   %{"pool" => pool_of(1, [%{"principal_cents" => 1}]), "tranches" => "x"},
+                   %{"pool" => pool_of(1, [%{"principal_cents" => 1}]), "tranches" => [1]}] do
+        assert {422, _} = post_json("/abs/price", body)
+      end
+    end
+
+    test "tranche interest sums to pool-level interest" do
+      pool = pool_of(1_000_001, [%{"principal_cents" => 1_000_001}])
+      {200, %{"tranches" => rows}} = post_json("/abs/price", %{"pool" => pool, "sofr_bps" => 430, "tranches" => @tr})
+      total = Enum.sum(for r <- rows, do: r["principal_cents"] * r["coupon_bps"])
+      assert Enum.sum(for r <- rows, do: r["monthly_interest_cents"]) == div(total, 120_000)
+    end
+  end
 end

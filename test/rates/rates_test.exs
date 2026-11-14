@@ -37,4 +37,17 @@ defmodule Smalt.RatesTest do
     assert hd(rows)["coupon_bps"] == 430 + 120
     assert_raise ArgumentError, fn -> AbsPool.price(pool, [{"A", 9_000, 1}]) end
   end
+
+  test "tranche interest reconciles to pool-level interest; remainder to last" do
+    pool = AbsPool.pool("P2", 100_000_001, 7)
+    rows = AbsPool.price(pool, [{"A", 3_333, 121}, {"B", 3_333, 307}, {"C", 3_334, 599}], 431)
+    total = Enum.sum(for r <- rows, do: r["principal_cents"] * r["coupon_bps"])
+    assert Enum.sum(Enum.map(rows, & &1["monthly_interest_cents"])) == div(total, 120_000)
+  end
+
+  test "balanced? false on mismatch and malformed" do
+    refute AbsPool.balanced?(%{"principal_cents" => 100, "receivables" => [%{"principal_cents" => 50}]})
+    refute AbsPool.balanced?(%{"principal_cents" => 100, "receivables" => "x"})
+    refute AbsPool.balanced?(:nope)
+  end
 end

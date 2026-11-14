@@ -12,6 +12,18 @@ defmodule Smalt.TwilioExtTest do
     assert {:error, %{"code" => 60200}} = SilentNetworkAuth.create(@va, %{"To" => "+15005550001"})
   end
 
+  test "trailing newline / control chars refused" do
+    assert {:error, %{"code" => 60200}} = SilentNetworkAuth.create(@va, %{"To" => "+14155551230\n"})
+    assert {:error, %{"code" => 60200}} = SilentNetworkAuth.create(@va, %{"To" => "+14155551234\n"})
+    assert {:error, %{"code" => 60200}} = SilentNetworkAuth.create(@va, %{"To" => "+1415555\r1234"})
+
+    assert {:error, %{"code" => 21211}} =
+             MessagingChannel.build(%{"To" => "whatsapp:+12345678\n", "From" => "whatsapp:+14155550000"})
+
+    assert {:error, %{"code" => 21211}} =
+             MessagingChannel.build(%{"To" => "rcs:agent\n", "From" => "rcs:agent2"})
+  end
+
   test "channels" do
     assert {:ok, %{"channel" => "whatsapp"}} =
              MessagingChannel.build(%{"To" => "whatsapp:+14155551234", "From" => "whatsapp:+14155550000"})

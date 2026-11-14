@@ -92,6 +92,11 @@ defmodule Smalt.Erp.Journal do
   defp check_balance(je) do
     d = Enum.sum(Enum.map(je.lines, & &1.debit))
     c = Enum.sum(Enum.map(je.lines, & &1.credit))
-    if d == c, do: :ok, else: {:error, {:unbalanced, d, c}}
+
+    cond do
+      d == 0 and c == 0 -> {:error, :empty_entry}
+      d == c -> :ok
+      true -> {:error, {:unbalanced, d, c}}
+    end
   end
 end

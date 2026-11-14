@@ -2,12 +2,13 @@ defmodule Smalt.TaxSanctions.Form1099 do
   @moduledoc "1099-NEC / 1099-K record builders with required-field validation."
 
   @nec_threshold 60_000
-  @tin ~r/^\d{9}$/
+  @tin ~r/\A\d{9}\z/
 
   def nec(%{} = a) do
     with :ok <- req(a, [:payer_tin, :payee_tin, :payee_name, :tax_year, :nonemployee_comp_cents]),
          :ok <- tins(a.payer_tin, a.payee_tin),
-         :ok <- pos(a.nonemployee_comp_cents) do
+         :ok <- pos(a.nonemployee_comp_cents),
+         :ok <- withheld(a, a.nonemployee_comp_cents) do
       {:ok,
        %{
          form: "1099-NEC",
@@ -25,7 +26,9 @@ defmodule Smalt.TaxSanctions.Form1099 do
   def k(%{} = a) do
     with :ok <- req(a, [:filer_tin, :payee_tin, :payee_name, :tax_year, :monthly_gross_cents]),
          :ok <- tins(a.filer_tin, a.payee_tin),
-         :ok <- twelve(a.monthly_gross_cents) do
+         :ok <- twelve(a.monthly_gross_cents),
+         :ok <- months(a.monthly_gross_cents),
+         :ok <- withheld(a, Enum.sum(a.monthly_gross_cents)) do
       {:ok,
        %{
          form: "1099-K",
@@ -52,6 +55,16 @@ defmodule Smalt.TaxSanctions.Form1099 do
 
   defp tins(p, q) do
     if Regex.match?(@tin, p) and Regex.match?(@tin, q), do: :ok, else: {:error, :bad_tin}
+  end
+
+  defp months(l),
+    do: if(Enum.all?(l, &(is_integer(&1) and &1 >= 0)), do: :ok, else: {:error, :bad_amount})
+
+  defp withheld(a, gross) do
+    case Map.get(a, :federal_withheld_cents, 0) do
+      w when is_integer(w) and w >= 0 and w <= gross -> :ok
+      _ -> {:error, :bad_withholding}
+    end
   end
 
   defp pos(n) when is_integer(n) and n >= 0, do: :ok

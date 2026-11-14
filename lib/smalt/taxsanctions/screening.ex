@@ -7,7 +7,7 @@ defmodule Smalt.TaxSanctions.Screening do
 
     list
     |> Enum.flat_map(fn e ->
-      best = [e.name | Map.get(e, :aliases, [])] |> Enum.map(&score(q, tokens(&1))) |> Enum.max()
+      best = [e.name | (Map.get(e, :aliases) || [])] |> Enum.map(&score(q, tokens(&1))) |> Enum.max()
       if best >= threshold, do: [%{id: e.id, name: e.name, program: e.program, score: best}], else: []
     end)
     |> Enum.sort_by(&(-&1.score))
@@ -26,7 +26,12 @@ defmodule Smalt.TaxSanctions.Screening do
   defp score(a, b) do
     sa = MapSet.new(a)
     sb = MapSet.new(b)
-    MapSet.size(MapSet.intersection(sa, sb)) / MapSet.size(MapSet.union(sa, sb))
+    inter = MapSet.size(MapSet.intersection(sa, sb))
+    jaccard = inter / MapSet.size(MapSet.union(sa, sb))
+    small = min(MapSet.size(sa), MapSet.size(sb))
+    # containment only counts when the smaller set has >= 2 tokens
+    containment = if small >= 2, do: inter / small, else: 0.0
+    max(jaccard, containment)
   end
 
   defp tokens(s) do

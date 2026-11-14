@@ -14,15 +14,38 @@ defmodule Smalt.Treasury.Router do
 
   def ensure do
     if :ets.whereis(@t) == :undefined do
-      try do
-        :ets.new(@t, [:named_table, :public, :set])
-      rescue
-        ArgumentError -> :ok
+      # Table is owned by the long-lived Store process, never by a request process.
+      case GenServer.start(Smalt.Treasury.Store, @t, name: Smalt.Treasury.Store) do
+        {:ok, _} -> :ok
+        {:error, {:already_started, _}} -> :ok
+        _ -> :ok
       end
     end
 
     :ok
   end
+
+  @doc false
+  def dec(c) when is_integer(c) do
+    sign = if c < 0, do: "-", else: ""
+    a = abs(c)
+    sign <> Integer.to_string(div(a, 100)) <> "." <> (a |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0"))
+  end
+
+  defp party(%{} = m) do
+    with n when is_binary(n) and n != "" <- m["name"],
+         a when is_binary(a) and a != "" <- m["account"],
+         r when is_binary(r) and r != "" <- m["routing"] do
+      {:ok, %{name: n, account: a, routing: r}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp party(_), do: :error
+
+  defp str(v) when is_binary(v), do: v
+  defp str(_), do: ""
 
   def put_card_rule(card_token, rule), do: (ensure(); :ets.insert(@t, {{:rule, card_token}, rule}))
   def put_account(id, a), do: (ensure(); :ets.insert(@t, {{:account, id}, a}))
@@ -43,7 +66,7 @@ defmodule Smalt.Treasury.Router do
     with a when is_integer(a) and a > 0 <- b["amount"],
          acct when is_binary(acct) <- b["bank_account_id"],
          %{} = ba <- get({:account, acct}) do
-      speed = if b["same_day"], do: :same_day, else: :standard
+      speed = if b["same_day"] == true, do: :same_day, else: :standard
       {:ok, rail} = Rails.select(%{amount_cents: a, speed: speed})
       t = %{"id" => id("ach"), "amount" => a, "currency_code" => "USD", "bank_account_id" => acct,
             "status" => "initiated", "rail" => to_string(rail), "same_day" => b["same_day"] == true}
@@ -94,19 +117,24 @@ defmodule Smalt.Treasury.Router do
 
   post "/iso20022/pacs008" do
     b = conn.body_params
-    p = %{msg_id: b["msg_id"], created_at: b["created_at"], end_to_end_id: b["end_to_end_id"],
-          amount_cents: b["amount"],
-          debtor: %{name: b["debtor"]["name"], account: b["debtor"]["account"], routing: b["debtor"]["routing"]},
-          creditor: %{name: b["creditor"]["name"], account: b["creditor"]["account"], routing: b["creditor"]["routing"]}}
 
-    conn |> put_resp_content_type("application/xml") |> send_resp(200, Iso20022.pacs008(p))
+    with a when is_integer(a) and a > 0 <- b["amount"],
+         {:ok, d} <- party(b["debtor"]),
+         {:ok, c} <- party(b["creditor"]) do
+      p = %{msg_id: str(b["msg_id"]), created_at: str(b["created_at"]), end_to_end_id: str(b["end_to_end_id"]),
+            amount_cents: a, debtor: d, creditor: c}
+
+      conn |> put_resp_content_type("application/xml") |> send_resp(200, Iso20022.pacs008(p))
+    else
+      _ -> err(conn, 422, "invalid_request", "amount must be positive integer cents; debtor and creditor need name, account, routing")
+    end
   end
 
   post "/plaid/auth/get" do
     case get({:account, conn.body_params["access_token"]}) do
       nil -> err(conn, 400, "ITEM_ERROR", "INVALID_ACCESS_TOKEN")
       a ->
-        json(conn, 200, %{"accounts" => [%{"account_id" => a.account_id, "balances" => %{"available" => a.available_cents / 100}}],
+        json(conn, 200, %{"accounts" => [%{"account_id" => a.account_id, "balances" => %{"available" => dec(a.available_cents)}}],
                           "numbers" => %{"ach" => [%{"account_id" => a.account_id, "account" => a.account, "routing" => a.routing}]},
                           "request_id" => id("req")})
     end
@@ -117,7 +145,7 @@ defmodule Smalt.Treasury.Router do
       nil -> err(conn, 400, "ITEM_ERROR", "INVALID_ACCESS_TOKEN")
       a ->
         json(conn, 200, %{"accounts" => [%{"account_id" => a.account_id,
-                          "balances" => %{"available" => a.available_cents / 100, "current" => a.current_cents / 100,
+                          "balances" => %{"available" => dec(a.available_cents), "current" => dec(a.current_cents),
                                           "iso_currency_code" => "USD"}}], "request_id" => id("req")})
     end
   end
@@ -133,5 +161,16 @@ defmodule Smalt.Treasury.Router do
 
   match _ do
     err(conn, 404, "not_found", "no such route")
+  end
+end
+
+defmodule Smalt.Treasury.Store do
+  @moduledoc "Long-lived owner of the :smalt_treasury ETS table (survives request processes)."
+  use GenServer
+
+  @impl true
+  def init(t) do
+    if :ets.whereis(t) == :undefined, do: :ets.new(t, [:named_table, :public, :set])
+    {:ok, t}
   end
 end

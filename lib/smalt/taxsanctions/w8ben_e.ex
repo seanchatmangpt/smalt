@@ -20,13 +20,17 @@ defmodule Smalt.TaxSanctions.W8BenE do
 
   defp status(_), do: []
 
-  defp us(%{country_of_incorporation: "US"}), do: [{:invalid, :us_entity_must_use_w9}]
+  defp us(%{country_of_incorporation: c}) when is_binary(c) do
+    if String.upcase(String.trim(c)) in ["US", "USA"], do: [{:invalid, :us_entity_must_use_w9}], else: []
+  end
+
   defp us(_), do: []
 
   defp treaty(%{treaty_country: c} = f) when not is_nil(c) do
     cond do
       not Map.get(f, :lob_qualified, false) -> [{:missing, :limitation_on_benefits}]
-      not is_number(Map.get(f, :treaty_rate_pct)) -> [{:missing, :treaty_rate_pct}]
+      not is_integer(Map.get(f, :treaty_rate_pct)) -> [{:missing, :treaty_rate_pct}]
+      Map.get(f, :treaty_rate_pct) not in 0..30 -> [{:invalid, :treaty_rate_pct}]
       true -> []
     end
   end

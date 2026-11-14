@@ -5,6 +5,7 @@ defmodule Smalt.Erp.Router do
 
   plug(:match)
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason, pass: ["*/*"])
+  plug(:check_as_of)
   plug(:dispatch)
 
   # ---- QuickBooks Online
@@ -99,6 +100,22 @@ defmodule Smalt.Erp.Router do
     json(conn, 404, %{"error" => "not_found"})
   end
 
+  # Malformed asOf on any request is a client error (400), never a 500.
+  defp check_as_of(conn, _) do
+    conn = Plug.Conn.fetch_query_params(conn)
+
+    case conn.query_params["asOf"] do
+      nil ->
+        conn
+
+      v ->
+        case is_binary(v) && Date.from_iso8601(v) do
+          {:ok, _} -> conn
+          _ -> conn |> json(400, %{"error" => "bad_as_of"}) |> Plug.Conn.halt()
+        end
+    end
+  end
+
   defp imp(conn, vendor, ok) do
     case Journal.import_entry(vendor, conn.body_params) do
       {:ok, je} -> json(conn, 200, ok.(je))
@@ -110,8 +127,10 @@ defmodule Smalt.Erp.Router do
 
   defp aging(vendor, type, conn) do
     conn = Plug.Conn.fetch_query_params(conn)
-    a = Ledger.aging(vendor, type, conn.query_params["asOf"] || Date.to_iso8601(Date.utc_today()))
-    Map.new(a, fn {k, v} -> {to_string(k), Money.fmt(v)} end)
+    case Ledger.aging(vendor, type, conn.query_params["asOf"] || Date.to_iso8601(Date.utc_today())) do
+      {:ok, a} -> Map.new(a, fn {k, v} -> {to_string(k), Money.fmt(v)} end)
+      {:error, :bad_as_of} -> %{}
+    end
   end
 
   defp qbo_acct(a), do: %{"Id" => a.id, "Name" => a.name, "AccountType" => to_string(a.type)}

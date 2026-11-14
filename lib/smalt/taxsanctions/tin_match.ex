@@ -22,11 +22,12 @@ defmodule Smalt.TaxSanctions.TinMatch do
 
     cond do
       MapSet.member?(seen, {norm(name), t}) -> 5
-      not Regex.match?(~r/^\d{9}$/, t) -> 1
+      not Regex.match?(~r/\A\d{9}\z/, t) -> 1
       not Map.has_key?(registry, t) -> 2
       norm(registry[t].name) != norm(name) -> 3
       registry[t].type == :ssn -> 6
       registry[t].type == :ein -> 7
+      true -> {:error, {:unknown_registry_type, registry[t].type}}
     end
   end
 

@@ -13,10 +13,17 @@ defmodule Smalt.Erp.Ledger do
 
   def start_link(_ \\ []), do: Agent.start_link(fn -> %{} end, name: __MODULE__)
 
+  # Unlinked: the ledger must outlive the (request) process that first touches it.
   def ensure_started do
     case Process.whereis(__MODULE__) do
-      nil -> start_link()
-      _ -> :ok
+      nil ->
+        case Agent.start(fn -> %{} end, name: __MODULE__) do
+          {:ok, _} -> :ok
+          {:error, {:already_started, _}} -> :ok
+        end
+
+      _ ->
+        :ok
     end
   end
 
@@ -60,8 +67,13 @@ defmodule Smalt.Erp.Ledger do
   @doc "Aging buckets for :ar or :ap as of an ISO date."
   def aging(vendor, type, as_of) do
     acct = Enum.find(@coa, &(&1.type == type)).id
-    {:ok, asof} = Date.from_iso8601(as_of)
+    case Date.from_iso8601(as_of) do
+      {:ok, asof} -> {:ok, do_aging(vendor, acct, type, asof)}
+      _ -> {:error, :bad_as_of}
+    end
+  end
 
+  defp do_aging(vendor, acct, type, asof) do
     entries(vendor)
     |> Enum.flat_map(& &1.lines)
     |> Enum.filter(&(&1.account == acct))

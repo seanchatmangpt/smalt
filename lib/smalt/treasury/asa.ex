@@ -13,7 +13,7 @@ defmodule Smalt.Treasury.Asa do
       [
         {auth["mcc"] in rule.mccs, "MCC_MISMATCH"},
         {is_integer(auth["amount"]) and auth["amount"] > 0 and auth["amount"] <= rule.max_amount_cents, "AMOUNT_MISMATCH"},
-        {auth["merchant"]["country"] in rule.countries, "GEO_MISMATCH"}
+        {merchant_country(auth) in rule.countries, "GEO_MISMATCH"}
       ]
       |> Enum.reject(&elem(&1, 0))
       |> Enum.map(&elem(&1, 1))
@@ -23,6 +23,9 @@ defmodule Smalt.Treasury.Asa do
     result = if reasons == [] and not over, do: "APPROVED", else: "DECLINED"
     %{"token" => auth["token"], "result" => result, "reasons" => if(over, do: ["TIMEOUT" | reasons], else: reasons), "elapsed_us" => el}
   end
+
+  defp merchant_country(%{"merchant" => %{} = m}), do: m["country"]
+  defp merchant_country(_), do: nil
 
   def response(d), do: %{"result" => d["result"], "token" => d["token"]}
 end

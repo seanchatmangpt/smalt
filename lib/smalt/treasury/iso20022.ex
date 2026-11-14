@@ -12,6 +12,16 @@ defmodule Smalt.Treasury.Iso20022 do
       |> String.replace("<", "&lt;")
       |> String.replace(">", "&gt;")
       |> String.replace("\"", "&quot;")
+      |> String.replace("'", "&apos;")
+
+  def unesc(v) do
+    v
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&apos;", "'")
+    |> String.replace("&amp;", "&")
+  end
 
   def amt(cents) when is_integer(cents) and cents >= 0,
     do: "#{div(cents, 100)}.#{cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")}"
@@ -66,16 +76,21 @@ defmodule Smalt.Treasury.Iso20022 do
   end
 
   def parse_camt053(xml) do
-    entries =
-      Regex.scan(~r{<Ntry>(.*?)</Ntry>}s, xml)
-      |> Enum.map(fn [_, n] ->
-        {:ok, a} = attr_amt(n, "Amt")
-        {:ok, ind} = tag(n, "CdtDbtInd")
-        {:ok, e2e} = tag(n, "EndToEndId")
-        %{amount_cents: a, direction: if(ind == "CRDT", do: :credit, else: :debit), end_to_end_id: e2e}
-      end)
-
-    {:ok, %{entries: entries}}
+    Regex.scan(~r{<Ntry>(.*?)</Ntry>}s, xml)
+    |> Enum.reduce_while({:ok, []}, fn [_, n], {:ok, acc} ->
+      with {:ok, a} <- attr_amt(n, "Amt"),
+           {:ok, ind} <- tag(n, "CdtDbtInd"),
+           {:ok, e2e} <- tag(n, "EndToEndId") do
+        e = %{amount_cents: a, direction: if(ind == "CRDT", do: :credit, else: :debit), end_to_end_id: e2e}
+        {:cont, {:ok, [e | acc]}}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, %{entries: Enum.reverse(entries)}}
+      {:error, _} = e -> e
+    end
   end
 
   defp inner(xml, t) do
@@ -87,7 +102,7 @@ defmodule Smalt.Treasury.Iso20022 do
 
   defp tag(xml, t) do
     case Regex.run(~r{<#{t}>([^<]*)</#{t}>}, xml) do
-      [_, v] -> {:ok, v}
+      [_, v] -> {:ok, unesc(v)}
       _ -> {:error, {:missing, t}}
     end
   end

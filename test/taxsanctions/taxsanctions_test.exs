@@ -54,6 +54,37 @@ defmodule Smalt.TaxSanctionsTest do
     assert [%{seller_name: "A", total_consideration_cents: 10}] = rep.sellers
   end
 
+  test "r2 hardening" do
+    reg = %{"123456789" => %{name: "X", type: :weird}}
+    assert {:error, {:unknown_registry_type, :weird}} = TinMatch.match("X", "123456789", reg)
+
+    a = %{payer_tin: "123456789", payee_tin: "987654321", payee_name: "J", tax_year: 2026, nonemployee_comp_cents: 100}
+    assert {:error, :bad_tin} = Form1099.nec(%{a | payee_tin: "987654321\n"})
+    assert {:error, :bad_withholding} = Form1099.nec(Map.put(a, :federal_withheld_cents, 101))
+    k = %{filer_tin: "123456789", payee_tin: "987654321", payee_name: "J", tax_year: 2026, monthly_gross_cents: List.duplicate(100, 12)}
+    assert {:error, :bad_amount} = Form1099.k(%{k | monthly_gross_cents: [-1 | List.duplicate(100, 11)]})
+    assert {:error, :bad_amount} = Form1099.k(%{k | monthly_gross_cents: [1.5 | List.duplicate(100, 11)]})
+
+    f = %{entity_name: "G", country_of_incorporation: "de", chapter3_status: "corporation",
+          permanent_address: "x", signature: "s", signed_on: ~D[2026-01-01], capacity: "dir"}
+    assert :ok = W8BenE.validate(f)
+    assert {:error, e1} = W8BenE.validate(%{f | country_of_incorporation: "usa"})
+    assert {:invalid, :us_entity_must_use_w9} in e1
+    assert {:error, e2} = W8BenE.validate(%{f | country_of_incorporation: " us "})
+    assert {:invalid, :us_entity_must_use_w9} in e2
+    t = Map.merge(f, %{treaty_country: "DE", lob_qualified: true})
+    assert :ok = W8BenE.validate(Map.put(t, :treaty_rate_pct, 15))
+    assert {:error, [{:invalid, :treaty_rate_pct}]} = W8BenE.validate(Map.put(t, :treaty_rate_pct, 31))
+    assert {:error, [{:missing, :treaty_rate_pct}]} = W8BenE.validate(Map.put(t, :treaty_rate_pct, 7.5))
+  end
+
+  test "screening containment" do
+    list = [%{id: "2", name: "BANCO NACIONAL DE CUBA", aliases: nil, program: "CUBA"}]
+    assert %{status: :potential_match} = Screening.result("BANCO NACIONAL DE CUBA S A", list)
+    one = [%{id: "3", name: "Petrov", program: "X"}]
+    assert %{status: :clear} = Screening.result("Ivan Petrov", one)
+  end
+
   test "screening" do
     list = [%{id: "1", name: "Ivan Petrov", aliases: ["Ivan P Petrov"], program: "SDGT"}]
     assert %{status: :potential_match, hits: [%{id: "1", score: 1.0}]} = Screening.result("PETROV, Ivan", list)

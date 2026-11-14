@@ -62,7 +62,8 @@ defmodule Smalt.Rates.Http do
   post "/abs/price" do
     p = conn.body_params
 
-    with %{"principal_cents" => c} = pool when is_integer(c) <- p["pool"],
+    with %{"principal_cents" => c} = pool when is_integer(c) and c >= 0 <- p["pool"],
+         true <- AbsPool.balanced?(pool),
          {:ok, tranches} <- tranches(p["tranches"]),
          true <- Enum.sum(for {_, s, _} <- tranches, do: s) == 10_000 do
       rows =
@@ -73,7 +74,7 @@ defmodule Smalt.Rates.Http do
 
       json(conn, 200, %{"tranches" => rows})
     else
-      _ -> json(conn, 422, %{"error" => "pool and tranches (shares summing to 10000) required"})
+      _ -> json(conn, 422, %{"error" => "balanced pool and tranches (positive shares summing to 10000) required"})
     end
   end
 
@@ -84,7 +85,7 @@ defmodule Smalt.Rates.Http do
   defp tranches(list) when is_list(list) and list != [] do
     Enum.reduce_while(list, {:ok, []}, fn
       %{"name" => n, "share_bps" => s, "spread_bps" => sp}, {:ok, acc}
-      when is_integer(s) and is_integer(sp) ->
+      when is_integer(s) and s > 0 and is_integer(sp) ->
         {:cont, {:ok, acc ++ [{n, s, sp}]}}
 
       _, _ ->
