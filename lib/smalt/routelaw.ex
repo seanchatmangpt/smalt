@@ -5,7 +5,7 @@ defmodule Smalt.Routelaw do
   Pure parse/authorize, no state access. Twilio signature helper included.
   """
   @roles ~w(principal revops vendor client distributor credit)
-  @surfaces ~w(app api)
+  @surfaces ~w(app api mcp a2a flight)
   @lead %{
     "principal" => "deal", "revops" => "wo", "vendor" => "off",
     "client" => "po", "distributor" => "bom", "credit" => "pool"
