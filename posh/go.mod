@@ -1,6 +1,6 @@
 module smalt.dev/posh
 
-go 1.26.0
+go 1.23.4
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10

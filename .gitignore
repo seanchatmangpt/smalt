@@ -73,9 +73,13 @@ test/sdk-smoke/.logs/
 
 # Terraform fixture
 test/terraform_fixture/.terraform*/
+**/.terraform/
 *.tfstate*
-*.tfstate.backup
 *.tfplan
+
+# ggen runtime state
+.ggen/
+.ggen-v2/
 
 # Node / JS dependencies
 node_modules/

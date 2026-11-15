@@ -159,6 +159,8 @@ defmodule Smalt.Treasury.Router do
     end
   end
 
+  forward("/", to: Smalt.H08.TreasuryRouter)
+
   match _ do
     err(conn, 404, "not_found", "no such route")
   end

@@ -357,7 +357,7 @@ func (s *Server) serveConn(ctx context.Context, c net.Conn) {
 	go func() {
 		select {
 		case <-ctx.Done():
-			c.SetReadDeadline(time.Now())
+			c.SetDeadline(time.Now())
 		case <-stopWatch:
 		}
 	}()

@@ -266,7 +266,18 @@ defmodule Smalt.Egress.ThrottlePlug do
   @doc "Ensures the bucket table exists. Idempotent."
   def ensure_table! do
     if :ets.whereis(@table) == :undefined do
-      :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
+      opts = [:named_table, :public, :set, {:read_concurrency, true}, {:write_concurrency, true}]
+      opts =
+        case Process.whereis(:init) do
+          nil -> opts
+          pid -> [{:heir, pid, []} | opts]
+        end
+
+      try do
+        :ets.new(@table, opts)
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     :ok

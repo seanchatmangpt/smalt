@@ -78,6 +78,8 @@ defmodule Smalt.Rates.Http do
     end
   end
 
+  forward("/", to: Smalt.H08.RatesRouter)
+
   match _ do
     json(conn, 404, %{"error" => "not_found"})
   end

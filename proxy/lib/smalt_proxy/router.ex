@@ -48,6 +48,7 @@ defmodule SmaltProxy.Router do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
     port = Keyword.get(opts, :port, @default_port)
 
     {:ok, listen} =
@@ -59,7 +60,11 @@ defmodule SmaltProxy.Router do
         ip: {127, 0, 0, 1}
       ])
 
-    {:ok, _acceptor} = Task.start_link(fn -> accept_loop(listen) end)
+    {:ok, _acceptor} =
+      Task.start_link(fn ->
+        Process.flag(:trap_exit, true)
+        accept_loop(listen)
+      end)
     Logger.info("smalt_proxy: listening on 127.0.0.1:#{port} (loopback only)")
     {:ok, %__MODULE__{listen_socket: listen, port: port}}
   end

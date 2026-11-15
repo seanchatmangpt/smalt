@@ -50,6 +50,7 @@ defmodule Smalt.EgressRouter do
   # production, configure an explicit allowlist. Evaluated per-request so a
   # config flip does not need a recompile.
   plug(:egress_cors)
+  plug(Smalt.Egress.ThrottlePlug)
 
   defp egress_cors(conn, _opts) do
     # Restored (:egress_cors_headers knob dropped in the v26.10.29 undock
@@ -2360,6 +2361,7 @@ defmodule Smalt.EgressRouter do
     conn
     |> put_resp_header("x-ms-request-id", generate_request_id())
     |> put_resp_header("x-ms-version", "2021-12-02")
+    |> put_resp_header("retry-after", "1")
     |> send_json(503, %{"error" => %{"code" => "RouteNotReady"}})
   end
 

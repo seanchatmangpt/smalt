@@ -124,6 +124,33 @@ defmodule Smalt.Amqp.Connection.Delivery do
     end
   end
 
+  defp replenish_sender_credit(state, link) do
+    key = {link.channel, link.handle}
+
+    case Map.get(state.links, key) do
+      nil ->
+        state
+
+      cur ->
+        dc = Map.get(cur, :delivery_count, 0) + 1
+        rem = max(Map.get(cur, :credit, 1000) - 1, 0)
+
+        if rem <= 250 do
+          Session.send_flow(state, link.channel, %{
+            handle: link.handle,
+            delivery_count: dc,
+            link_credit: 1000
+          })
+
+          updated = cur |> Map.put(:delivery_count, dc) |> Map.put(:credit, 1000)
+          %{state | links: Map.put(state.links, key, updated)}
+        else
+          updated = cur |> Map.put(:delivery_count, dc) |> Map.put(:credit, rem)
+          %{state | links: Map.put(state.links, key, updated)}
+        end
+    end
+  end
+
   defp ingest_message(state, link, perf, payload) do
     # Disclosed cross-lane unblock (s5_sessions e2e lane): the SDK maps the
     # Service Bus sessionId to the AMQP properties group-id. Without decoding
@@ -162,6 +189,8 @@ defmodule Smalt.Amqp.Connection.Delivery do
           :disposition,
           %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}
         })
+
+        state = replenish_sender_credit(state, link)
 
         # KD-COVERS: KD-115 — deliver_available/1 runs only on the :flow path
         # (the :flow handler), so a receiver whose credit flow precedes
