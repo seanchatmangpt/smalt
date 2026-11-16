@@ -6,6 +6,13 @@
 -export([run/0, run/1]).
 -define(NS, [1000, 4000, 8000, 16000, 32000]).
 -define(OUT, "tmp/bench/court_bench_ceiling.jsonl").
+%% Derived from docs/jira/v26.10.21/receipts/bench7-concurrency-ceiling.md:
+%% 1,111,111 -> 848,806 ops/s across the sweep, worst/best 0.764. 0.10 leaves
+%% ~7x headroom below the observed worst ratio while still catching a leaked
+%% sleep or serialization cliff.
+-define(MIN_RATIO, 0.10).
+-define(BASE_RT, 200000).
+-define(DEADLINE_MS, 300000).
 
 run() -> run(?NS).
 
@@ -31,7 +38,59 @@ run(Ns) ->
         [io:put_chars(Fd, [json(Row), $\n]) || Row <- Rows]
     after file:close(Fd) end,
     io:format("wrote ~s (~p rows)~n", [?OUT, length(Rows) + 1]),
+    fence(Ns),
     Rows.
+
+%% Ratio fence: 3 paired rounds per N, each a baseline (one bare ponger,
+%% plain `!' ping/pong) then the fan-out at N. ratio = best fan-out ops/s
+%% over best baseline ops/s. Relative only; no absolute bound. halt(1) on
+%% any ratio < ?MIN_RATIO or when the overall deadline passes.
+fence(Ns) ->
+    Deadline = erlang:monotonic_time(millisecond) + ?DEADLINE_MS,
+    Failing = lists:foldl(
+        fun(N, Acc) ->
+            {BestBase, BestFan} = paired_rounds(N, Deadline, 3, 0.0, 0.0),
+            Ratio = BestFan / BestBase,
+            io:format("fence N=~p ratio=~.3f (fan ~.1f / base ~.1f ops/s)~n",
+                      [N, Ratio, BestFan, BestBase]),
+            case Ratio < ?MIN_RATIO of
+                true -> [{N, Ratio} | Acc];
+                false -> Acc
+            end
+        end, [], Ns),
+    case Failing of
+        [] -> ok;
+        _ ->
+            io:format(standard_error,
+                      "FENCE FAIL: ratio < ~p for N (N,ratio): ~p~n",
+                      [?MIN_RATIO, lists:reverse(Failing)]),
+            halt(1)
+    end.
+
+paired_rounds(_N, _Deadline, 0, BB, BF) -> {BB, BF};
+paired_rounds(N, Deadline, K, BB, BF) ->
+    case erlang:monotonic_time(millisecond) > Deadline of
+        true ->
+            io:format(standard_error, "FENCE FAIL: ~p ms deadline exceeded at N=~p~n",
+                      [?DEADLINE_MS, N]),
+            halt(1);
+        false ->
+            Base = baseline(),
+            Fan = proplists:get_value(ops_per_sec, bench(N)),
+            paired_rounds(N, Deadline, K - 1, erlang:max(BB, Base), erlang:max(BF, Fan))
+    end.
+
+%% Baseline: one bare spawned ponger, 200000 sequential round-trips.
+baseline() ->
+    Pid = spawn(fun ponger/0),
+    Ref = make_ref(),
+    roundtrip([Pid], Ref, 1000),
+    T0 = erlang:monotonic_time(nanosecond),
+    roundtrip([Pid], Ref, ?BASE_RT),
+    WallNs = erlang:monotonic_time(nanosecond) - T0,
+    quantization_guard(WallNs, timer_resolution_ns()),
+    exit(Pid, kill),
+    ?BASE_RT * 1.0e9 / WallNs.
 
 bench(N) ->
     Pids = [spawn(fun ponger/0) || _ <- lists:seq(1, N)],

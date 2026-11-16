@@ -14,12 +14,29 @@ defmodule Smalt.Test.Integration.TenantRegistryTest do
 
   use ExUnit.Case, async: false
 
+  import SmaltTest.AssertEventually, only: [assert_eventually: 2]
+
   @home "00000000-0000-0000-0000-000000000000"
   @mint_tenant "courtroom-ai"
 
   setup_all do
     {:ok, _} = Application.ensure_all_started(:smalt)
-    :timer.sleep(1500)
+    arm_port = Application.fetch_env!(:smalt, :arm_port)
+
+    assert_eventually(
+      fn ->
+        case :gen_tcp.connect(~c"127.0.0.1", arm_port, [:binary, active: false], 500) do
+          {:ok, s} ->
+            :gen_tcp.close(s)
+            true
+
+          _ ->
+            false
+        end
+      end,
+      timeout: 10_000
+    )
+
     :ok
   end
 

@@ -11,6 +11,9 @@ Phases:
   3. Restore validator.ex byte-exact (sha256 verified), reboot, re-run
      M2 -- refusal must be back.
 
+Modes: default = validator gate court; `--probes [name ...]` = six source-mutant
+probes (PROBES table); `--probes-self-check` = anchors + restore-detection.
+
 Exit codes: 0 = gate non-vacuous; 1 = gate vacuous/failed; 2 = BLOCKED
 (shared compile broken after 3 retries, 60s apart). Never fakes.
 
@@ -426,6 +429,176 @@ def self_check():
         return good and detected
 
 
+# --- source-mutant probes (docs/BENCHMARKS.md "mutation probes") ---------------
+#
+# Each probe: BASELINE sha256 -> BEFORE (test cmd must be green) -> SHIM
+# (one-line source mutation tagged MUTATION-COURT) -> AFTER (same cmd must go
+# RED, not compile-abort) -> RESTORE (sha256 byte-exact; always, in finally).
+# Fail-closed: anchor absent / BEFORE red / compile-abort => BLOCKED (exit 2);
+# AFTER still green => VACUOUS (exit 1); restore mismatch => exit 1.
+# Run: scripts/mutation_court.py --probes [name ...]   (no names = all six)
+# The 2026-10-15 one-shot stamps these replace were plain `mix test` kills.
+#
+# Test files for typ/crit/jti/blob/cosmos/lro live under
+# docs/jira/v26.10.18/burn/test (the archived burn corpus); their mix
+# runnability from that path is UNVERIFIED until the coordinator runs this.
+
+BURN = "docs/jira/v26.10.18/burn/test"
+PROBES = [
+    {
+        "name": "cosmos-continuation-forged-check",
+        "file": "lib/smalt/data_plane/cosmos.ex",
+        "anchor": "      :error -> cf_unknown_continuation(db, coll)\n",
+        "shim": "      :error -> :ok # MUTATION-COURT: forged continuation admitted\n",
+        "tests": [BURN + "/data_plane/cosmos_test.exs"],
+    },
+    {
+        "name": "auth-crit-fence",
+        "file": "lib/smalt/auth/bearer.ex",
+        "anchor": 'Map.has_key?(header, "crit") and header["crit"] != [] ->',
+        "shim": 'false and header["crit"] != [] -> # MUTATION-COURT',
+        "tests": [BURN + "/auth_enforce_test.exs"],
+    },
+    {
+        "name": "blob-if-match-precheck",
+        "file": "lib/smalt/data_plane/blob/core.ex",
+        "anchor": 'ConditionalHeaders.header(headers, "if-match") != nil ->',
+        "shim": 'false -> # MUTATION-COURT',
+        "tests": [BURN + "/data_plane/blob_hardening_test.exs"],
+    },
+    {
+        "name": "typ-header-fence",
+        "file": "lib/smalt/auth/bearer.ex",
+        "anchor": 'Map.has_key?(header, "typ") and not valid_typ?(header["typ"]) ->',
+        "shim": 'false and not valid_typ?(header["typ"]) -> # MUTATION-COURT',
+        "tests": [BURN + "/auth_enforce_test.exs"],
+    },
+    {
+        "name": "tee-admit-jti",
+        "file": "lib/smalt/data_plane/skr.ex",
+        "anchor": '%{} = rt -> rt["jti"]',
+        "shim": '%{} = _rt -> nil # MUTATION-COURT: jti never reaches single-use',
+        "tests": [BURN + "/data_plane/key_vault_actions_test.exs",
+                  BURN + "/security/lens6_fuzz_test.exs"],
+    },
+    {
+        "name": "lro-lens9-ownership",
+        "file": "lib/smalt/arm_gateway/lro.ex",
+        "anchor": "if scoped?(record, expected_sub), do: {:ok, record}, else: :error",
+        "shim": "if scoped?(record, expected_sub) or true, do: {:ok, record}, "
+                "else: :error # MUTATION-COURT",
+        "tests": [BURN + "/lro_test.exs"],
+    },
+]
+COMPILE_ABORT_MARKS = ("** (CompileError)", "Compilation error", "== Compilation error")
+TEST_TIMEOUT = 1500
+
+
+def run_tests(tests):
+    """Real `mix test` subprocess. Returns (rc, tail). rc 3 = compile-abort
+    (0 tests executed) — never counted as a red test."""
+    proc = subprocess.run(
+        ["mix", "test", "--no-color"] + tests, cwd=REPO, capture_output=True,
+        text=True, timeout=TEST_TIMEOUT, env={**os.environ, "MIX_ENV": "test"})
+    out = proc.stdout + proc.stderr
+    if proc.returncode != 0 and any(m in out for m in COMPILE_ABORT_MARKS):
+        return 3, out[-1500:]
+    return proc.returncode, out[-1500:]
+
+
+def probe_anchor_ok(p):
+    """Read-only: anchor present exactly once and the tests exist."""
+    path = os.path.join(REPO, p["file"])
+    if not os.path.isfile(path):
+        return "MISSING source %s" % p["file"]
+    with open(path, "r", encoding="utf-8") as fh:
+        n = fh.read().count(p["anchor"])
+    if n != 1:
+        return "anchor count %d (need exactly 1) in %s" % (n, p["file"])
+    for t in p["tests"]:
+        if not os.path.isfile(os.path.join(REPO, t)):
+            return "MISSING test %s" % t
+    return None
+
+
+def run_probe(p):
+    """Returns (verdict, detail): KILLED | VACUOUS | BLOCKED | RESTORE-FAIL."""
+    problem = probe_anchor_ok(p)
+    if problem:
+        return "BLOCKED", problem
+    path = os.path.join(REPO, p["file"])
+    with open(path, "rb") as fh:
+        original = fh.read()
+    base_sha = hashlib.sha256(original).hexdigest()
+    rc, tail = run_tests(p["tests"])
+    print("  [BEFORE] rc=%s" % rc, flush=True)
+    if rc != 0:
+        return "BLOCKED", "BEFORE not green (rc=%s): %s" % (rc, tail[-400:])
+    mutated = original.decode("utf-8").replace(p["anchor"], p["shim"], 1)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(mutated)
+        rc2, tail2 = run_tests(p["tests"])
+        print("  [AFTER ] rc=%s (shim in place)" % rc2, flush=True)
+    finally:
+        with open(path, "wb") as fh:
+            fh.write(original)
+        restored = sha256_of(path) == base_sha
+        print("  [RESTORE] sha256 byte-exact: %s" % restored, flush=True)
+    if not restored:
+        return "RESTORE-FAIL", "sha256 mismatch on %s" % p["file"]
+    if rc2 == 3:
+        return "BLOCKED", "AFTER compile-abort: %s" % tail2[-400:]
+    if rc2 == 0:
+        return "VACUOUS", "shim went in, tests stayed green"
+    return "KILLED", "rc=%s" % rc2
+
+
+def probes_main(names):
+    sel = [p for p in PROBES if not names or p["name"] in names]
+    unknown = set(names) - {p["name"] for p in PROBES}
+    if unknown:
+        print("unknown probe(s): %s" % sorted(unknown))
+        return 2
+    results = []
+    for p in sel:
+        print("[probe] %s (%s)" % (p["name"], p["file"]), flush=True)
+        try:
+            results.append((p["name"],) + run_probe(p))
+        except subprocess.TimeoutExpired:
+            results.append((p["name"], "BLOCKED", "test timeout"))
+    print("=" * 78)
+    for name, verdict, detail in results:
+        print("%-34s %-13s %s" % (name, verdict, detail.splitlines()[0][:60]))
+    print("=" * 78)
+    verdicts = {v for _, v, _ in results}
+    if verdicts == {"KILLED"}:
+        return 0
+    if verdicts & {"VACUOUS", "RESTORE-FAIL"}:
+        return 1
+    return 2
+
+
+def probes_self_check():
+    """Non-vacuity of restore detection on a real temp copy + anchors live."""
+    ok = True
+    for p in PROBES:
+        problem = probe_anchor_ok(p)
+        print("[self-check] %-34s %s" % (p["name"], problem or "anchor ok"))
+        ok = ok and problem is None
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(REPO, PROBES[0]["file"])
+        tgt = os.path.join(tmp, "copy.ex")
+        shutil.copyfile(src, tgt)
+        want = sha256_of(tgt)
+        with open(tgt, "ab") as fh:
+            fh.write(b"\n# corrupt\n")
+        detected = sha256_of(tgt) != want
+        print("[self-check] corrupted restore detected: %s" % detected)
+        ok = ok and detected
+    return ok
+
+
 # --- receipt -------------------------------------------------------------------
 
 def receipt(before, after, restored, mutation_applied=False, blocked_msg=None):
@@ -452,6 +625,10 @@ def receipt(before, after, restored, mutation_applied=False, blocked_msg=None):
 
 def main():
     args = sys.argv[1:]
+    if "--probes-self-check" in args:
+        sys.exit(0 if probes_self_check() else 1)
+    if "--probes" in args:
+        sys.exit(probes_main([a for a in args if not a.startswith("--")]))
     if "--self-check" in args:
         sys.exit(0 if self_check() else 1)
 

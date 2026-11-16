@@ -484,27 +484,32 @@ enclave prereq) is absent, the lane prints `[SKIP] <reason>` to stdout
 and exits 3 — a skip is loud and typed, never a faked pass (smalt
 exit-code contract). No jsonl row is emitted on skip.
 
-## One-shot mutation probes — dated stamps (V261014-18 §3.3, decision: DEFER full-court upgrade)
+## Mutation probes — one-shot stamps, ported to re-runnable mutants (UNVERIFIED until run)
 
-Per the work order §3.3 decision: the six one-shot mutation-probe claims are
-stamped as dated ONE-SHOT receipts, NOT upgraded to the full-court protocol
-(BEFORE/AFTER/restore, sha256 byte-exact, exit 2 = BLOCKED) this release;
-upgrade is bounded follow-up (V261014-18a if pursued). **None of these is a
-court.** The only full-court protocol in the tree is `scripts/mutation_court.py`.
+The six 2026-10-15 one-shot kills were plain `mix test` stamps, not courts.
+Each is now a re-runnable mutant in `scripts/mutation_court.py` (`--probes`;
+`--probes-self-check` for anchors + restore detection): BASELINE sha256 ->
+BEFORE green -> SHIM (`MUTATION-COURT`) -> AFTER red (compile-abort is BLOCKED,
+not a kill) -> RESTORE sha256 byte-exact, fail-closed. Standing of every row
+below: UNVERIFIED — the ported mutants have not been executed; the 2026-10-15
+stamps remain one-shot, not full-court. Test files live in the archived
+`docs/jira/v26.10.18/burn/test` corpus; mix runnability from that path is
+UNVERIFIED.
 
-| Probe claim | Doc pin | One-shot date | Stamp |
+| Probe | Mutant (file) | Tests expected red | Standing |
 |---|---|---|---|
-| cosmos continuation forged-check | `docs/how-to/dev-loop.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
-| auth criticality fence | `docs/how-to/dev-loop.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
-| blob If-Match precheck | `docs/how-to/dev-loop.md` (refresh-6 row, "3/3 non-vacuous") | 2026-10-15 | one-shot — not full-court protocol |
-| typ-header fence | `docs/WIRE_PARITY.md:121` | 2026-10-15 | one-shot — not full-court protocol |
-| tee-admit jti | `docs/WIRE_PARITY.md:113` | 2026-10-15 | one-shot — not full-court protocol |
-| LRO lens-9 | `docs/WIRE_PARITY.md:94` | 2026-10-15 | one-shot — not full-court protocol |
+| cosmos continuation forged-check | `cosmos.ex` cf_check_continuation `:error -> :ok` | `data_plane/cosmos_test.exs` | UNVERIFIED |
+| auth criticality fence | `auth/bearer.ex` crit clause disabled | `auth_enforce_test.exs` | UNVERIFIED |
+| blob If-Match precheck | `blob/core.ex` create-arm if-match clause disabled | `data_plane/blob_hardening_test.exs` | UNVERIFIED |
+| typ-header fence | `auth/bearer.ex` typ clause disabled | `auth_enforce_test.exs` | UNVERIFIED |
+| tee-admit jti | `data_plane/skr.ex` runtime jti dropped | `key_vault_actions_test.exs`, `security/lens6_fuzz_test.exs` | UNVERIFIED |
+| LRO lens-9 | `arm_gateway/lro.ex` get_op/2 ownership check bypassed | `lro_test.exs` | UNVERIFIED |
 
 Scope of the runs behind these stamps: plain `mix test` (2026-10-15 refresh
 6, test-corpus-b-lens2 cycle 1) and refresh-9 (lens6_fuzz + lro_test 27/0)
 on the shared checkout mid-landing — one-shot kills, not the full-court
-protocol.
+protocol. The `docs/WIRE_PARITY.md` line pins (94/113/121) previously cited
+here have drifted and no longer point at these claims.
 
 ## T5 terraform clean-room ladder (V26.10.16 — authored, pending execution)
 

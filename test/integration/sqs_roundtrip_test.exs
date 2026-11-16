@@ -291,7 +291,12 @@ defmodule Smalt.Integration.SqsRoundtripTest do
     task =
       Task.async(fn ->
         IO.puts("TASK-START")
-        :timer.sleep(200)
+        Process.send_after(self(), :fire_wakeup, 200)
+
+        receive do
+          :fire_wakeup -> :ok
+        end
+
         IO.puts("TASK-AFTER-SLEEP")
         out = send_msg(port, "sqs-lp-q", "wakeup")
         IO.inspect(out, label: "TASK-SEND-OUT")
