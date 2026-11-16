@@ -1,12 +1,13 @@
 # Terraform TLS Trust Model
 
-How Terraform (`azurerm` -> `azidentity`) verifies the smalt substrate's dev
-TLS endpoint, per OS, and how to check/fix it.
+How Terraform (`azurerm` -> `azidentity`, or `terraform-provider-smalt`)
+verifies the smalt substrate's dev TLS endpoint (`localhost:9444`), per OS,
+and how to check/fix it.
 
 ## Background
 
 The substrate serves a TLS twin of the ARM router on `localhost:9444`
-(`ARM_METADATA_HOSTNAME=localhost:9444` makes azurerm `GET
+(`ARM_METADATA_HOSTNAME=localhost:9444` makes `azurerm` `GET
 /metadata/endpoints` there). Certificates are minted by
 `scripts/gen_dev_cert.sh`:
 
@@ -29,60 +30,50 @@ is sufficient and **authoritative**. No keychain/system store involved.
 ### macOS (darwin)
 
 Go's `crypto/x509` does **not** read `SSL_CERT_FILE` on darwin; every
-verification goes through Apple Security.framework, which reads the
-keychain trust settings. The dev CA must therefore be trusted in the login
-keychain (user domain, no sudo).
+verification goes through Apple `Security.framework`.
 
-Two non-obvious constraints:
+`scripts/smalt-tf` uses a **zero-dialog `DYLD_INSERT_LIBRARIES` trust shim**
+(`scripts/trust_shim/smalt_trust_shim.dylib`) rather than mutating the
+user's login keychain:
 
-- `security verify-cert` **cannot** be used as a gate: it returns exit 1
-  even for a correctly user-domain-trusted CA.
-- `openssl s_client -CAfile <ca>` proves only the served *chain* — openssl
-  uses the supplied CAfile, not the keychain, so it says nothing about what
-  the Go provider will decide.
-
-The only authoritative darwin check is a real Go/azidentity run, i.e.
-`scripts/smalt-tf plan`.
+1. `smalt_trust_shim.dylib` interposes `Security.framework` trust evaluation
+   (`SecTrustEvaluateWithError` / `SecTrustEvaluate`), pinning the exact
+   leaf SHA-256 fingerprint (`SMALT_LEAF_SHA256`) and loopback SANs.
+2. **Hardened-runtime constraint**: `terraform` strips `DYLD_*` from child
+   plugin environments and Apple-signed/hardened binaries ignore
+   `DYLD_INSERT_LIBRARIES`. `scripts/tf_provider_wrap.sh` therefore wraps
+   ad-hoc-signed provider binaries in `.terraform/providers` with a small
+   shell shim that re-exports `DYLD_INSERT_LIBRARIES`, `SMALT_LEAF_SHA256`,
+   and `SMALT_CA_FILE` before `exec`ing the `.real` binary (and updates the
+   run-local `.terraform.lock.hcl` `h1:` hash, restored cleanly on `EXIT`
+   alongside unwrapping `.real` back).
+3. **Optional keychain opt-in**: `scripts/tf_trust_setup.sh trust` (or
+   `security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" .smalt/tls/ca-cert.pem`)
+   is available as an explicit manual opt-in, never invoked automatically.
 
 ## Checking: scripts/tf_trust_check.sh
 
-`bash scripts/tf_trust_check.sh` performs, in order:
+`bash scripts/tf_trust_check.sh` checks:
 
-1. Locate or mint cert material (`scripts/` or `.smalt/tls/`; mints via
-   `scripts/gen_dev_cert.sh` if absent).
-2. **Linux**: `SSL_CERT_FILE` points at the CA, plus an `openssl
-   s_client -CAfile` handshake against `localhost:9444`. Result is clean
-   PASS/FAIL.
+1. Cert material present (`.smalt/tls/{ca-cert,dev-cert,dev-key}.pem`,
+   minting via `scripts/gen_dev_cert.sh` if absent).
+2. **Linux**: `SSL_CERT_FILE` points at the CA + `openssl s_client -CAfile`
+   handshake against `localhost:9444`.
 3. **darwin**:
-   - `security dump-trust-settings` — gates on actual trust settings for
-     `smalt-dev-ca`, not mere presence. Measured 2026-10-14: the CA was in
-     the keychain with zero trust settings and the Go provider still
-     rejected the chain (`x509: certificate signed by unknown authority`),
-     so `find-certificate` presence alone is not a valid gate.
-   - `openssl s_client -CAfile` chain probe (proves chain, not trust),
-   - `curl --cacert <ca> https://localhost:9444/metadata/endpoints`
-     (endpoint live + chain),
-   - last resort: a dry `scripts/smalt-tf plan` — the only check that
-     exercises the actual Go/Security.framework path. If it fails for
-     non-trust reasons (network/provider download), the verdict is
-     INDETERMINATE.
+   - Either the zero-dialog `DYLD_INSERT_LIBRARIES` trust shim
+     (`scripts/trust_shim/smalt_trust_shim.dylib`) is built and
+     `SMALT_LEAF_SHA256` can be derived from `dev-cert.pem`, **or**
+     `smalt-dev-ca` has non-zero trust settings in `login.keychain-db`.
+   - `openssl s_client -CAfile` chain probe against `localhost:9444`.
+   - `curl --cacert` `GET /metadata/endpoints`.
+   - Last resort: dry `scripts/smalt-tf plan` exercising the real Go path.
 
 Exit codes: `0` PASS, `1` FAIL, `2` UNREACHABLE (substrate not listening on
-9444), `3` INDETERMINATE (fast checks passed, authoritative check could not
-run non-interactively).
-
-## The one-command fix (macOS)
-
-```sh
-security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" \
-  .smalt/tls/ca-cert.pem
-```
-
-One interactive SecurityAgent approval; no sudo. `scripts/smalt-tf` runs
-this automatically when the CA is absent from the keychain.
+9444), `3` INDETERMINATE.
 
 ## See Also
 
-- `scripts/smalt-tf` — env routing + automatic trust
-- `scripts/tf_smoke.sh` — full init/plan/apply/destroy smoke
+- `scripts/smalt-tf` — env routing + `DYLD_INSERT_LIBRARIES` trust shim
+- `scripts/tf_provider_wrap.sh` — provider wrapper for `DYLD_INSERT_LIBRARIES`
+- `scripts/trust_shim/README.md` — shim design & codesigning constraints
 - `scripts/gen_dev_cert.sh` — cert minting rationale

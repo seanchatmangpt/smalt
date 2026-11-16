@@ -132,7 +132,7 @@ resource "azapi_resource" "workspace" {
   response_export_values    = []
   body = {
     properties = {
-      workspaceCapping = { dataVolumeCap = "2GB" }
+      workspaceCapping = { dailyQuotaGb = 2 }
     }
   }
 }
@@ -146,7 +146,7 @@ resource "azapi_resource" "dcr" {
   response_export_values    = []
   body = {
     properties = {
-      dataFlow = [{ streams = ["Custom-AppTraces"], destinations = ["log-courtroom"] }]
+      dataFlows = [{ streams = ["Custom-AppTraces"], destinations = ["log-courtroom"] }]
     }
   }
 }
@@ -199,7 +199,7 @@ resource "azapi_resource" "managed_env" {
   response_export_values    = []
   body = {
     properties = {
-      appsLogsToMonitorWorkspace = true
+      appLogsConfiguration = { destination = "log-analytics" }
     }
   }
 }

@@ -52,6 +52,26 @@ type tokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
+// resolveARMEndpoint resolves the ARM endpoint from armEndpoint,
+// SMALT_ARM_ENDPOINT, or metadataHost. If metadataHost is set without
+// armEndpoint/SMALT_ARM_ENDPOINT: an http(s):// URL is wired directly, while a
+// bare host[:port] fails closed instead of silently dialing 127.0.0.1:9443.
+func resolveARMEndpoint(armEndpoint, metadataHost string) (string, error) {
+	if armEndpoint != "" {
+		return armEndpoint, nil
+	}
+	if env := os.Getenv("SMALT_ARM_ENDPOINT"); env != "" {
+		return env, nil
+	}
+	if metadataHost != "" {
+		if strings.HasPrefix(metadataHost, "http://") || strings.HasPrefix(metadataHost, "https://") {
+			return metadataHost, nil
+		}
+		return "", fmt.Errorf("metadata_host %q set without arm_endpoint or SMALT_ARM_ENDPOINT; refusing to silently fall back to %s", metadataHost, defaultARMEndpoint)
+	}
+	return defaultARMEndpoint, nil
+}
+
 // NewClient builds an ARM client. armEndpoint empty falls back to
 // SMALT_ARM_ENDPOINT then the localhost default.
 func NewClient(ctx context.Context, armEndpoint, subscriptionID, tenantID, clientID, caCert string) (*Client, error) {

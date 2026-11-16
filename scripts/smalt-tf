@@ -111,14 +111,26 @@ echo "[SMALT-TF] Routing Terraform execution to sovereign substrate..."
 # validates the mirror zip against the lock), so wrap only for non-init
 # verbs; `smalt-tf init` wraps on the NEXT invocation.
 if [ "$(uname)" = "Darwin" ] && [ "${1:-}" != "init" ] && [ "${TF_NOWRAP:-0}" != "1" ]; then
-  FIXTURE_LOCK="$ROOT/scripts/tf_fixtures/.terraform.lock.hcl"
-  # The wrap adds wrapped-dir h1 entries to the committed lock; they are
-  # run-local (the wrapper embeds the leaf fp), so snapshot the committed
-  # lock BEFORE the wrap and restore it after terraform exits.
-  LOCK_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/tf-lock-snapshot.XXXXXX")"
-  cp "$FIXTURE_LOCK" "$LOCK_SNAPSHOT"
+  FIXTURE_LOCK="$(pwd)/.terraform.lock.hcl"
+  PROV_DIR="$(pwd)/.terraform/providers"
+  LOCK_SNAPSHOT=""
+  if [ -f "$FIXTURE_LOCK" ]; then
+    LOCK_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/tf-lock-snapshot.XXXXXX")"
+    cp "$FIXTURE_LOCK" "$LOCK_SNAPSHOT"
+  fi
   bash "$ROOT/scripts/tf_provider_wrap.sh" >&2 || true
-  trap '[ -n "$LOCK_SNAPSHOT" ] && cp "$LOCK_SNAPSHOT" "$FIXTURE_LOCK" && rm -f "$LOCK_SNAPSHOT"' EXIT
+  cleanup_tf_wrap() {
+    if [ -n "$LOCK_SNAPSHOT" ] && [ -f "$LOCK_SNAPSHOT" ]; then
+      cp "$LOCK_SNAPSHOT" "$FIXTURE_LOCK"
+      rm -f "$LOCK_SNAPSHOT"
+    fi
+    if [ -d "$PROV_DIR" ]; then
+      while IFS= read -r real_bin; do
+        [ -f "$real_bin" ] && mv "$real_bin" "${real_bin%.real}"
+      done < <(find "$PROV_DIR" -type f -name '*.real' 2>/dev/null)
+    fi
+  }
+  trap cleanup_tf_wrap EXIT
 fi
 
 terraform "$@"

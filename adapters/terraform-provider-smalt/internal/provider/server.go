@@ -95,11 +95,8 @@ func (p *smaltProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 			},
 			"metadata_host": schema.StringAttribute{
 				Optional:    true,
-				Description: "Metadata host override for azurerm parity; accepted but unused by the smalt plane.",
-				// azurerm parity: azurerm deprecates metadata_host in favor
-				// of environment. Kept optional here; parity without
-				// removing the attr (schema-parity gate depends on the set).
-				DeprecationMessage: "metadata_host is deprecated in azurerm; prefer omitting it (accepted for parity, unused by smalt).",
+				Description: "Metadata host override. If set to an `http(s)://` URL when `arm_endpoint` and `SMALT_ARM_ENDPOINT` are unset, routes ARM requests there; bare `host[:port]` without `arm_endpoint`/`SMALT_ARM_ENDPOINT` fails closed.",
+				DeprecationMessage: "metadata_host is deprecated in azurerm; prefer arm_endpoint or SMALT_ARM_ENDPOINT (bare host[:port] without SMALT_ARM_ENDPOINT fails closed).",
 			},
 			"environment": schema.StringAttribute{
 				Optional:    true,
@@ -193,13 +190,20 @@ type providerConfigModel struct {
 }
 
 func (p *smaltProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var subscriptionID, armEndpoint, tenantID, clientID, caCert types.String
+	var subscriptionID, armEndpoint, tenantID, clientID, caCert, metadataHost types.String
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("subscription_id"), &subscriptionID)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("arm_endpoint"), &armEndpoint)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("tenant_id"), &tenantID)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("client_id"), &clientID)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("ca_cert"), &caCert)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("metadata_host"), &metadataHost)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resolvedEndpoint, err := resolveARMEndpoint(armEndpoint.ValueString(), metadataHost.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("provider configuration", err.Error())
 		return
 	}
 
@@ -208,7 +212,7 @@ func (p *smaltProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		sub = os.Getenv("ARM_SUBSCRIPTION_ID")
 	}
 
-	client, err := NewClient(ctx, armEndpoint.ValueString(), sub, tenantID.ValueString(),
+	client, err := NewClient(ctx, resolvedEndpoint, sub, tenantID.ValueString(),
 		clientID.ValueString(), caCert.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("provider configuration", err.Error())

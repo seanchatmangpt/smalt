@@ -107,11 +107,11 @@ RUN addgroup -g 1000 nonroot \
 # Ship the project tree the way `just up` sees it: sources + compiled deps.
 COPY --from=build --chown=1000:1000 /smalt/mix.exs /smalt/mix.lock /smalt/
 COPY --from=build --chown=1000:1000 /smalt/deps  /smalt/deps
-COPY --from=build --chown=1000:1000 /smalt/_build /smalt/_build
 COPY --from=build --chown=1000:1000 /smalt/lib /smalt/lib
 COPY --from=build --chown=1000:1000 /smalt/config /smalt/config
 COPY --from=build --chown=1000:1000 /smalt/priv /smalt/priv
 COPY --from=build --chown=1000:1000 /smalt/src /smalt/src
+COPY --from=build --chown=1000:1000 /smalt/_build /smalt/_build
 
 COPY --chmod=0755 <<'ENTRYPOINT' /usr/local/bin/smalt-entrypoint
 #!/bin/bash
@@ -179,9 +179,9 @@ export SSL_CERT_FILE="${SSL_CERT_FILE:-$CA_CERT}"
 export HOME=/tmp
 export MIX_ENV=prod
 
-# Same boot path as `just up` (justfile: `mix run --no-halt`).
+# Same boot path as `just up` (justfile: `mix run --no-halt --no-compile`).
 cd /smalt
-exec mix run --no-halt
+exec mix run --no-halt --no-compile
 ENTRYPOINT
 
 ENV LANG=C.UTF-8 \

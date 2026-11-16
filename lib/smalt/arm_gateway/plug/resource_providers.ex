@@ -291,28 +291,32 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
       case TagsLocks.resource_record(res_id) do
         {:ok, rec} ->
           if is_map(rec) and renderable_record?(rec) do
-            if TagsLocks.delete_gate(res_id) == :locked do
-              send_json(conn, 409, lock_scope_locked_body(res_id))
-            else
-              for child <- Store.prefix_keys(:smalt_resources, key <> "/") do
-                Store.delete(:smalt_resources, child)
+            with :ok <- check_etag_precondition(conn, {:ok, rec}, res_id) do
+              if TagsLocks.delete_gate(res_id) == :locked do
+                send_json(conn, 409, lock_scope_locked_body(res_id))
+              else
+                for child <- Store.prefix_keys(:smalt_resources, key <> "/") do
+                  Store.delete(:smalt_resources, child)
+                end
+
+                Store.delete(:smalt_resources, key)
+                Smalt.Metrics.drop(res_id)
+                ProviderState.drop_lifecycle(res_id)
+
+                # AZURE-FIDELITY lane 5: activity-log event for the completed
+                # DELETE (fail-safe sideband — never alters the 202).
+                Smalt.ArmGateway.ActivityLog.record(conn, :delete, res_id, rg_name)
+
+                op = LRO.start_op(res_id)
+                authority = request_authority(conn)
+
+                conn
+                |> put_resp_header("location", "#{authority}#{op["id"]}")
+                |> put_resp_header("retry-after", "1")
+                |> send_json(202, "")
               end
-
-              Store.delete(:smalt_resources, key)
-              Smalt.Metrics.drop(res_id)
-              ProviderState.drop_lifecycle(res_id)
-
-              # AZURE-FIDELITY lane 5: activity-log event for the completed
-              # DELETE (fail-safe sideband — never alters the 202).
-              Smalt.ArmGateway.ActivityLog.record(conn, :delete, res_id, rg_name)
-
-              op = LRO.start_op(res_id)
-              authority = request_authority(conn)
-
-              conn
-              |> put_resp_header("location", "#{authority}#{op["id"]}")
-              |> put_resp_header("retry-after", "1")
-              |> send_json(202, "")
+            else
+              {:respond, conn} -> conn
             end
           else
             send_arm_error(
@@ -415,8 +419,11 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
           # edit. (A literal Smalt.GraphlawEx.AdmissionGate.gate/3 dot-call
           # would warn "module not available" and fail
           # `mix compile --warnings-as-errors`.)
-          with :ok <- check_admission_gate(conn, admission_envelope(conn)) do
-            existed? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
+          existing = Store.get(:smalt_resources, String.downcase(res_id))
+
+          with :ok <- check_etag_precondition(conn, existing, res_id),
+               :ok <- check_admission_gate(conn, admission_envelope(conn)) do
+            existed? = match?({:ok, _}, existing)
             Store.put(:smalt_resources, String.downcase(res_id), record)
 
             # AZURE-FIDELITY lane 5: activity-log event for the completed PUT
@@ -478,6 +485,8 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
 
                 :ok
             end
+
+            conn = put_resp_header(conn, "etag", resource_etag(record))
 
             cond do
               lro_type?(full_type) and not existed? ->
@@ -545,7 +554,9 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
       case Store.get(:smalt_resources, String.downcase(res_id)) do
         {:ok, record} ->
           if renderable_record?(record) do
-            send_json(conn, 200, Jason.encode!(record))
+            conn
+            |> put_resp_header("etag", resource_etag(record))
+            |> send_json(200, Jason.encode!(record))
           else
             # Deny-by-default (lens-11): malformed record → 404, never 500.
             send_arm_error(
@@ -5558,29 +5569,33 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
 
       case Store.get(:smalt_resources, key) do
         {:ok, record} when is_map(record) ->
-          Store.delete(:smalt_resources, key)
+          with :ok <- check_etag_precondition(conn, {:ok, record}, res_id) do
+            Store.delete(:smalt_resources, key)
 
-          # Cascade by STORE KEY (both conventions): prefixed
-          # (.../providers/Microsoft.Storage/storageAccounts/<acct>/...) and
-          # unprefixed (.../storageaccounts/<acct>/... child-route form).
-          cascade_sweep(:smalt_resources, String.downcase(res_id <> "/"))
+            # Cascade by STORE KEY (both conventions): prefixed
+            # (.../providers/Microsoft.Storage/storageAccounts/<acct>/...) and
+            # unprefixed (.../storageaccounts/<acct>/... child-route form).
+            cascade_sweep(:smalt_resources, String.downcase(res_id <> "/"))
 
-          cascade_sweep(
-            :smalt_resources,
-            String.downcase(
-              "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/storageAccounts/#{resource_name}/"
+            cascade_sweep(
+              :smalt_resources,
+              String.downcase(
+                "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/storageAccounts/#{resource_name}/"
+              )
             )
-          )
 
-          # D127: the account's data-plane rows (containers/blobs/policies,
-          # "acct/..." keys) must not orphan on account teardown.
-          BlobStorage.drop_account_data(resource_name)
+            # D127: the account's data-plane rows (containers/blobs/policies,
+            # "acct/..." keys) must not orphan on account teardown.
+            BlobStorage.drop_account_data(resource_name)
 
-          # AZB-25b: real ARM storage-account DELETE is SYNCHRONOUS (200 OK)
-          # — azurerm 4.54's delete path does not poll a 202 (witnessed:
-          # "unexpected status 202 with response {operation record}").
-          # Only the PUT create flow is LRO-async for this type.
-          send_resp(conn, 200, "")
+            # AZB-25b: real ARM storage-account DELETE is SYNCHRONOUS (200 OK)
+            # — azurerm 4.54's delete path does not poll a 202 (witnessed:
+            # "unexpected status 202 with response {operation record}").
+            # Only the PUT create flow is LRO-async for this type.
+            send_resp(conn, 200, "")
+          else
+            {:respond, conn} -> conn
+          end
 
         _ ->
           send_arm_error(
@@ -5919,6 +5934,63 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
     Smalt.ArmGateway.Router.sb_atom_alias(conn, "DELETE", conn.request_path)
   end
 
+
+  defp resource_etag(record) when is_map(record) do
+    digest =
+      record
+      |> Jason.encode!()
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+      |> binary_part(0, 16)
+
+    ~s("#{digest}")
+  end
+
+  defp check_etag_precondition(conn, existing, res_id) do
+    if_match = get_req_header(conn, "if-match") |> List.first()
+    if_none_match = get_req_header(conn, "if-none-match") |> List.first()
+
+    cond do
+      is_binary(if_match) and if_match != "" ->
+        case existing do
+          {:ok, rec} when is_map(rec) ->
+            current = resource_etag(rec)
+
+            if if_match == "*" or if_match == current do
+              :ok
+            else
+              {:respond, send_precondition_failed(conn, res_id, "If-Match '#{if_match}' does not match current ETag #{current}.")}
+            end
+
+          _ ->
+            {:respond, send_precondition_failed(conn, res_id, "If-Match '#{if_match}' failed: resource does not exist.")}
+        end
+
+      if_none_match == "*" ->
+        case existing do
+          {:ok, _rec} ->
+            {:respond, send_precondition_failed(conn, res_id, "If-None-Match '*' failed: resource already exists.")}
+
+          _ ->
+            :ok
+        end
+
+      true ->
+        :ok
+    end
+  end
+
+  defp send_precondition_failed(conn, res_id, message) do
+    body =
+      Jason.encode!(%{
+        "error" => %{
+          "code" => "PreconditionFailed",
+          "message" => "#{message} (target: '#{res_id}')"
+        }
+      })
+
+    send_json(conn, 412, body)
+  end
 
   # Pass-through tail (T06): a conn no route above claimed returns UNCHANGED
   # (not halted) so the next plug in the front pipeline composes unchanged.

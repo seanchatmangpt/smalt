@@ -5,7 +5,7 @@
 # the smalt substrate. This file carries only substrate-owned facts:
 #   - cluster naming law (justfile.d/52-kind.just default)
 #   - TF deployment floor (provider README TF note, dialect-independent)
-#   - surface inventory 12/7 (server_test.go inventory is the measurement;
+#   - surface inventory 12/8 (server_test.go inventory is the measurement;
 #     the counts are substrate contract)
 #   - payload laws (A8/A9-class: substrate renders azurerm-compatible wire)
 # Machine-checked by scripts/compat_pin_check.py --core-pin
@@ -26,7 +26,7 @@
     smalt:tfVersionFloor ">=1.14, <2.0" ;
     smalt:tfFloorEvidence "adapters/terraform-provider-smalt/README.md:74 (Terraform >= 1.14 dev_overrides syntax)" ;
     smalt:resourceSurfaceCount 12 ;
-    smalt:dataSourceSurfaceCount 7 ;
+    smalt:dataSourceSurfaceCount 8 ;
     smalt:payloadLaw "managedEnvironmentId-dual-key" ;
     smalt:payloadLaw "memory-numeric-wire" ;
     smalt:payloadLaw "location-always-set" ;

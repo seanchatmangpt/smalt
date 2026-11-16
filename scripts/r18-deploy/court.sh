@@ -211,11 +211,13 @@ set -e
 tf() { SMALT_TF_PORT=$ARM_PORT SMALT_TLS_PORT=$TLS_PORT "$ROOT/scripts/smalt-tf" "$@"; }
 
 if ! tf init -input=false -no-color >"$COURT_DIR/tf-init.log" 2>&1; then
+  tail -30 "$COURT_DIR/tf-init.log" >&2
   if grep -qiE "dial tcp: lookup|no such host|i/o timeout|Failed to query available provider packages" "$COURT_DIR/tf-init.log"; then
-    say "[SKIP] registry unreachable — leg C skipped (typed SKIPPED-NETWORK)"; SKIP_NETWORK=1
+    fail "leg C terraform init (registry unreachable)"
   else
-    tail -30 "$COURT_DIR/tf-init.log" >&2; fail "leg C terraform init"; SKIP_NETWORK=1
+    fail "leg C terraform init"
   fi
+  SKIP_NETWORK=1
 else
   if ! tf plan -input=false -no-color -out=plan.tfplan >"$COURT_DIR/tf-plan.log" 2>&1; then
     tail -30 "$COURT_DIR/tf-plan.log" >&2; fail "leg C terraform plan"
@@ -320,7 +322,7 @@ fi
 # Cleanup (lease law: runtime artifacts removed, lock kept)
 # ---------------------------------------------------------------------------
 rm -rf "$HERE/.terraform" "$HERE/terraform.tfstate" "$HERE/terraform.tfstate.backup" \
-  "$HERE/plan.tfplan" "$HERE/.terraform.lock.hcl" 2>/dev/null || true
+  "$HERE/plan.tfplan" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Receipt

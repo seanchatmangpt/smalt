@@ -20,7 +20,7 @@ func init() {
 }
 
 const (
-	caeAPIVersion         = "2024-03-01"
+	caeAPIVersion         = "2023-05-01"
 	caeFallbackAPIVersion = "2023-05-01"
 )
 

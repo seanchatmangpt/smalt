@@ -81,20 +81,18 @@ if [ "$(uname)" = "Linux" ]; then
 
 elif [ "$(uname)" = "Darwin" ]; then
   KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
-  # Presence is NOT trust (measured 2026-10-14: find-certificate hits while
-  # the Go provider rejects with x509 unknown-authority because the import
-  # carried zero trust settings). Gate on actual trust settings.
+  SHIM_DYLIB="$ROOT/scripts/trust_shim/smalt_trust_shim.dylib"
+  LEAF_FP="$(openssl x509 -in "$CERT" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':' || true)"
   trust_line="$(security dump-trust-settings 2>/dev/null | grep -A1 'smalt-dev-ca' | grep 'Number of trust settings' || true)"
-  if echo "$trust_line" | grep -qv ': 0'; then
+
+  if [ -f "$SHIM_DYLIB" ] && [ -n "$LEAF_FP" ]; then
+    mark "DYLD_INSERT_LIBRARIES trust shim" PASS "$SHIM_DYLIB (leaf ${LEAF_FP:0:12}...)"
+  elif echo "$trust_line" | grep -qv ': 0'; then
     mark "smalt-dev-ca trusted (login keychain)" PASS
   elif security find-certificate -c smalt-dev-ca "$KEYCHAIN" >/dev/null 2>&1; then
-    mark "smalt-dev-ca trusted (login keychain)" FAIL "cert imported but has ZERO trust settings (presence != trust)"
+    mark "smalt-dev-ca trusted (login keychain)" FAIL "cert imported but has ZERO trust settings and trust shim missing"
   else
-    mark "smalt-dev-ca trusted (login keychain)" FAIL "not in keychain at all (darwin Go verifies via Security.framework)"
-  fi
-  if [ "$trust_line" = "" ] || echo "$trust_line" | grep -q ': 0'; then
-    echo "[tf-trust] FIX (one command, one interactive SecurityAgent approval):" >&2
-    echo "  security add-trusted-cert -r trustRoot -k \"$KEYCHAIN\" \"$CA\"" >&2
+    mark "darwin trust path (DYLD shim or keychain)" FAIL "neither $SHIM_DYLIB nor keychain trust present (run: bash $ROOT/scripts/trust_shim/build.sh)"
   fi
   if nc -z 127.0.0.1 "$TLS_PORT" 2>/dev/null; then
     if probe_tls; then

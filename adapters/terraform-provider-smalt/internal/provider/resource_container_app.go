@@ -25,7 +25,7 @@ func init() {
 }
 
 const (
-	containerAppAPIVersion         = "2024-03-01"
+	containerAppAPIVersion         = "2023-05-01"
 	containerAppFallbackAPIVersion = "2023-05-01"
 )
 

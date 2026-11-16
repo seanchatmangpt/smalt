@@ -300,6 +300,43 @@ defmodule Smalt.Internal.ArmProvidersCompletenessTest do
     end
   end
 
+  test "ETag and If-Match precondition enforcement on ARM PUT and DELETE" do
+    name = "vnet-etag-#{System.unique_integer([:positive])}"
+    path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.Network/virtualNetworks/#{name}?api-version=2023-05-01"
+    body = %{"location" => "eastus", "properties" => %{"addressPrefixes" => ["10.1.0.0/16"]}}
+
+    put1 = dispatch(:put, path, body)
+    assert put1.status == 201
+    [etag1] = Plug.Conn.get_resp_header(put1, "etag")
+    assert is_binary(etag1) and etag1 != ""
+
+    # Stale If-Match on PUT -> 412 PreconditionFailed
+    stale_put =
+      conn(:put, path, Jason.encode!(body))
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("if-match", ~s("stale-etag"))
+      |> Router.call([])
+
+    assert stale_put.status == 412
+    assert Jason.decode!(stale_put.resp_body)["error"]["code"] == "PreconditionFailed"
+
+    # Stale If-Match on DELETE -> 412 PreconditionFailed
+    stale_del =
+      conn(:delete, path)
+      |> Plug.Conn.put_req_header("if-match", ~s("stale-etag"))
+      |> Router.call([])
+
+    assert stale_del.status == 412
+
+    # Matching If-Match on DELETE -> 202
+    ok_del =
+      conn(:delete, path)
+      |> Plug.Conn.put_req_header("if-match", etag1)
+      |> Router.call([])
+
+    assert ok_del.status == 202
+  end
+
   defp dispatch(method, path, body \\ nil) do
     conn =
       if body do

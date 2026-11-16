@@ -39,7 +39,14 @@ def _raw(v: Any) -> Any:
 
 
 def _source(b: ResourceBlock) -> dict[str, Any]:
-    return {"file": b.file, "hcl_name": b.hcl_name}
+    src: dict[str, Any] = {"file": b.file, "hcl_name": b.hcl_name}
+    if "for_each" in b.attributes:
+        src["for_each"] = b.attributes["for_each"]
+    if "count" in b.attributes:
+        src["count"] = b.attributes["count"]
+    if b.nested_blocks:
+        src["nested_blocks"] = sorted(b.nested_blocks.keys())
+    return src
 
 
 def _resolve_parent(
@@ -382,6 +389,8 @@ def build_topology(result: ScanResult) -> dict[str, Any]:
         {"file": e.file, "error": e.error, "error_class": e.error_class} for e in result.errors
     ]
     topo["unsupported_resource_types"] = dict(sorted(result.unsupported_types.items()))
+    topo["modules"] = list(result.modules)
+    topo["data_sources"] = list(result.data_sources)
     return topo
 
 
@@ -403,3 +412,5 @@ def scan(
         )
     else:
         typer.echo(payload)
+    if topo["errors"]:
+        raise typer.Exit(code=1)

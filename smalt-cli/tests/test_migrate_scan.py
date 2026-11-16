@@ -114,7 +114,7 @@ def test_unparsable_file_typed_error(topology):
 def test_cli_scan_stdout():
     runner = CliRunner()
     res = runner.invoke(app, ["migrate", "scan", str(FIXTURES)])
-    assert res.exit_code == 0, res.output
+    assert res.exit_code == 1, res.output
     topo = json.loads(res.output)
     assert topo["schema"] == "smalt-migrate/topology-v1"
     assert topo["files_scanned"] == 6
@@ -125,6 +125,73 @@ def test_cli_scan_output_file(tmp_path):
     runner = CliRunner()
     out = tmp_path / "topology.json"
     res = runner.invoke(app, ["migrate", "scan", str(FIXTURES), "--output", str(out)])
-    assert res.exit_code == 0, res.output
+    assert res.exit_code == 1, res.output
     topo = json.loads(out.read_text())
     assert topo["files_scanned"] == 6
+
+
+def test_t05_inline_comments_nested_blocks_var_refs_and_modules(tmp_path):
+    tf = tmp_path / "adversarial.tf"
+    tf.write_text(
+        '''
+data "azurerm_client_config" "current" {}
+
+module "net" {
+  source = "./modules/net"
+  env    = var.env
+}
+
+resource "azurerm_key_vault" "rg" {
+  name                = "kv-outer" # inline hash comment
+  location            = "eastus" // inline slash comment
+  resource_group_name = var.rg
+  sku_name            = "standard"
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  count               = var.enable_kv ? 1 : 0
+
+  network_acls {
+    default_action = "Deny"
+    name           = "inner-must-not-overwrite"
+  }
+}
+
+resource "azurerm_key_vault_secret" "sec" {
+  for_each     = toset(["a", "b"])
+  name         = "secret-${each.key}"
+  value        = "http://example.local/*keep-literal*/"
+  key_vault_id = azurerm_key_vault.rg.id
+}
+''',
+        encoding="utf-8",
+    )
+
+    from smalt_cli.migrate.scan import build_topology
+
+    result = scan_dir(tmp_path)
+    topo = build_topology(result)
+    assert topo["errors"] == []
+
+    # Top-level name preserved (not overwritten by nested block's name), inline comments stripped
+    vault = _one(topo["security_vaults"], name="kv-outer")
+    assert vault["source"]["count"] == {"raw": "var.enable_kv ? 1 : 0", "unresolved": True}
+    assert "network_acls" in vault["source"]["nested_blocks"]
+
+    # var.rg must NOT be collapsed to ref_hcl="rg"
+    block = next(b for b in result.blocks if b.hcl_name == "rg")
+    assert block.attributes["resource_group_name"]["ref_kind"] == "var"
+    assert block.attributes["resource_group_name"]["ref_hcl"] is None
+
+    # /*keep-literal*/ inside string preserved; for_each surfaced
+    sec_block = next(b for b in result.blocks if b.hcl_name == "sec")
+    assert sec_block.attributes["value"] == "http://example.local/*keep-literal*/"
+    assert "for_each" in sec_block.attributes
+
+    # module and data_sources surfaced
+    assert len(topo["modules"]) == 1 and topo["modules"][0]["name"] == "net"
+    assert len(topo["data_sources"]) == 1 and topo["data_sources"][0]["tf_type"] == "azurerm_client_config"
+
+    # Clean directory exits 0
+    runner = CliRunner()
+    res = runner.invoke(app, ["migrate", "scan", str(tmp_path)])
+    assert res.exit_code == 0, res.output
+

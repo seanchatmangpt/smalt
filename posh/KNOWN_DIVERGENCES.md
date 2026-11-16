@@ -11,7 +11,7 @@ This register documents intentional, lawful divergences between Microsoft Azure 
 | **Egress Boundaries** | Global internet | Strict fail-closed allowlist (`posh.yaml`) with kernel-level IMDS socket tripwire | Blocks cloud IMDS SSRF (`169.254.169.254`, `[::ffff:169.254.169.254]`) before `connect(2)`. |
 
 ## 2. Resource Coverage & Wire Parity
-The provider implements 100% wire parity for the 12 required sovereign resources and 7 data sources:
+The provider implements 100% wire parity for the 12 required sovereign resources and 8 data sources:
 - `azurerm_resource_group`: Canonical ARM ID normalizer + Private State raw body round-tripping.
 - `azurerm_key_vault`: Control plane vault management with auto-synthesized local `vault_uri`.
 - `azurerm_key_vault_secret`: Dual-plane split routing with data plane versioned URIs.

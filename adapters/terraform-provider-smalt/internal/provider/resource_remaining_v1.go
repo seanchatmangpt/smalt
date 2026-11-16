@@ -517,7 +517,7 @@ func (r *userAssignedIdentityResource) populateUAIModel(ctx context.Context, m *
 // 2. azurerm_federated_identity_credential
 // ============================================================================
 
-const ficAPIVersion = "2023-01-31"
+const ficAPIVersion = "2023-08-01"
 
 var (
 	_ resource.Resource                = (*federatedIdentityCredentialResource)(nil)
@@ -2336,7 +2336,7 @@ func (r *logAnalyticsWorkspaceResource) applyLAWState(ctx context.Context, m *lo
 // 7. azurerm_storage_account
 // ============================================================================
 
-const storageAPIVersion = "2023-01-01"
+const storageAPIVersion = "2023-05-01"
 
 var (
 	_ resource.Resource                = (*storageAccountResource)(nil)

@@ -14,11 +14,17 @@ resource "azurerm_resource_group" "smalt_fixture" {
 
 resource "azurerm_key_vault" "smalt_fixture" {
   # Standard-sku vault on the all-zero dev tenant.
-  name                = "kv-smalt-fixture"
-  resource_group_name = azurerm_resource_group.smalt_fixture.name
-  location            = azurerm_resource_group.smalt_fixture.location
-  sku_name            = "standard"
-  tenant_id           = "00000000-0000-0000-0000-000000000000"
+  name                     = "kv-smalt-fixture"
+  resource_group_name      = azurerm_resource_group.smalt_fixture.name
+  location                 = azurerm_resource_group.smalt_fixture.location
+  sku_name                 = "standard"
+  tenant_id                = "00000000-0000-0000-0000-000000000000"
+  purge_protection_enabled = true
+
+  network_acls {
+    default_action = "Deny"
+    bypass         = "AzureServices"
+  }
 }
 
 resource "azurerm_storage_account" "smalt_fixture" {
@@ -28,4 +34,5 @@ resource "azurerm_storage_account" "smalt_fixture" {
   location                 = azurerm_resource_group.smalt_fixture.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
 }

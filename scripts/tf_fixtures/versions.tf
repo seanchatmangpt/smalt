@@ -24,9 +24,6 @@ provider "azurerm" {
 
   subscription_id = "00000000-0000-0000-0000-000000000000"
 
-  # Standard upstream endpoint redirection (Phase 3): the loopback metadata
-  # document on the TLS twin. azurerm 4.x has NO `endpoints {}` block
-  # (schema-receipted) — `metadata_host` is the upstream-standard surface.
-  # Canonical annotated pattern: scripts/tf_fixtures_per_resource/endpoints.tf
-  metadata_host = "127.0.0.1:9444" # bare host[:port] — azurerm prepends https://
+  # Endpoint redirection is injected via ARM_METADATA_HOSTNAME by scripts/smalt-tf
+  # (never hardcoded in committed HCL).
 }

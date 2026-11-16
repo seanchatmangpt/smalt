@@ -310,7 +310,7 @@ import 'justfile.d/55-sovereign-image.just'
 
 # 56-courtroom — T03 consumer court: courtroom-platform-az on smalt (v26.10.29)
 import 'justfile.d/56-courtroom.just'
-import 'justfile.d/57-tf-provider.just'
+# 57-tf-provider retired (Elixir spike archived; GA path is 58-posh.just)
 # 58-posh — POSH orchestration: generate/build/install/court (v26.10.30 L5)
 import 'justfile.d/58-posh.just'
 # 59-posh-ops — POSH membrane process ops: posh-up/posh-down (v26.10.30 P1)
@@ -325,3 +325,7 @@ import 'justfile.d/63-aoq.just'
 import 'justfile.d/64-receipts.just'
 
 import 'justfile.d/65-ports.just'
+
+# Cross-repo Meta Court (smalt slice)
+meta-court:
+    python3 /Users/sac/ggen-marketplace/scripts/meta_court.py --repo smalt

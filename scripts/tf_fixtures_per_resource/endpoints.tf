@@ -38,7 +38,7 @@ provider "azurerm" {
 
   subscription_id = "00000000-0000-0000-0000-000000000000"
 
-  # Standard upstream redirection: loopback metadata document on the TLS
-  # twin. Terraform resolves every family's endpoints from this document.
-  metadata_host = "127.0.0.1:9444" # bare host[:port] — azurerm prepends https://
+  # Standard upstream redirection: ARM_METADATA_HOSTNAME env (or var) points
+  # azurerm at the loopback metadata document on the TLS twin without
+  # hardcoding a port in committed HCL.
 }

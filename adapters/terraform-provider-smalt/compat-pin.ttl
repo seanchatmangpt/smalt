@@ -5,9 +5,9 @@
 # DIALECT split law: a row goes DIALECT iff it pins the azurerm-wire shape of
 # a specific adapter package. This file carries:
 #   - 17 smalt:registryTop rows (per-type api-version ceilings, post-C4)
-#   - 14 smalt:providerConstant rows (provider Go APIVersion consts)
-#   - 1 registeredDivergence (ficAPIVersion, KD-45-1)
-#   - testCensusCount 37 (counts `func Test` in internal/provider/*_test.go —
+#   - 15 smalt:providerConstant rows (provider Go APIVersion consts)
+#   - 0 registeredDivergence (ficAPIVersion aligned to 2023-08-01)
+#   - testCensusCount 46 (counts `func Test` in internal/provider/*_test.go —
 #     the dialect package's own test population)
 #   - 2 dialectBehavior rows (PROPOSED, REGISTERED-DIVERGENCE class:
 #     documented, NOT gate-checked until a checker exists — an unchecked row
@@ -26,7 +26,7 @@
 
 <https://smalt.dev/compat-pin-dialect>
     a smalt:CompatPin ;
-    smalt:testCensusCount 37 ;
+    smalt:testCensusCount 46 ;
 
     # PROPOSED, unchecked (REGISTERED-DIVERGENCE class until a checker lands):
     smalt:dialectBehavior "preview-normalization" ;      # preview-field normalization in the dialect shim
@@ -56,23 +56,18 @@
     smalt:providerConstant
         [ smalt:symbol "rgAPIVersion" ;                     smalt:version "2023-07-01" ] ,
         [ smalt:symbol "keyVaultSecretAPIVersion" ;         smalt:version "2023-07-01" ] ,
-        [ smalt:symbol "containerAppAPIVersion" ;           smalt:version "2024-03-01" ] ,
+        [ smalt:symbol "containerAppAPIVersion" ;           smalt:version "2023-05-01" ] ,
         [ smalt:symbol "containerAppFallbackAPIVersion" ;   smalt:version "2023-05-01" ] ,
         [ smalt:symbol "keyVaultAPIVersion" ;               smalt:version "2023-07-01" ] ,
         [ smalt:symbol "keyVaultFallbackAPIVersion" ;       smalt:version "2023-02-01" ] ,
         [ smalt:symbol "uaiAPIVersion" ;                    smalt:version "2023-04-01" ] ,
+        [ smalt:symbol "ficAPIVersion" ;                    smalt:version "2023-08-01" ] ,
         [ smalt:symbol "roleDefAPIVersion" ;                smalt:version "2022-04-01" ] ,
         [ smalt:symbol "roleAssignAPIVersion" ;             smalt:version "2022-04-01" ] ,
         [ smalt:symbol "acrAPIVersion" ;                    smalt:version "2023-06-01" ] ,
         [ smalt:symbol "lawAPIVersion" ;                    smalt:version "2022-10-01" ] ,
-        [ smalt:symbol "storageAPIVersion" ;                smalt:version "2023-01-01" ] ,
-        [ smalt:symbol "caeAPIVersion" ;                    smalt:version "2024-03-01" ] ,
-        [ smalt:symbol "caeFallbackAPIVersion" ;            smalt:version "2023-05-01" ] ;
-
-    # -- registered divergences (surface present, values disagree) ---------
-    smalt:registeredDivergence
-        [ smalt:symbol "ficAPIVersion" ; smalt:providerVersion "2023-01-31" ;
-          smalt:registryTopVersion "2023-08-01" ;
-          rdfs:comment "FIC provider constant predates the registry top; KD-45-1 registered divergence — provider must either adopt the top or keep this row." ] .
+        [ smalt:symbol "storageAPIVersion" ;                smalt:version "2023-05-01" ] ,
+        [ smalt:symbol "caeAPIVersion" ;                    smalt:version "2023-05-01" ] ,
+        [ smalt:symbol "caeFallbackAPIVersion" ;            smalt:version "2023-05-01" ] .
 
 # end compat-pin.ttl

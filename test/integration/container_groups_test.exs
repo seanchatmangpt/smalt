@@ -414,6 +414,26 @@ defmodule Smalt.Internal.ContainerGroupsTest do
     |> then(&ContainerGroupsRouter.call(&1, []))
   end
 
+  test "mounted in Smalt.ArmGateway.Router before ResourceProviders" do
+    url = "#{@group_path}?api-version=#{@api_version}"
+
+    put_conn =
+      conn(:put, url, Jason.encode!(group_body()))
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.fetch_query_params()
+      |> Smalt.ArmGateway.Router.call([])
+
+    assert put_conn.status == @created
+
+    get_conn =
+      conn(:get, url)
+      |> Plug.Conn.fetch_query_params()
+      |> Smalt.ArmGateway.Router.call([])
+
+    assert get_conn.status == @ok
+    assert Jason.decode!(get_conn.resp_body)["name"] == @group
+  end
+
   defp group_body do
     %{
       "location" => "eastus",

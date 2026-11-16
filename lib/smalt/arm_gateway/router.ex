@@ -125,6 +125,7 @@ defmodule Smalt.ArmGateway.Router do
   # other conn through UNCHANGED. Mounted BEFORE ResourceProviders so the
   # deep child is claimed before the generic face's api-version gate.
   plug(Smalt.ArmGateway.Providers.ManagementPoliciesRouter)
+  plug(Smalt.ArmGateway.Providers.ContainerGroupsRouter)
   plug(Smalt.ArmGateway.Plug.ResourceProviders)
   plug(:match)
   plug(:dispatch)

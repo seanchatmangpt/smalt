@@ -211,7 +211,7 @@ if [ ! -d "$FIXTURES" ] || ! ls "$FIXTURES"/*.tf >/dev/null 2>&1; then
 fi
 for f in "$FIXTURES"/*.tf; do
   name="$(basename "$f" .tf)"
-  [ "$name" = "versions" ] && continue
+  if [ "$name" = "versions" ] || [ "$name" = "endpoints" ]; then continue; fi
   dir="$WORK/$name"
   t0="$(now_ms)"
   mkdir -p "$dir"
@@ -221,6 +221,11 @@ for f in "$FIXTURES"/*.tf; do
   if ! terraform -chdir="$dir" init -input=false -no-color >"$dir/init.log" 2>&1; then
     NAMES+=("$name"); VERDICTS+=("FAIL"); NOTES+=("init failed: $(tail -n 3 "$dir/init.log" | tr '\n' ' ' | cut -c1-200)")
     FAILED=1; continue
+  fi
+
+  if [ "$(uname)" = "Darwin" ]; then
+    TF_PROVIDERS_DIR="$dir/.terraform/providers" TF_LOCK_FILE="$dir/.terraform.lock.hcl" \
+      bash "$ROOT/scripts/tf_provider_wrap.sh" >>"$dir/init.log" 2>&1 || true
   fi
 
   if terraform -chdir="$dir" plan -input=false -no-color >"$dir/plan.log" 2>&1; then

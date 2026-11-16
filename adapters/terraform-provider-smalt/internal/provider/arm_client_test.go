@@ -155,3 +155,25 @@ func TestPrivateARMStateHelpers(t *testing.T) {
 		t.Fatalf("unknownServerField = %v, want keep-me", gotMap["unknownServerField"])
 	}
 }
+
+func TestResolveARMEndpointMetadataHost(t *testing.T) {
+	t.Setenv("SMALT_ARM_ENDPOINT", "")
+
+	// Bare metadata_host without SMALT_ARM_ENDPOINT must fail closed.
+	if _, err := resolveARMEndpoint("", "127.0.0.1:9444"); err == nil {
+		t.Fatalf("expected error for bare metadata_host without SMALT_ARM_ENDPOINT")
+	}
+
+	// Explicit http(s):// metadata_host is wired directly.
+	got, err := resolveARMEndpoint("", "http://127.0.0.1:9443")
+	if err != nil || got != "http://127.0.0.1:9443" {
+		t.Fatalf("resolveARMEndpoint = (%q, %v), want (http://127.0.0.1:9443, nil)", got, err)
+	}
+
+	// SMALT_ARM_ENDPOINT takes precedence over metadata_host.
+	t.Setenv("SMALT_ARM_ENDPOINT", "http://127.0.0.1:19443")
+	got, err = resolveARMEndpoint("", "127.0.0.1:9444")
+	if err != nil || got != "http://127.0.0.1:19443" {
+		t.Fatalf("resolveARMEndpoint with env = (%q, %v), want (http://127.0.0.1:19443, nil)", got, err)
+	}
+}
