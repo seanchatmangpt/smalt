@@ -18,10 +18,16 @@ defmodule Smalt.GCP.Functions do
   @table :smalt_resources
 
   defp fkey(p, l, f), do: "gcp:fn:#{p}/#{l}/#{f}"
+  defp okey(id), do: "gcp:fn:op:#{id}"
   defp name(p, l, f), do: "projects/#{p}/locations/#{l}/functions/#{f}"
 
-  def create_function(project, loc, id, %{"entryPoint" => ep} = body) when is_binary(ep) do
+  def create_function(project, loc, id, body) when is_map(body) do
+    ep = extract_entry_point(body)
+
     cond do
+      not is_binary(ep) or ep == "" ->
+        {:error, {400, "INVALID_ARGUMENT", "entryPoint required"}}
+
       not Regex.match?(~r/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/, id) ->
         {:error, {400, "INVALID_ARGUMENT", "invalid functionId"}}
 
@@ -29,20 +35,7 @@ defmodule Smalt.GCP.Functions do
         {:error, {409, "ALREADY_EXISTS", "function #{id} already exists"}}
 
       true ->
-        fun = %{
-          "name" => name(project, loc, id),
-          "state" => "ACTIVE",
-          "entryPoint" => ep,
-          "environment" => "GEN_2",
-          "buildConfig" => Map.get(body, "buildConfig", %{}),
-          "serviceConfig" =>
-            Map.merge(
-              %{"uri" => "https://#{loc}-#{project}.cloudfunctions.smalt.local/#{id}"},
-              Map.get(body, "serviceConfig", %{})
-            ),
-          "createTime" => DateTime.to_iso8601(DateTime.utc_now())
-        }
-
+        fun = build_function(project, loc, id, ep, body, nil)
         Store.put(@table, fkey(project, loc, id), fun)
         {:ok, fun}
     end
@@ -50,6 +43,18 @@ defmodule Smalt.GCP.Functions do
 
   def create_function(_, _, _, _),
     do: {:error, {400, "INVALID_ARGUMENT", "entryPoint required"}}
+
+  def update_function(project, loc, id, body) when is_map(body) do
+    with {:ok, old} <- get_function(project, loc, id) do
+      ep = extract_entry_point(body) || old["entryPoint"]
+      fun = build_function(project, loc, id, ep, body, old)
+      Store.put(@table, fkey(project, loc, id), fun)
+      {:ok, fun}
+    end
+  end
+
+  def update_function(_, _, _, _),
+    do: {:error, {400, "INVALID_ARGUMENT", "function body must be a JSON object"}}
 
   def get_function(project, loc, id) do
     case Store.get(@table, fkey(project, loc, id)) do
@@ -65,6 +70,98 @@ defmodule Smalt.GCP.Functions do
       Store.delete(@table, fkey(project, loc, id))
       {:ok, %{}}
     end
+  end
+
+  def create_function_lro(project, loc, id, body) do
+    with {:ok, fun} <- create_function(project, loc, id, body) do
+      {:ok, op(project, loc, name(project, loc, id), "CREATE_FUNCTION", fun)}
+    end
+  end
+
+  def update_function_lro(project, loc, id, body) do
+    with {:ok, fun} <- update_function(project, loc, id, body) do
+      {:ok, op(project, loc, name(project, loc, id), "UPDATE_FUNCTION", fun)}
+    end
+  end
+
+  def delete_function_lro(project, loc, id) do
+    with {:ok, _} <- delete_function(project, loc, id) do
+      {:ok, op(project, loc, name(project, loc, id), "DELETE_FUNCTION", %{})}
+    end
+  end
+
+  def get_operation(id) do
+    case Store.get(@table, okey(id)) do
+      {:ok, o} -> {:ok, o}
+      :error -> {:error, {404, "NOT_FOUND", "operation #{id} not found"}}
+    end
+  end
+
+  defp extract_entry_point(body) do
+    Map.get(body, "entryPoint") || get_in(body, ["buildConfig", "entryPoint"])
+  end
+
+  defp build_function(project, loc, id, ep, body, old) do
+    now = DateTime.to_iso8601(DateTime.utc_now())
+    uri = "https://#{loc}-#{project}.cloudfunctions.smalt.local/#{id}"
+    old_build = (old && old["buildConfig"]) || %{}
+    old_svc = (old && old["serviceConfig"]) || %{}
+
+    build_config =
+      old_build
+      |> Map.merge(Map.get(body, "buildConfig") || %{})
+      |> Map.put("entryPoint", ep)
+
+    service_config =
+      %{"uri" => uri, "service" => "projects/#{project}/locations/#{loc}/services/#{id}"}
+      |> Map.merge(old_svc)
+      |> Map.merge(Map.get(body, "serviceConfig") || %{})
+
+    base = %{
+      "name" => name(project, loc, id),
+      "state" => "ACTIVE",
+      "entryPoint" => ep,
+      "environment" => "GEN_2",
+      "url" => uri,
+      "buildConfig" => build_config,
+      "serviceConfig" => service_config,
+      "createTime" => (old && old["createTime"]) || now,
+      "updateTime" => now
+    }
+
+    Enum.reduce(~w(description labels eventTrigger kmsKeyName), base, fn k, acc ->
+      case Map.get(body, k) || (old && old[k]) do
+        nil -> acc
+        v -> Map.put(acc, k, v)
+      end
+    end)
+  end
+
+  defp op(project, loc, target, verb, response) do
+    id = "op-" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+    opname = "projects/#{project}/locations/#{loc}/operations/#{id}"
+
+    resp =
+      if map_size(response) == 0 do
+        %{"@type" => "type.googleapis.com/google.protobuf.Empty"}
+      else
+        Map.put(response, "@type", "type.googleapis.com/google.cloud.functions.v2.Function")
+      end
+
+    o = %{
+      "name" => opname,
+      "done" => true,
+      "metadata" => %{
+        "@type" => "type.googleapis.com/google.cloud.functions.v2.OperationMetadata",
+        "target" => target,
+        "verb" => verb,
+        "apiVersion" => "v2"
+      },
+      "response" => resp
+    }
+
+    Store.put(@table, okey(id), o)
+    o
   end
 
   @doc "functions:call analogue. `data` is the request payload."

@@ -283,14 +283,23 @@ defmodule Smalt.EgressRouter do
 
   defp gcp_family(%Plug.Conn{path_info: pi, host: host}) do
     cond do
+      gcp_host_family(host) != nil -> gcp_host_family(host)
       is_binary(host) and String.ends_with?(host, "storage.googleapis.com") -> :gcs
       match?(["storage", "v1" | _], pi) -> :gcs
       match?(["upload", "storage" | _], pi) -> :gcs
       match?(["upload", "resumable" | _], pi) -> :gcs
+      match?(["computeMetadata", "v1" | _], pi) -> :identity
+      match?(["tokeninfo"], pi) -> :identity
+      match?(["v3", "tokeninfo"], pi) -> :identity
+      match?(["v1", "projects", _, "serviceAccounts" | _], pi) -> :iam
+      match?(["v3", "projects:search"], pi) -> :iam
+      match?(["v3", "projects" | _], pi) -> :iam
       match?(["v1", "projects", _, c | _] when c in ["topics", "subscriptions", "snapshots"], pi) -> :pubsub
       match?(["v1", "projects", _, "databases" | _], pi) -> :firestore
       match?(["v1", "projects", _, "secrets" | _], pi) -> :secrets
       match?(["v1", "projects", _, "locations", _, "keyRings" | _], pi) -> :kms
+      match?(["v2", "projects", _, "locations", _, "queues" | _], pi) -> :cloud_tasks
+      match?(["v2", "projects", _, "locations", _, "functions" | _], pi) -> :functions
       match?(["v2", "projects", _, "locations", _, s | _] when s in ["services", "operations"], pi) -> :run
       match?(["v2", "projects", _, "sinks" | _], pi) -> :run
       match?(["v2", "entries:write"], pi) -> :run
@@ -299,28 +308,253 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp gcp_serve(:gcs, conn),
-    do: gcp_call(conn, Smalt.GCP.Storage.Router, fn c -> Smalt.GCP.Storage.Router.call(c, []) end)
+  defp gcp_host_family(host) when is_binary(host) do
+    case host |> String.split(":") |> hd() |> String.downcase() do
+      "oauth2.googleapis.com" -> :identity
+      "metadata.google.internal" -> :identity
+      "169.254.169.254" -> :identity
+      "iam.googleapis.com" -> :iam
+      "cloudresourcemanager.googleapis.com" -> :iam
+      "cloudtasks.googleapis.com" -> :cloud_tasks
+      "cloudfunctions.googleapis.com" -> :functions
+      _ -> nil
+    end
+  end
+
+  defp gcp_host_family(_), do: nil
+
+  defp gcp_serve(:gcs, conn) do
+    gcp_call(conn, Smalt.GCP.Storage.Router, fn c ->
+      gcp_require_sts_or_bearer(c, &Smalt.GCP.Storage.Router.call(&1, []))
+    end)
+  end
 
   defp gcp_serve(:pubsub, conn) do
-    gcp_call(conn, Smalt.Gcp.PubSubRouter, fn c -> Smalt.Gcp.PubSubRouter.route(c) end)
+    gcp_call(conn, Smalt.Gcp.PubSubRouter, fn c ->
+      gcp_require_sts_or_bearer(c, &Smalt.Gcp.PubSubRouter.route/1)
+    end)
   end
 
   # Firestore's Plug.Router is mounted `forward "/v1"`: strip the segment the
   # way Plug.Router.forward does (path_info/script_name), restore afterwards.
   defp gcp_serve(:firestore, %Plug.Conn{path_info: ["v1" | rest]} = conn) do
     gcp_call(conn, Smalt.GCP.Firestore.Router, fn c ->
-      inner = %{c | path_info: rest, script_name: c.script_name ++ ["v1"]}
-      out = Smalt.GCP.Firestore.Router.call(inner, Smalt.GCP.Firestore.Router.init([]))
-      %{out | path_info: c.path_info, script_name: c.script_name}
+      gcp_require_sts_or_bearer(c, fn authed ->
+        inner = %{authed | path_info: rest, script_name: authed.script_name ++ ["v1"]}
+        out = Smalt.GCP.Firestore.Router.call(inner, Smalt.GCP.Firestore.Router.init([]))
+        %{out | path_info: authed.path_info, script_name: authed.script_name}
+      end)
     end)
   end
 
   defp gcp_serve(:secrets, conn), do: gcp_agent_family(conn, Smalt.GCP.SecretManager)
   defp gcp_serve(:kms, conn), do: gcp_agent_family(conn, Smalt.GCP.KMS)
 
-  defp gcp_serve(:run, conn),
-    do: gcp_call(conn, Smalt.GCP.RunLoggingRouter, fn c -> Smalt.GCP.RunLoggingRouter.route(c) end)
+  defp gcp_serve(:run, conn) do
+    gcp_call(conn, Smalt.GCP.RunLoggingRouter, fn c ->
+      gcp_require_sts_or_bearer(c, &Smalt.GCP.RunLoggingRouter.route/1)
+    end)
+  end
+
+  defp gcp_serve(:identity, conn) do
+    gcp_call(conn, Smalt.GCP.Identity, fn c ->
+      if Code.ensure_loaded?(Smalt.GCP.Router) and Smalt.GCP.Router.dialect(c.host) != :none do
+        Smalt.GCP.Router.call(c, [])
+      else
+        case c.path_info do
+          ["tokeninfo"] -> Smalt.GCP.Identity.tokeninfo(c)
+          ["v3", "tokeninfo"] -> Smalt.GCP.Identity.tokeninfo(c)
+          ["computeMetadata", "v1" | _] = segs -> Smalt.GCP.Identity.metadata(fetch_query_params(c), segs)
+          _ -> Smalt.GCP.IAM.err(c, 404, "NOT_FOUND", "Method not found.")
+        end
+      end
+    end)
+  end
+
+  defp gcp_serve(:iam, conn) do
+    gcp_call(conn, Smalt.GCP.IAM, fn c ->
+      if Code.ensure_loaded?(Smalt.GCP.Router) and Smalt.GCP.Router.dialect(c.host) != :none do
+        Smalt.GCP.Router.call(c, [])
+      else
+        gcp_require_bearer(c, fn authed ->
+          authed = authed |> fetch_query_params() |> gcp_parse_json()
+
+          case authed.path_info do
+            ["v1", "projects", _, "serviceAccounts" | _] = segs ->
+              Smalt.GCP.IAM.serve(authed, :iam, segs)
+
+            ["v3", "projects" <> _ | _] = segs ->
+              Smalt.GCP.IAM.serve(authed, :crm, segs)
+
+            _ ->
+              Smalt.GCP.IAM.err(authed, 404, "NOT_FOUND", "Method not found.")
+          end
+        end)
+      end
+    end)
+  end
+
+  defp gcp_serve(:cloud_tasks, conn) do
+    gcp_call(conn, Smalt.GCP.CloudTasks, fn c ->
+      gcp_require_bearer(c, &gcp_serve_cloud_tasks/1)
+    end)
+  end
+
+  defp gcp_serve(:functions, conn) do
+    gcp_call(conn, Smalt.GCP.Functions, fn c ->
+      gcp_require_bearer(c, &gcp_serve_functions/1)
+    end)
+  end
+
+  defp gcp_require_sts_or_bearer(conn, fun) do
+    if Application.get_env(:smalt, :auth_mode, :enforce) == :anonymous do
+      fun.(conn)
+    else
+      if Smalt.Auth.Bearer.verify_bearer(conn) == :ok or
+           match?({:ok, _}, Smalt.GCP.Identity.verify(gcp_bearer(conn))) do
+        fun.(conn)
+      else
+        Smalt.GCP.IAM.err(
+          conn,
+          401,
+          "UNAUTHENTICATED",
+          "Request had invalid authentication credentials."
+        )
+      end
+    end
+  end
+
+  defp gcp_require_bearer(conn, fun) do
+    case Smalt.GCP.Identity.verify(gcp_bearer(conn)) do
+      {:ok, _claims} ->
+        fun.(conn)
+
+      _ ->
+        Smalt.GCP.IAM.err(
+          conn,
+          401,
+          "UNAUTHENTICATED",
+          "Request had invalid authentication credentials."
+        )
+    end
+  end
+
+  defp gcp_bearer(conn) do
+    case Plug.Conn.get_req_header(conn, "authorization") do
+      ["Bearer " <> t] -> t
+      _ -> ""
+    end
+  end
+
+  defp gcp_parse_json(%{body_params: %Plug.Conn.Unfetched{}} = conn) do
+    Plug.Parsers.call(conn, Plug.Parsers.init(parsers: [:json], json_decoder: Jason, pass: ["*/*"]))
+  end
+
+  defp gcp_parse_json(conn), do: conn
+
+  defp gcp_serve_cloud_tasks(conn) do
+    conn = fetch_query_params(conn)
+
+    case {conn.method, conn.path_info} do
+      {"POST", ["v2", "projects", p, "locations", l, "queues"]} ->
+        {body, conn} = gcp_json_body(conn)
+        id = gcp_last_segment(body["name"]) || conn.query_params["queueId"] || ""
+
+        if id == "" do
+          gcp_reply(conn, {:error, {400, "INVALID_ARGUMENT", "queue name required"}})
+        else
+          gcp_reply(conn, Smalt.GCP.CloudTasks.create_queue(p, l, id))
+        end
+
+      {"GET", ["v2", "projects", p, "locations", l, "queues", q]} ->
+        gcp_reply(conn, Smalt.GCP.CloudTasks.get_queue(p, l, q))
+
+      {"POST", ["v2", "projects", p, "locations", l, "queues", seg]} ->
+        case String.split(seg, ":", parts: 2) do
+          [q, "drain"] ->
+            results =
+              Smalt.GCP.CloudTasks.drain(p, l, q)
+              |> Enum.map(fn
+                {tid, {:ok, {:done, res}}} -> Map.merge(res, %{"task" => tid, "status" => "done"})
+                {tid, {:ok, {:failed, res}}} -> Map.merge(res, %{"task" => tid, "status" => "failed"})
+                {tid, {:error, {_code, status, msg}}} -> %{"task" => tid, "status" => status, "error" => msg}
+              end)
+
+            Smalt.GCP.Identity.json(conn, 200, %{"results" => results})
+
+          _ ->
+            Smalt.GCP.IAM.err(conn, 404, "NOT_FOUND", "Method not found.")
+        end
+
+      {"POST", ["v2", "projects", p, "locations", l, "queues", q, "tasks"]} ->
+        {body, conn} = gcp_json_body(conn)
+        task_body = if is_map(body["task"]), do: body["task"], else: body
+        gcp_reply(conn, Smalt.GCP.CloudTasks.create_task(p, l, q, task_body))
+
+      {"GET", ["v2", "projects", p, "locations", l, "queues", q, "tasks"]} ->
+        Smalt.GCP.Identity.json(conn, 200, %{"tasks" => Smalt.GCP.CloudTasks.list_tasks(p, l, q)})
+
+      {"POST", ["v2", "projects", p, "locations", l, "queues", q, "tasks", seg]} ->
+        case String.split(seg, ":", parts: 2) do
+          [tid, "run"] ->
+            case Smalt.GCP.CloudTasks.run_task(p, l, q, tid) do
+              {:ok, {:done, res}} -> Smalt.GCP.Identity.json(conn, 200, Map.put(res, "status", "done"))
+              {:ok, {:failed, res}} -> Smalt.GCP.Identity.json(conn, 200, Map.put(res, "status", "failed"))
+              {:error, _} = err -> gcp_reply(conn, err)
+            end
+
+          _ ->
+            Smalt.GCP.IAM.err(conn, 404, "NOT_FOUND", "Method not found.")
+        end
+
+      _ ->
+        Smalt.GCP.IAM.err(conn, 404, "NOT_FOUND", "Method not found.")
+    end
+  end
+
+  defp gcp_serve_functions(conn) do
+    conn = fetch_query_params(conn)
+
+    case {conn.method, conn.path_info} do
+      {"POST", ["v2", "projects", p, "locations", l, "functions"]} ->
+        {body, conn} = gcp_json_body(conn)
+        id = conn.query_params["functionId"] || gcp_last_segment(body["name"]) || ""
+        gcp_reply(conn, Smalt.GCP.Functions.create_function(p, l, id, body))
+
+      {"GET", ["v2", "projects", p, "locations", l, "functions"]} ->
+        Smalt.GCP.Identity.json(conn, 200, %{"functions" => Smalt.GCP.Functions.list_functions(p, l)})
+
+      {"GET", ["v2", "projects", p, "locations", l, "functions", f]} ->
+        gcp_reply(conn, Smalt.GCP.Functions.get_function(p, l, f))
+
+      {"DELETE", ["v2", "projects", p, "locations", l, "functions", f]} ->
+        gcp_reply(conn, Smalt.GCP.Functions.delete_function(p, l, f))
+
+      {"POST", ["v2", "projects", p, "locations", l, "functions", seg]} ->
+        case String.split(seg, ":", parts: 2) do
+          [f, "call"] ->
+            {body, conn} = gcp_json_body(conn)
+            data = if Map.has_key?(body, "data"), do: body["data"], else: body
+            gcp_reply(conn, Smalt.GCP.Functions.call(p, l, f, data))
+
+          _ ->
+            Smalt.GCP.IAM.err(conn, 404, "NOT_FOUND", "Method not found.")
+        end
+
+      _ ->
+        Smalt.GCP.IAM.err(conn, 404, "NOT_FOUND", "Method not found.")
+    end
+  end
+
+  defp gcp_last_segment(name) when is_binary(name) and name != "",
+    do: name |> String.split("/") |> List.last()
+
+  defp gcp_last_segment(_), do: nil
+
+  defp gcp_reply(conn, {:ok, body}), do: Smalt.GCP.Identity.json(conn, 200, body)
+
+  defp gcp_reply(conn, {:error, {http, status, msg}}),
+    do: Smalt.GCP.IAM.err(conn, http, status, msg)
 
   # Missing/uncompiled module fails closed 503 (never 200-empty); a nil return
   # (route miss) passes the conn through un-halted.
@@ -340,14 +574,18 @@ defmodule Smalt.EgressRouter do
   # owner process (start_link inside a request process would die with it).
   defp gcp_agent_family(conn, mod) do
     gcp_call(conn, mod, fn c ->
-      c = fetch_query_params(c)
-      {body, c} = gcp_json_body(c)
-      pid = gcp_engine(mod)
-      {status, map} = mod.handle(pid, c.method, c.request_path, c.query_params, body)
+      gcp_require_sts_or_bearer(c, fn authed ->
+        authed = fetch_query_params(authed)
+        {body, authed} = gcp_json_body(authed)
+        pid = gcp_engine(mod)
 
-      c
-      |> put_resp_content_type("application/json")
-      |> send_resp(status, Jason.encode!(map))
+        {status, map} =
+          mod.handle(pid, authed.method, authed.request_path, authed.query_params, body)
+
+        authed
+        |> put_resp_content_type("application/json")
+        |> send_resp(status, Jason.encode!(map))
+      end)
     end)
   end
 

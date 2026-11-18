@@ -71,8 +71,32 @@ user's login keychain:
 Exit codes: `0` PASS, `1` FAIL, `2` UNREACHABLE (substrate not listening on
 9444), `3` INDETERMINATE.
 
+## GCP vs AzureRM Boundary
+
+Terraform provider execution and TLS trust (`scripts/smalt-tf`,
+`ARM_METADATA_HOSTNAME=localhost:9444`, `azurerm` -> `azidentity`,
+`terraform-provider-smalt`) are **AzureRM-only**. The substrate does not
+mount a `google` Terraform provider endpoint on `localhost:9444`.
+
+When scanning `.tf` files with `smalt_cli/migrate/terraform.py`, `google_*`
+resources are explicitly detected, parsed into `ScanResult.gcp_resources`,
+and classified instead of being silently skipped:
+
+- **`GCP_HTTP_EMULATED`**: `google_*` resource types belonging to the 9 GCP
+  service families emulated by smalt over HTTP: `cloud_run_v2`,
+  `cloudfunctions2`, `storage`, `pubsub`, `kms`, `secret_manager`,
+  `firestore`, `logging`, and `cloud_tasks`. Their attributes and nested
+  blocks are extracted into `ScanResult.gcp_resources` with `service` set to
+  the matching family, and they are excluded from `unsupported_types`.
+- **`TYPED_UNSUPPORTED_AZURE_ONLY`**: all other (unmounted) `google_*`
+  resource types (for example `google_compute_instance`,
+  `google_container_cluster`, or v1 `google_cloud_run_service`). They are
+  recorded in `ScanResult.gcp_resources` with `service = None` and also
+  counted in `ScanResult.unsupported_types`.
+
 ## See Also
 
+- `smalt-cli/smalt_cli/migrate/terraform.py` — HCL2 scanner & GCP classification
 - `scripts/smalt-tf` — env routing + `DYLD_INSERT_LIBRARIES` trust shim
 - `scripts/tf_provider_wrap.sh` — provider wrapper for `DYLD_INSERT_LIBRARIES`
 - `scripts/trust_shim/README.md` — shim design & codesigning constraints

@@ -46,7 +46,7 @@ defmodule Smalt.GCP.Logging do
   def write_entries(_), do: {:error, {400, "INVALID_ARGUMENT", "entries required"}}
 
   def list_entries(%{"resourceNames" => names} = req) when is_list(names) do
-    with {:ok, preds} <- parse_filter(Map.get(req, "filter", "")) do
+    with {:ok, preds} <- parse_filter(Map.get(req, "filter") || "") do
       rows =
         names
         |> Enum.map(&String.replace_prefix(&1, "projects/", ""))
@@ -54,7 +54,13 @@ defmodule Smalt.GCP.Logging do
         |> Enum.filter(fn e -> Enum.all?(preds, & &1.(e)) end)
 
       rows = if desc?(req), do: Enum.reverse(rows), else: rows
-      size = Map.get(req, "pageSize", 1000)
+
+      size =
+        case Map.get(req, "pageSize") do
+          n when is_integer(n) and n > 0 -> n
+          _ -> 1000
+        end
+
       out = rows |> Enum.take(size) |> Enum.map(&Map.delete(&1, "_ns"))
       {:ok, %{"entries" => out}}
     end
@@ -62,7 +68,8 @@ defmodule Smalt.GCP.Logging do
 
   def list_entries(_), do: {:error, {400, "INVALID_ARGUMENT", "resourceNames required"}}
 
-  defp desc?(req), do: String.downcase(Map.get(req, "orderBy", "")) =~ "desc"
+  defp desc?(%{"orderBy" => o}) when is_binary(o), do: String.downcase(o) =~ "desc"
+  defp desc?(_), do: false
 
   defp normalize(e, sev) do
     ns = System.os_time(:nanosecond)

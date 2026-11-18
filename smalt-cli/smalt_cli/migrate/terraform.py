@@ -37,6 +37,43 @@ SUPPORTED_TYPES = frozenset(
     }
 )
 
+# GCP classification boundary: smalt emulates these 9 GCP service families over
+# HTTP, while Terraform HCL2 / provider provisioning remains AzureRM-only.
+GCP_HTTP_EMULATED = "GCP_HTTP_EMULATED"
+TYPED_UNSUPPORTED_AZURE_ONLY = "TYPED_UNSUPPORTED_AZURE_ONLY"
+
+GCP_HTTP_EMULATED_SERVICES = frozenset(
+    {
+        "cloud_run_v2",
+        "cloudfunctions2",
+        "storage",
+        "pubsub",
+        "kms",
+        "secret_manager",
+        "firestore",
+        "logging",
+        "cloud_tasks",
+    }
+)
+
+
+def classify_gcp_resource(tf_type: str) -> tuple[str, str | None] | None:
+    """Classify a Terraform resource type under the GCP vs AzureRM boundary.
+
+    Returns ``(classification, service_family)`` for ``google_*`` resource types:
+    - ``(GCP_HTTP_EMULATED, service_family)`` when ``tf_type`` belongs to one of
+      the 9 HTTP-emulated GCP service families.
+    - ``(TYPED_UNSUPPORTED_AZURE_ONLY, None)`` for unmounted ``google_*`` types.
+    Returns ``None`` for non-``google_*`` resource types.
+    """
+    if not tf_type.startswith("google_"):
+        return None
+    rest = tf_type[len("google_") :]
+    for svc in GCP_HTTP_EMULATED_SERVICES:
+        if rest == svc or rest.startswith(svc + "_"):
+            return (GCP_HTTP_EMULATED, svc)
+    return (TYPED_UNSUPPORTED_AZURE_ONLY, None)
+
 _INTERP = re.compile(r"\$\{")
 _REF_RE = re.compile(r"^[a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)+$")
 _NUM_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
@@ -66,6 +103,7 @@ class ScanResult:
     unsupported_types: dict[str, int]  # tf_type -> occurrence count
     modules: list[dict[str, Any]] = field(default_factory=list)
     data_sources: list[dict[str, Any]] = field(default_factory=list)
+    gcp_resources: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _skip_string(text: str, i: int) -> int:
@@ -441,6 +479,7 @@ def parse_file(path: Path) -> ScanResult:
     unsupported: dict[str, int] = {}
     modules: list[dict[str, Any]] = []
     data_sources: list[dict[str, Any]] = []
+    gcp_resources: list[dict[str, Any]] = []
 
     try:
         text = path.read_text(encoding="utf-8")
@@ -478,6 +517,24 @@ def parse_file(path: Path) -> ScanResult:
         pos = end
 
         if kind == "resource" and l2 is not None:
+            gcp_class = classify_gcp_resource(l1)
+            if gcp_class is not None:
+                classification, service_family = gcp_class
+                attrs, nested = _parse_hcl_body(body)
+                gcp_resources.append(
+                    {
+                        "tf_type": l1,
+                        "hcl_name": l2,
+                        "file": str(path),
+                        "service": service_family,
+                        "classification": classification,
+                        "attributes": attrs,
+                        "nested_blocks": nested,
+                    }
+                )
+                if classification == TYPED_UNSUPPORTED_AZURE_ONLY:
+                    unsupported[l1] = unsupported.get(l1, 0) + 1
+                continue
             if l1 not in SUPPORTED_TYPES:
                 unsupported[l1] = unsupported.get(l1, 0) + 1
                 continue
@@ -514,7 +571,15 @@ def parse_file(path: Path) -> ScanResult:
                 }
             )
 
-    return ScanResult(blocks, errors, scanned, unsupported, modules=modules, data_sources=data_sources)
+    return ScanResult(
+        blocks,
+        errors,
+        scanned,
+        unsupported,
+        modules=modules,
+        data_sources=data_sources,
+        gcp_resources=gcp_resources,
+    )
 
 
 def scan_dir(directory: Path) -> ScanResult:
@@ -524,6 +589,7 @@ def scan_dir(directory: Path) -> ScanResult:
     unsupported: dict[str, int] = {}
     modules: list[dict[str, Any]] = []
     data_sources: list[dict[str, Any]] = []
+    gcp_resources: list[dict[str, Any]] = []
     files = 0
     try:
         tf_files = sorted(directory.rglob("*.tf"))
@@ -536,6 +602,15 @@ def scan_dir(directory: Path) -> ScanResult:
         errors.extend(res.errors)
         modules.extend(res.modules)
         data_sources.extend(res.data_sources)
+        gcp_resources.extend(res.gcp_resources)
         for t, c in res.unsupported_types.items():
             unsupported[t] = unsupported.get(t, 0) + c
-    return ScanResult(blocks, errors, files, unsupported, modules=modules, data_sources=data_sources)
+    return ScanResult(
+        blocks,
+        errors,
+        files,
+        unsupported,
+        modules=modules,
+        data_sources=data_sources,
+        gcp_resources=gcp_resources,
+    )
