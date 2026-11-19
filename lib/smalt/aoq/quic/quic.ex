@@ -17,7 +17,7 @@ defmodule Smalt.Aoq.Quic do
   Scope (2026-11-05): the L3 server role LANDED - the full face is
   open/connect/send/recv (uni-stream client) PLUS serve/accept/
   accept_bi/stream_open/stream_send/stream_recv/stream_close (bi-dir
-  server+client streams). ALPN is `aq/1`, REQUIRED server-side; the
+  server+client streams). ALPN is `aoq/1`, REQUIRED server-side; the
   SHIM-COURT mutation `AQ_MUTATE_ALPN_DROP=1` strips it client-side
   and the handshake must refuse.
   """
@@ -126,7 +126,7 @@ defmodule Smalt.Aoq.Quic do
 
   @doc """
   Server face (L3 server role LANDED 2026-11-05): builds the rustls
-  ServerConfig (ALPN aq/1 REQUIRED server-side) and binds UDP `port`
+  ServerConfig (ALPN aoq/1 REQUIRED server-side) and binds UDP `port`
   on the engine thread. Takes the ENGINE resource from `open/2` plus
   the leaf cert DER + key DER (PKCS8). `{:ok, listener}` | refusal.
   """

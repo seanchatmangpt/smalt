@@ -50,6 +50,14 @@ defmodule Smalt.Aoq.Session do
     end
   end
 
+  @doc """
+  Fence a decoded frame against the session's bound lease
+  (`Smalt.Aoq.Session.Lease.Fence`). Pure: refusals leave the lease unchanged.
+  """
+  @spec fence(Smalt.Aoq.Session.Lease.Fence.t(), term(), Smalt.Aoq.Frame.t()) ::
+          :ok | {:error, Smalt.Aoq.Session.Lease.Fence.refusal()}
+  def fence(lease, lease_id, frame), do: Smalt.Aoq.Session.Lease.Fence.check(lease, lease_id, frame)
+
   @doc "Stop the session process."
   @spec stop(pid) :: :ok
   def stop(pid) do
