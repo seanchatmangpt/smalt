@@ -38,6 +38,41 @@ defmodule AoqLayoutDriftCourt do
     assert GeneratedAoqHeaderLayout.digest_span() == {0, 60}
   end
 
+  # ── intent (16 B) / page (28 B) headers (FNOX-SJ-AOQF-4) ────────────
+
+  test "ontology intent/page chains == Frame layout tables" do
+    ttl = File.read!(@ontology_path)
+    assert parse_sub_header!(ttl, "hfi") == Smalt.Aoq.Frame.intent_layout()
+    assert parse_sub_header!(ttl, "hfp") == Smalt.Aoq.Frame.page_layout()
+    assert Enum.sum(Enum.map(Smalt.Aoq.Frame.intent_layout(), &elem(&1, 2))) == 16
+    assert Enum.sum(Enum.map(Smalt.Aoq.Frame.page_layout(), &elem(&1, 2))) == 28
+  end
+
+  test "anti-vacuity: perturbed intent offset in graph differs from Frame table" do
+    ttl =
+      mutate_ttl(
+        "aoq:offset 12 ; aoq:sizeBytes 4 ; aoq:wireKind \"fnv1a32\" ;\n    aoq:cName \"intent_digest\"",
+        "aoq:offset 11 ; aoq:sizeBytes 4 ; aoq:wireKind \"fnv1a32\" ;\n    aoq:cName \"intent_digest\""
+      )
+
+    refute parse_sub_header!(ttl, "hfi") == Smalt.Aoq.Frame.intent_layout()
+  end
+
+  test "Frame round-trip: intent is 16 bytes, page is 28 bytes, decode(encode(x)) == x" do
+    intent = %{magic: 0xAABBCCDD, version: 1, flags: 0x0102, intent_id: 77}
+    page = %{magic: 0x11223344, version: 1, flags: 3, page_ordinal: 4, page_count: 9, payload_len: 1024}
+
+    assert byte_size(Smalt.Aoq.Frame.encode_intent(intent)) == 16
+    assert byte_size(Smalt.Aoq.Frame.encode_page(page)) == 28
+    assert {:ok, ^intent} = Smalt.Aoq.Frame.decode_intent(Smalt.Aoq.Frame.encode_intent(intent))
+    assert {:ok, ^page} = Smalt.Aoq.Frame.decode_page(Smalt.Aoq.Frame.encode_page(page))
+
+    <<first, rest::binary>> = Smalt.Aoq.Frame.encode_intent(intent)
+    flipped = <<Bitwise.bxor(first, 1), rest::binary>>
+    assert {:error, :bad_digest} = Smalt.Aoq.Frame.decode_intent(flipped)
+    assert {:error, :bad_length} = Smalt.Aoq.Frame.decode_page(<<0>>)
+  end
+
   # ── anti-vacuity: mutated TTL copies must RED ───────────────────────
 
   test "anti-vacuity: offset mutation in the graph flips the court" do
@@ -62,11 +97,13 @@ defmodule AoqLayoutDriftCourt do
   end
 
   test "anti-vacuity: version value mutation in the graph flips the court" do
-    ttl = mutate_ttl(~S{aoq:value 3 ;}, ~S{aoq:value 2 ;})
+    ttl = mutate_ttl(~S{aoq:value 1 ;
+    aoq:nextOffset aoq:hf-epoch}, ~S{aoq:value 2 ;
+    aoq:nextOffset aoq:hf-epoch})
 
     assert parsed_version(ttl) == {:ok, 2},
-           "mutated version (3→2) MUST flip the court"
-    assert parsed_version(@ontology_path |> File.read!()) == {:ok, 3}
+           "mutated version (1→2) MUST flip the court"
+    assert parsed_version(@ontology_path |> File.read!()) == {:ok, 1}
   end
 
   # ── helpers ─────────────────────────────────────────────────────────
@@ -111,6 +148,17 @@ defmodule AoqLayoutDriftCourt do
       %{rust_name: name, offset: offset, size_bytes: size, wire_kind: kind}
     end)
     |> Enum.sort_by(& &1.offset)
+  end
+
+  # Parses aoq:<prefix>-* HeaderField blocks (hfi = intent, hfp = page).
+  defp parse_sub_header!(ttl, prefix) do
+    ~r/aoq:#{prefix}-[a-z0-9-]+ a aoq:HeaderField ;(.*?)\.\n/s
+    |> Regex.scan(ttl)
+    |> Enum.map(fn [_, body] ->
+      {string_of!(body, ~r/aoq:rustName\s+"([A-Z0-9_]+)"/), int_of!(body, ~r/aoq:offset\s+(\d+)/),
+       int_of!(body, ~r/aoq:sizeBytes\s+(\d+)/), string_of!(body, ~r/aoq:wireKind\s+"([a-z0-9-]+)"/)}
+    end)
+    |> Enum.sort_by(&elem(&1, 1))
   end
 
   defp field_name(label) do
