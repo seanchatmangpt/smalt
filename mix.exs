@@ -13,6 +13,10 @@ defmodule Smalt.MixProject do
       # FONDRUNNER: parallel Erlang module family compiled in-repo (lib/smalt/pipeline)
       # STORE-4: operator-mandated 16-partition Erlang store family (src/)
       erlc_paths: ["lib/smalt/pipeline", "src"],
+      # DETB-3 deterministic env contract: releases are built with
+      # SOURCE_DATE_EPOCH=<epoch> and ERL_COMPILER_OPTIONS=deterministic
+      # (see scripts/repro-diff.sh); erlc_options mirrors the latter.
+      erlc_options: [:deterministic],
       description: description(),
       package: package(),
       source_url: "https://github.com/seanchatmangpt/smalt",
