@@ -5,7 +5,8 @@ defmodule Smalt.ServengineSim.FeBundleProbe do
 
     * `https://auth/token` (empty host interpolated into `https://${host}/auth/token`)
     * `//auth/token` (protocol-relative fallback from empty auth base URL)
-    * `localhost:4000` (hardcoded dev backend URL leaked into build output)
+    * `localhost:4000` / `127.0.0.1:4000` / `[::1]:4000` (hardcoded loopback
+      dev backend URL leaked into build output; host match is case-insensitive)
     * unset `VITE_PLATFORM_RPC_BASE_URL` (unreplaced `import.meta.env`,
       template placeholder, or empty/`null`/`undefined`/`void 0` binding)
     * unset `VITE_PLATFORM_AUTH_URL` (same)
@@ -47,7 +48,9 @@ defmodule Smalt.ServengineSim.FeBundleProbe do
   # Avoid double-counting `https://auth/token` as `//auth/token`, while still
   # catching `"//auth/token"`, `'//auth/token'`, and `https://host//auth/token`.
   @protocol_relative_auth_token_re ~r/(?<![A-Za-z0-9+.-]:)\/\/auth\/token/
-  @localhost_4000_re ~r/localhost:4000(?![0-9])/
+  # Phoenix/Vite default loopback backends. `(?![0-9])` keeps `*:40000` clean.
+  # `(?i)` covers `Localhost` / `LOCALHOST` host casing in bundled assets.
+  @localhost_4000_re ~r/(?i)(?:localhost|127\.0\.0\.1|\[::1\]):4000(?![0-9])/
 
   unset_env_regex = fn var_name ->
     v = Regex.escape(var_name)
@@ -71,7 +74,7 @@ defmodule Smalt.ServengineSim.FeBundleProbe do
   @rules [
     {:https_auth_token, "https://auth/token", @https_auth_token_re},
     {:protocol_relative_auth_token, "//auth/token", @protocol_relative_auth_token_re},
-    {:localhost_4000, "localhost:4000", @localhost_4000_re},
+    {:localhost_4000, "loopback:4000", @localhost_4000_re},
     {:unset_vite_platform_rpc_base_url, "unset VITE_PLATFORM_RPC_BASE_URL",
      unset_env_regex.("VITE_PLATFORM_RPC_BASE_URL")},
     {:unset_vite_platform_auth_url, "unset VITE_PLATFORM_AUTH_URL",

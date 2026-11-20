@@ -128,6 +128,23 @@ defmodule Smalt.ServengineSim.FeBundleProbeTest do
       assert Enum.map(report.findings, & &1.line) == [1, 2]
       assert Enum.all?(report.findings, &(&1.match == "localhost:4000"))
     end
+
+    test "detects 127.0.0.1:[::1] and case-folded localhost:4000; ignores *:40000" do
+      js = """
+      const v4 = "http://127.0.0.1:4000/rpc";
+      const v6 = "http://[::1]:4000/rpc";
+      const cased = "http://LocalHost:4000/auth";
+      const edge = "http://127.0.0.1:40000/metrics";
+      """
+
+      assert {:refused, report} = FeBundleProbe.scan_content(js)
+      assert report.counts == %{localhost_4000: 3}
+      assert Enum.map(report.findings, & &1.match) == [
+               "127.0.0.1:4000",
+               "[::1]:4000",
+               "LocalHost:4000"
+             ]
+    end
   end
 
   describe "unset VITE_PLATFORM_RPC_BASE_URL and VITE_PLATFORM_AUTH_URL" do
