@@ -36,7 +36,10 @@ defmodule Smalt.MixProject do
         version: @version,
         applications: [smalt: :permanent],
         include_executables_for: [:unix],
-        strip_beams: [compress: true]
+        strip_beams: [compress: true],
+        # DETB-3: mix writes a random releases/COOKIE per build unless one is given; the
+        # reproducibility gate pins it, production builds leave it unset.
+        cookie: System.get_env("SMALT_RELEASE_COOKIE")
       ]
     ]
   end

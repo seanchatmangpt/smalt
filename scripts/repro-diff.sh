@@ -14,6 +14,11 @@ if [ "$ERL_COMPILER_OPTIONS" != "deterministic" ]; then
   exit 2
 fi
 
+# DETB-3: pin the release cookie and serialize the compiler (parallel-compile atom-table order
+# made beams differ between builds; witnessed in the fnox platform release, DETB-2).
+export SMALT_RELEASE_COOKIE="${SMALT_RELEASE_COOKIE:-repro-diff-only-cookie}"
+export ERL_FLAGS="${ERL_FLAGS:-+S 1:1}"
+
 for d in a b; do
   rm -rf "$ROOT_DIR/_build-repro-$d" "/tmp/detb3-$d"
   MIX_BUILD_ROOT="$ROOT_DIR/_build-repro-$d" MIX_ENV=prod \
