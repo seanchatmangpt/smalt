@@ -19,9 +19,11 @@ fi
 export SMALT_RELEASE_COOKIE="${SMALT_RELEASE_COOKIE:-repro-diff-only-cookie}"
 export ERL_FLAGS="${ERL_FLAGS:-+S 1:1}"
 
+# One build root for both trees, rebuilt from scratch each time: beams embed the build path
+# (AshAdmin.Layouts, Mix.Tasks.Rustler.New differed only when the roots were _build-repro-a/-b).
 for d in a b; do
-  rm -rf "$ROOT_DIR/_build-repro-$d" "/tmp/detb3-$d"
-  MIX_BUILD_ROOT="$ROOT_DIR/_build-repro-$d" MIX_ENV=prod \
+  rm -rf "$ROOT_DIR/_build-repro" "/tmp/detb3-$d"
+  MIX_BUILD_ROOT="$ROOT_DIR/_build-repro" MIX_ENV=prod \
     mix release --path "/tmp/detb3-$d" --overwrite || { echo "build $d failed" >&2; exit 1; }
 done
 

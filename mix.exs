@@ -125,7 +125,7 @@ defmodule Smalt.MixProject do
       # v26.10.29 T-02 lane: azure_cache.ex drives Azure Redis Enterprise via
       # Cachex (in-process cache engine standing in for the redis wire face).
       # Version per the T-06 receipt (WINDOW_HANDOFF.md:37,97).
-      {:cachex, "~> 4.0"},
+      {:cachex, path: "third_party/cachex"},
       # T-07 APIM gateway outbound (r16): promoted per the conditional gate in
       # apim_gateway.ex — Code.ensure_loaded?(Finch) flips the fast path on.
       {:finch, "~> 0.24"},
