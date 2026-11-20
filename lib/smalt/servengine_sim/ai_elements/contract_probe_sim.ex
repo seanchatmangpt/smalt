@@ -326,7 +326,7 @@ defmodule Smalt.ServengineSim.AiElements.ContractProbeSim do
 
     mounted_before_forward? =
       case {:binary.match(router_src, ~s(post("/ai/chat")),
-            :binary.match(router_src, ~s(forward("/api"))} do
+            :binary.match(router_src, ~s(forward("/api",))} do
         {{ai_pos, _}, {fwd_pos, _}} -> ai_pos < fwd_pos
         {{_, _}, :nomatch} -> true
         _ -> false

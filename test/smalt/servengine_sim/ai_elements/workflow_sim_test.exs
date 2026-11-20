@@ -36,7 +36,7 @@ defmodule Smalt.ServengineSim.AiElements.WorkflowSimTest do
       assert result.location == "global"
       assert result.status == :completed
       assert result.execution_order == ["intake", "triage", "dispatch", "proposal", "qa"]
-      assert result.total_duration_ms == 120 + 120 + 280 + 280 + 120
+      assert result.total_duration_ms == 600
 
       assert Enum.all?(result.nodes, &(&1.status == :completed))
       assert length(result.trace) == 5

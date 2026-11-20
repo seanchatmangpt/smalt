@@ -360,6 +360,101 @@ defmodule Smalt.Aoq.Frame do
 
   def handle_epoch_rotate(_, other), do: {:error, {:bad_rotate_payload, other}}
 
+  # ── intent (16 B) / page (28 B) sub-frame codecs (FNOX-SJ-AOQF-4) ───
+  #
+  # Layouts follow aoq:header-intent / aoq:header-page in the aoq-pack
+  # ontology (little-endian, FNV-1a32 digest over everything before it).
+  # UNVERIFIED-GENERATED: until the AOQF-3 generated module is copied in,
+  # these tables are the residue the drift court pins to the ontology
+  # (`intent_layout/0`, `page_layout/0`). Magic and version are caller
+  # supplied: the graph carries no value for them (wire version = G3).
+
+  @intent_size 16
+  @page_size 28
+
+  @doc "Intent header field table (rust_name, offset, size_bytes, wire_kind)."
+  @spec intent_layout() :: [{String.t(), non_neg_integer(), pos_integer(), String.t()}]
+  def intent_layout do
+    [
+      {"INTENT_MAGIC", 0, 4, "u32"},
+      {"INTENT_VERSION", 4, 2, "u16"},
+      {"INTENT_FLAGS", 6, 2, "u16"},
+      {"INTENT_ID", 8, 4, "u32"},
+      {"INTENT_DIGEST", 12, 4, "fnv1a32"}
+    ]
+  end
+
+  @doc "Page header field table (rust_name, offset, size_bytes, wire_kind)."
+  @spec page_layout() :: [{String.t(), non_neg_integer(), pos_integer(), String.t()}]
+  def page_layout do
+    [
+      {"PAGE_MAGIC", 0, 4, "u32"},
+      {"PAGE_VERSION", 4, 2, "u16"},
+      {"PAGE_FLAGS", 6, 2, "u16"},
+      {"PAGE_ORDINAL", 8, 4, "u32"},
+      {"PAGE_COUNT", 12, 4, "u32"},
+      {"PAYLOAD_LEN", 16, 4, "u32"},
+      {"PAGE_RESERVED", 20, 4, "reserved-zero"},
+      {"PAGE_DIGEST", 24, 4, "fnv1a32"}
+    ]
+  end
+
+  @doc "Encodes an intent header map to exactly 16 bytes."
+  @spec encode_intent(%{magic: non_neg_integer(), version: non_neg_integer(),
+                        flags: non_neg_integer(), intent_id: non_neg_integer()}) :: binary()
+  def encode_intent(%{magic: m, version: v, flags: f, intent_id: i})
+      when m in 0..0xFFFFFFFF and v in 0..0xFFFF and f in 0..0xFFFF and i in 0..0xFFFFFFFF do
+    body = <<m::unsigned-little-32, v::unsigned-little-16, f::unsigned-little-16, i::unsigned-little-32>>
+    <<body::binary, fnv1a32(body)::unsigned-little-32>>
+  end
+
+  @doc "Decodes a 16-byte intent header; refuses short/long input and digest mismatch."
+  @spec decode_intent(binary()) :: {:ok, map()} | {:error, :bad_length | :bad_digest}
+  def decode_intent(
+        <<m::unsigned-little-32, v::unsigned-little-16, f::unsigned-little-16,
+          i::unsigned-little-32, digest::unsigned-little-32>> = bin
+      )
+      when byte_size(bin) == @intent_size do
+    if fnv1a32(binary_part(bin, 0, 12)) == digest do
+      {:ok, %{magic: m, version: v, flags: f, intent_id: i}}
+    else
+      {:error, :bad_digest}
+    end
+  end
+
+  def decode_intent(_), do: {:error, :bad_length}
+
+  @doc "Encodes a page header map to exactly 28 bytes (reserved region zero)."
+  @spec encode_page(%{magic: non_neg_integer(), version: non_neg_integer(),
+                      flags: non_neg_integer(), page_ordinal: non_neg_integer(),
+                      page_count: non_neg_integer(), payload_len: non_neg_integer()}) :: binary()
+  def encode_page(%{magic: m, version: v, flags: f, page_ordinal: o, page_count: c, payload_len: l})
+      when m in 0..0xFFFFFFFF and v in 0..0xFFFF and f in 0..0xFFFF and o in 0..0xFFFFFFFF and
+             c in 0..0xFFFFFFFF and l in 0..0xFFFFFFFF do
+    body =
+      <<m::unsigned-little-32, v::unsigned-little-16, f::unsigned-little-16, o::unsigned-little-32,
+        c::unsigned-little-32, l::unsigned-little-32, 0::unsigned-little-32>>
+
+    <<body::binary, fnv1a32(body)::unsigned-little-32>>
+  end
+
+  @doc "Decodes a 28-byte page header; refuses bad length, digest mismatch, nonzero reserved."
+  @spec decode_page(binary()) :: {:ok, map()} | {:error, :bad_length | :bad_digest | :bad_reserved}
+  def decode_page(
+        <<m::unsigned-little-32, v::unsigned-little-16, f::unsigned-little-16,
+          o::unsigned-little-32, c::unsigned-little-32, l::unsigned-little-32,
+          reserved::unsigned-little-32, digest::unsigned-little-32>> = bin
+      )
+      when byte_size(bin) == @page_size do
+    cond do
+      fnv1a32(binary_part(bin, 0, 24)) != digest -> {:error, :bad_digest}
+      reserved != 0 -> {:error, :bad_reserved}
+      true -> {:ok, %{magic: m, version: v, flags: f, page_ordinal: o, page_count: c, payload_len: l}}
+    end
+  end
+
+  def decode_page(_), do: {:error, :bad_length}
+
   # ── compat wrappers (existing courts keep their surface) ────────────
 
   @doc """

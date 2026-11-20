@@ -141,8 +141,7 @@ defmodule Smalt.ServengineSim.AiElements.EmailAiVertexSimTest do
       multi_tenant =
         conn(:post, "/api/ai/email-draft", %{"subject" => "Test"})
         |> put_req_header("authorization", "Bearer tok")
-        |> put_req_header("x-tenant-id", "t1")
-        |> put_req_header("x-tenant-id", "t2")
+        |> then(fn c -> %{c | req_headers: [{"x-tenant-id", "t1"}, {"x-tenant-id", "t2"} | c.req_headers]} end)
         |> EmailAiVertexSim.call(EmailAiVertexSim.init([]))
 
       assert multi_tenant.status == 403

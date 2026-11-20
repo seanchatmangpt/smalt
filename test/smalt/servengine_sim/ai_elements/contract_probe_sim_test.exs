@@ -62,7 +62,7 @@ defmodule Smalt.ServengineSim.AiElements.ContractProbeSimTest do
       ctrl_src: ctrl_src,
       router_src: router_src
     } do
-      mutated_router = String.replace(router_src, ~s(post("/ai/ide-assist", AiElementsController, :ide_assist)), "")
+      mutated_router = String.replace(router_src, ~s[post("/ai/ide-assist", AiElementsController, :ide_assist)], "")
 
       assert {:error, report} = ContractProbeSim.verify_parity(vc_src, ctrl_src, mutated_router)
       assert report.status == :mismatch

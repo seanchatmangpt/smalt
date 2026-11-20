@@ -26,7 +26,7 @@ defmodule Smalt.Application do
           Smalt.Telemetry.RollingCounters,
           Smalt.Monitor.Metrics
         ] ++ gcp_children() ++ aws_children() ++ mcp_tail ++ virtual_hw_child() ++ journal_sink_child() ++ cluster_child() ++
-             posh_child()
+             posh_child() ++ quic_listener_child()
 
     # SBKEY: a configured :sb_shared_key below SasVerifier's 32-byte floor is a
     # boot-config defect (M4: 12-byte key made CBS SAS signing impossible, real
@@ -88,6 +88,17 @@ defmodule Smalt.Application do
             restart: :transient
           )
         ]
+    end
+  end
+
+  # FNOX-SJ-QUIC-1: config-gated supervised QUIC listener (default OFF, nil
+  # config starts no child, byte-identical boot). Enable with
+  # `config :smalt, :aoq_quic_listener, port: .., cert_der: .., key_der: .., ca_der: ..`.
+  @doc false
+  def quic_listener_child do
+    case Application.get_env(:smalt, :aoq_quic_listener) do
+      opts when is_list(opts) and opts != [] -> [{Smalt.Aoq.Quic.Listener, opts}]
+      _ -> []
     end
   end
 
