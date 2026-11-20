@@ -23,7 +23,9 @@ if [ -z "$CGAP_ROOT" ]; then
   # don't need a bootstrapped mix run.
   CGAP_ROOT="$(cd "$ROOT" && mix run --no-start -e '
     IO.puts(Application.get_env(:smalt, :aoq, []) |> Keyword.get(:cgap_root, "") |> to_string())
-  ' 2>/dev/null || true)"
+  ' 2>/dev/null | tail -n 1 || true)"
+  # mix may print compile noise; accept only an existing directory
+  [ -d "$CGAP_ROOT" ] || CGAP_ROOT=""
 fi
 
 if [ -z "$CGAP_ROOT" ]; then
