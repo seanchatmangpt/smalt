@@ -126,6 +126,7 @@ defmodule Smalt.MixProject do
       # Cachex (in-process cache engine standing in for the redis wire face).
       # Version per the T-06 receipt (WINDOW_HANDOFF.md:37,97).
       {:cachex, path: "third_party/cachex"},
+      {:phoenix_live_view, path: "third_party/phoenix_live_view", override: true},
       # T-07 APIM gateway outbound (r16): promoted per the conditional gate in
       # apim_gateway.ex — Code.ensure_loaded?(Finch) flips the fast path on.
       {:finch, "~> 0.24"},
